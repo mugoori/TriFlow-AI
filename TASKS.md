@@ -8,35 +8,44 @@
 ## 📊 TriFlow AI Project Dashboard
 
 ### 📅 Product Roadmap
-| Milestone | Goal | Status | Progress |
-| :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | 5% |
-| **V1** | Builder UI & Learning Pipeline | ⏳ Pending | 0% |
-| **V2** | Mobile App & Advanced Simulation | ⏳ Pending | 0% |
+| Milestone | Goal | Status | Progress | 완료/전체 |
+| :--- | :--- | :--- | :--- | :--- |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██░░░░░░░░ 20% | 3/15 |
+| **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
+| **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
 
-#### 🔙 Backend (Python/FastAPI)
-| Sprint | Task | Status |
+#### 📋 Phase 0: 프로젝트 기획 및 문서화
+| Task | Status | Progress |
 | :--- | :--- | :--- |
-| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ⏳ Pending |
-| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ⏳ Pending |
-| | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ⏳ Pending |
-| | **[Core]** `tools/db.py` (Safe Query) 구현 | ⏳ Pending |
-| **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ⏳ Pending |
-| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending |
-| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending |
-| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending |
-| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending |
+| 프로젝트 문서 (A-1 ~ D-4) 작성 | ✅ 완료 | ██████████ 100% |
+| AI_GUIDELINES.md 작성 | ✅ 완료 | ██████████ 100% |
+| TASKS.md 작성 | ✅ 완료 | ██████████ 100% |
+| README.md 작성 | ✅ 완료 | ██████████ 100% |
+| Git 저장소 초기화 | ✅ 완료 | ██████████ 100% |
+
+#### 🔙 Backend (Python/FastAPI)
+| Sprint | Task | Status | Progress |
+| :--- | :--- | :--- | :--- |
+| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Core]** `tools/db.py` (Safe Query) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending | ░░░░░░░░░░ 0% |
 
 #### 🎨 Frontend (Tauri/React)
-| Sprint | Task | Status |
-| :--- | :--- | :--- |
-| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ⏳ Pending |
-| | **[Setup]** Tailwind + Shadcn/ui Config | ⏳ Pending |
-| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ⏳ Pending |
-| | **[UI]** Dashboard & Chart Visualization | ⏳ Pending |
-| **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending |
+| Sprint | Task | Status | Progress |
+| :--- | :--- | :--- | :--- |
+| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Setup]** Tailwind + Shadcn/ui Config | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[UI]** Dashboard & Chart Visualization | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending | ░░░░░░░░░░ 0% |
 
 ---
 
