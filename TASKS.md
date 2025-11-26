@@ -5,12 +5,48 @@
 
 ---
 
+## 📊 TriFlow AI Project Dashboard
+
+### 📅 Product Roadmap
+| Milestone | Goal | Status | Progress |
+| :--- | :--- | :--- | :--- |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | 5% |
+| **V1** | Builder UI & Learning Pipeline | ⏳ Pending | 0% |
+| **V2** | Mobile App & Advanced Simulation | ⏳ Pending | 0% |
+
+### 🚀 MVP Detailed Progress (Sprint 1~6)
+
+#### 🔙 Backend (Python/FastAPI)
+| Sprint | Task | Status |
+| :--- | :--- | :--- |
+| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ⏳ Pending |
+| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ⏳ Pending |
+| | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ⏳ Pending |
+| | **[Core]** `tools/db.py` (Safe Query) 구현 | ⏳ Pending |
+| **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ⏳ Pending |
+| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending |
+| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending |
+| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending |
+| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending |
+
+#### 🎨 Frontend (Tauri/React)
+| Sprint | Task | Status |
+| :--- | :--- | :--- |
+| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ⏳ Pending |
+| | **[Setup]** Tailwind + Shadcn/ui Config | ⏳ Pending |
+| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ⏳ Pending |
+| | **[UI]** Dashboard & Chart Visualization | ⏳ Pending |
+| **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending |
+
+---
+
 ## 📋 현재 진행 중인 작업
 
 ### Phase 1: 프로젝트 초기 설정 ✅
 - [x] `AI_GUIDELINES.md` 생성 및 개발 가이드라인 저장
 - [x] `TASKS.md` 생성 및 초기 할 일 목록 작성
-- [ ] Git 초기 커밋 및 푸시
+- [x] `README.md` 생성
+- [x] Git 초기 커밋 및 푸시
 
 ---
 
