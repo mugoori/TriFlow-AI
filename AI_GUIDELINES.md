@@ -10,17 +10,25 @@
 우리는 문서 C-1 계획에 따라 3개월 내 **TriFlow AI**의 MVP 출시를 목표로 한다.
 **최우선 목표**: **PC 설치형 데스크톱 애플리케이션 (Windows/Mac/Linux)** 완성. (모바일은 V2 이후 고려)
 
-### 1. Technology Stack (Hybrid Desktop)
-- **Client**: **Tauri v2** + React (Vite, TypeScript) + Tailwind CSS.
+### 1. Technology Stack (Optimized for MVP)
+- **Client**: Tauri v2 + React (Vite, TypeScript) + Tailwind CSS.
 - **Server**: Python (FastAPI) + Pydantic.
   - **Dev Mode**: Docker Compose로 서버 실행.
   - **Prod Mode**: Tauri 앱 실행 시 Python 백엔드를 Sidecar로 실행하거나 Docker 컨테이너와 통신.
 - **Database**: PostgreSQL 14+ (pgvector 포함) + Redis 7.2.
+- **Object Storage**: MinIO (Docker, 로컬).
+- **AI Stack**:
+  - **LLM**: `anthropic` SDK (Claude 3.5 Sonnet) **만** 사용.
+  - **Embedding**: `sentence-transformers` (로컬 모델) 또는 PostgreSQL pgvector 내장 기능.
 - **Core Engines**:
-  - **Rule Engine**: **Rhai** (Rust 기반, Python 바인딩).
-  - **Workflow**: JSON DSL 기반 엔진.
-- **AI Model**: **오직 Anthropic Claude API만 사용** (claude-sonnet-4-5-20250929).
-  - *참고: Embeddings는 로컬 모델(Sentence-Transformers) 또는 PostgreSQL(pgvector) 내장 기능 사용.*
+  - **Rule Engine**: `rhai` (Rust 기반, Python 바인딩).
+  - **Workflow**: Custom JSON DSL Executor.
+- **Logging/Monitoring**: Python `logging` (JSON format) + Simple Stats API.
+
+**🚫 명시적 제외 항목**:
+- OpenAI SDK, LangChain (Rule 8 참조)
+- Kubernetes, Helm, ArgoCD, Loki (로컬 환경 불필요)
+- AWS S3 (MinIO 사용)
 
 ---
 
@@ -74,35 +82,45 @@
 ### 📊 TriFlow AI Project Dashboard
 
 #### 📅 Product Roadmap
-| Milestone | Goal | Status | Progress |
-| :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | 5% |
-| **V1** | Builder UI & Learning Pipeline | ⏳ Pending | 0% |
-| **V2** | Mobile App & Advanced Simulation | ⏳ Pending | 0% |
+| Milestone | Goal | Status | Progress | 완료/전체 |
+| :--- | :--- | :--- | :--- | :--- |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ████░░░░░░ 41% | 7/17 |
+| **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
+| **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 #### 🚀 MVP Detailed Progress (Sprint 1~6)
 
-##### 🔙 Backend (Python/FastAPI)
-| Sprint | Task | Status |
+##### 📋 Phase 0: 프로젝트 기획 및 문서화
+| Task | Status | Progress |
 | :--- | :--- | :--- |
-| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ⏳ Pending |
-| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ⏳ Pending |
-| | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ⏳ Pending |
-| | **[Core]** `tools/db.py` (Safe Query) 구현 | ⏳ Pending |
-| **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ⏳ Pending |
-| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending |
-| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending |
-| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending |
-| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending |
+| 프로젝트 문서 (A-1 ~ D-4) 작성 | ✅ 완료 | ██████████ 100% |
+| AI_GUIDELINES.md 작성 (Rule 0~8) | ✅ 완료 | ██████████ 100% |
+| TASKS.md 작성 | ✅ 완료 | ██████████ 100% |
+| README.md 작성 | ✅ 완료 | ██████████ 100% |
+| Git 저장소 초기화 | ✅ 완료 | ██████████ 100% |
+
+##### 🔙 Backend (Python/FastAPI)
+| Sprint | Task | Status | Progress |
+| :--- | :--- | :--- | :--- |
+| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ✅ 완료 | ██████████ 100% |
+| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ✅ 완료 | ██████████ 100% |
+| | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Core]** `tools/db.py` (Safe Query) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[CI/CD]** GitHub Actions 워크플로우 설정 | ✅ 완료 | ██████████ 100% |
+| **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending | ░░░░░░░░░░ 0% |
 
 ##### 🎨 Frontend (Tauri/React)
-| Sprint | Task | Status |
-| :--- | :--- | :--- |
-| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ⏳ Pending |
-| | **[Setup]** Tailwind + Shadcn/ui Config | ⏳ Pending |
-| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ⏳ Pending |
-| | **[UI]** Dashboard & Chart Visualization | ⏳ Pending |
-| **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending |
+| Sprint | Task | Status | Progress |
+| :--- | :--- | :--- | :--- |
+| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Setup]** Tailwind + Shadcn/ui Config | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[UI]** Dashboard & Chart Visualization | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending | ░░░░░░░░░░ 0% |
 
 ---
 
@@ -115,3 +133,35 @@
 ## 🧪 Rule 7: Code Quality
 1. **Linting**: 커밋 전 `ruff check . --fix` 실행.
 2. **Coverage**: 핵심 로직(Rule Engine, DSL Parser)은 단위 테스트 필수.
+
+---
+
+## 🛑 Rule 8: MVP Anti-Patterns & Tech Diet (Strict Exclusions)
+기존 설계 문서(B-Series, D-Series)에 언급되었더라도, **PC 설치형 MVP** 목표 달성을 위해 다음 기술과 패턴은 **구현에서 배제한다.**
+
+### 1. 🚫 Excluded Libraries & Tools
+- **OpenAI SDK**: 제거. LLM은 오직 `anthropic` SDK만 사용한다. Embeddings는 로컬(`sentence-transformers`)이나 DB(`pgvector`) 기능을 사용한다.
+- **LangChain**: 제거. 에이전트 로직은 `anthropic` SDK를 사용하여 직접 제어(Control Flow)하는 것이 더 가볍고 디버깅에 유리하다.
+- **Kubernetes / Helm / ArgoCD**: 제거. 배포 환경은 사용자의 로컬 PC다. 복잡한 오케스트레이션 도구 대신 `docker-compose`로 통일한다.
+- **Loki / Distributed Tracing**: 제거. 단일 사용자 환경이므로 파일 기반 로깅이나 Docker 로그로 충분하다.
+- **AWS S3**: 제거. 로컬 MinIO 사용.
+
+### 2. 🚫 Design Patterns to Avoid
+- **Canary / Blue-Green Deployment**: 제거. 데스크톱 앱은 '설치 파일 업데이트' 방식이다. 서버 트래픽 제어 개념을 적용하지 않는다.
+- **Multi-Tenancy at Scale**: 단순화. MVP는 단일 사용자 또는 소규모 팀을 가정한다. 복잡한 테넌트 격리는 불필요하다.
+- **Native Python eval()**: 절대 금지. 보안과 성능을 위해 **Rhai (Rust)** 엔진으로 통일한다.
+
+### 3. ✅ MVP-First Alternatives
+| 기존 (Docs) | MVP 대안 | 이유 |
+|-------------|----------|------|
+| OpenAI API | Anthropic Claude API | 단일 LLM 제공자로 단순화 |
+| LangChain | Direct `anthropic` SDK | 가볍고 디버깅 용이 |
+| Kubernetes | Docker Compose | 로컬 환경에 적합 |
+| AWS S3 | MinIO (Docker) | 오프라인 호환성 |
+| Loki | Python logging (JSON) | 로컬 로그 충분 |
+| Canary Deployment | 앱 버전 업데이트 | 데스크톱 앱 배포 방식 |
+
+### 4. 📌 Implementation Guideline
+- 문서 B-1-4, D-1 등에 언급된 기술 스택은 **참고만** 하되, Rule 8이 우선한다.
+- `requirements.txt` 작성 시 OpenAI, LangChain 의존성을 포함하지 않는다.
+- 에이전트 구현 시 `anthropic` SDK의 Tool Use 기능을 직접 사용한다.
