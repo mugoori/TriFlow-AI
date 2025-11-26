@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 14 (pgvector 포함)
+  postgres:
+    image: pgvector/pgvector:pg14
+    container_name: triflow-postgres
+    environment:
+      POSTGRES_USER: triflow
+      POSTGRES_PASSWORD: triflow_dev_password
+      POSTGRES_DB: triflow_ai
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U triflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - triflow-network
+
+  # Redis 7.2
+  redis:
+    image: redis:7.2-alpine
+    container_name: triflow-redis
+    command: redis-server --requirepass triflow_redis_password --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - triflow-network
+
+  # MinIO (Object Storage)
+  minio:
+    image: minio/minio:latest
+    container_name: triflow-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: triflow
+      MINIO_ROOT_PASSWORD: triflow_minio_password
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - triflow-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  triflow-network:
+    driver: bridge

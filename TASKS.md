@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██░░░░░░░░ 18% | 3/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ████░░░░░░ 41% | 7/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -28,11 +28,11 @@
 #### 🔙 Backend (Python/FastAPI)
 | Sprint | Task | Status | Progress |
 | :--- | :--- | :--- | :--- |
-| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ⏳ Pending | ░░░░░░░░░░ 0% |
-| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ✅ 완료 | ██████████ 100% |
+| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ✅ 완료 | ██████████ 100% |
 | | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[Core]** `tools/db.py` (Safe Query) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
-| | **[CI/CD]** GitHub Actions 워크플로우 설정 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[CI/CD]** GitHub Actions 워크플로우 설정 | ✅ 완료 | ██████████ 100% |
 | **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
@@ -63,27 +63,26 @@
 ## 🗓️ Sprint 1: 인프라 및 기본 설정
 
 ### 🔧 Backend 인프라
-- [ ] **[Infra]** Docker Compose 설정
-  - [ ] PostgreSQL 14+ (pgvector 확장 포함) 컨테이너 설정
-  - [ ] Redis 7.2 컨테이너 설정
-  - [ ] MinIO (오브젝트 스토리지) 컨테이너 설정
-  - [ ] 네트워크 및 볼륨 구성
+- [x] **[Infra]** Docker Compose 설정 ✅
+  - [x] PostgreSQL 14+ (pgvector 확장 포함) 컨테이너 설정
+  - [x] Redis 7.2 컨테이너 설정
+  - [x] MinIO (오브젝트 스토리지) 컨테이너 설정
+  - [x] 네트워크 및 볼륨 구성
 
-- [ ] **[DB]** 데이터베이스 스키마 초기화
-  - [ ] Core 스키마 (rules, workflows, sensors)
-  - [ ] BI 스키마 (reports, dashboards)
-  - [ ] RAG 스키마 (documents, embeddings)
-  - [ ] Audit 스키마 (logs, feedback)
+- [x] **[DB]** 데이터베이스 스키마 초기화 ✅
+  - [x] Core 스키마 (rules, workflows, sensors)
+  - [x] BI 스키마 (reports, dashboards)
+  - [x] RAG 스키마 (documents, embeddings)
+  - [x] Audit 스키마 (logs, feedback)
 
 - [ ] **[Core]** 핵심 도구 구현
   - [ ] `tools/rhai.py` - Rhai 룰 엔진 Python 바인딩
   - [ ] `tools/db.py` - 안전한 SQL 쿼리 실행기
 
-- [ ] **[CI/CD]** GitHub Actions 워크플로우
-  - [ ] Lint & Test 워크플로우 (Python: ruff, pytest)
-  - [ ] Lint & Test 워크플로우 (Frontend: eslint, vitest)
-  - [ ] Docker 이미지 빌드 및 푸시
-  - [ ] 자동 배포 워크플로우 (선택적)
+- [x] **[CI/CD]** GitHub Actions 워크플로우 ✅
+  - [x] Lint & Test 워크플로우 (Python: ruff, pytest)
+  - [x] Lint & Test 워크플로우 (Frontend: eslint, vitest)
+  - [x] Docker 이미지 빌드 및 푸시
 
 ### 🎨 Frontend 초기 설정
 - [ ] **[Setup]** Tauri v2 + React + Vite 프로젝트 초기화
