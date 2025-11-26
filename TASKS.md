@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██░░░░░░░░ 20% | 3/15 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██░░░░░░░░ 18% | 3/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -32,6 +32,7 @@
 | | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[Core]** `tools/db.py` (Safe Query) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[CI/CD]** GitHub Actions 워크플로우 설정 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
@@ -77,6 +78,12 @@
 - [ ] **[Core]** 핵심 도구 구현
   - [ ] `tools/rhai.py` - Rhai 룰 엔진 Python 바인딩
   - [ ] `tools/db.py` - 안전한 SQL 쿼리 실행기
+
+- [ ] **[CI/CD]** GitHub Actions 워크플로우
+  - [ ] Lint & Test 워크플로우 (Python: ruff, pytest)
+  - [ ] Lint & Test 워크플로우 (Frontend: eslint, vitest)
+  - [ ] Docker 이미지 빌드 및 푸시
+  - [ ] 자동 배포 워크플로우 (선택적)
 
 ### 🎨 Frontend 초기 설정
 - [ ] **[Setup]** Tauri v2 + React + Vite 프로젝트 초기화
