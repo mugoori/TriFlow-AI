@@ -2,7 +2,7 @@
 -- TriFlow AI - BI Schema 테이블
 -- ===================================
 
-SET search_path TO bi;
+SET search_path TO bi, public;
 
 -- BI Dataset 정의
 CREATE TABLE IF NOT EXISTS datasets (

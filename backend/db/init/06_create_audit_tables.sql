@@ -2,11 +2,11 @@
 -- TriFlow AI - Audit Schema 테이블
 -- ===================================
 
-SET search_path TO audit;
+SET search_path TO audit, public;
 
 -- 감사 로그
 CREATE TABLE IF NOT EXISTS audit_logs (
-    log_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    log_id UUID DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL,
     user_id UUID,
     action VARCHAR(100) NOT NULL,  -- CREATE, UPDATE, DELETE, EXECUTE, etc.
@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     new_value JSONB,
     ip_address INET,
     user_agent TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (log_id, created_at)
 ) PARTITION BY RANGE (created_at);
 
 -- 감사 로그 파티션 (월별)
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS feedback_logs (
 
 -- LLM 호출 로그
 CREATE TABLE IF NOT EXISTS llm_calls (
-    call_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    call_id UUID DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL,
     model VARCHAR(100) NOT NULL,
     input_tokens INTEGER NOT NULL,
@@ -49,7 +50,8 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     latency_ms INTEGER,
     success BOOLEAN NOT NULL,
     error_message TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (call_id, created_at)
 ) PARTITION BY RANGE (created_at);
 
 -- LLM 호출 로그 파티션 (월별)

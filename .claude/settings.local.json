@@ -5,7 +5,12 @@
       "Bash(git commit -m \"$(cat <<''EOF''\n🎉 프로젝트 초기 설정: AI_GUIDELINES.md 및 TASKS.md 생성\n\n- AI_GUIDELINES.md: 프로젝트 개발 가이드라인 및 규칙 정의\n  - MVP 범위 및 기술 스택 명시\n  - 에이전트 구조 및 스킬 정의\n  - 프로젝트 대시보드 및 진척도 관리\n- TASKS.md: Sprint 1~6 작업 목록 초기화\n  - Backend 인프라 작업 정의\n  - Frontend 초기 설정 작업 정의\n  - 에이전트 시스템 구현 계획\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git config:*)",
       "Bash(git push:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker exec:*)"
     ],
     "deny": [],
     "ask": []

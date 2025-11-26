@@ -2,7 +2,7 @@
 -- TriFlow AI - Core Schema 테이블
 -- ===================================
 
-SET search_path TO core;
+SET search_path TO core, public;
 
 -- 테넌트 (멀티테넌트 지원)
 CREATE TABLE IF NOT EXISTS tenants (

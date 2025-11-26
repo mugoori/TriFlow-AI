@@ -2,7 +2,7 @@
 -- TriFlow AI - RAG Schema 테이블
 -- ===================================
 
-SET search_path TO rag;
+SET search_path TO rag, public;
 
 -- 문서 메타데이터
 CREATE TABLE IF NOT EXISTS documents (
