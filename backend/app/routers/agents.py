@@ -5,7 +5,7 @@ Agent API Router
 import logging
 from fastapi import APIRouter, HTTPException, status
 
-from app.agents import MetaRouterAgent, JudgmentAgent, WorkflowPlannerAgent
+from app.agents import MetaRouterAgent, JudgmentAgent, WorkflowPlannerAgent, BIPlannerAgent
 from app.schemas.agent import AgentRequest, AgentResponse, JudgmentRequest
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ router = APIRouter()
 meta_router = MetaRouterAgent()
 judgment_agent = JudgmentAgent()
 workflow_planner = WorkflowPlannerAgent()
+bi_planner = BIPlannerAgent()
 
 
 @router.post("/chat", response_model=AgentResponse)
@@ -96,10 +97,35 @@ async def chat_with_agent(request: AgentRequest):
                 routing_info=routing_info,
             )
 
-        elif target_agent_name in ["bi", "learning"]:
+        elif target_agent_name == "bi":
+            # BI Planner Agent 실행
+            agent_result = bi_planner.run(
+                user_message=routing_info.get("processed_request", request.message),
+                context={
+                    **(request.context or {}),
+                    **routing_info.get("context", {}),
+                },
+            )
+
+            return AgentResponse(
+                response=agent_result["response"],
+                agent_name="BIPlannerAgent",
+                tool_calls=[
+                    {
+                        "tool": tc["tool"],
+                        "input": tc["input"],
+                        "result": tc["result"],
+                    }
+                    for tc in agent_result.get("tool_calls", [])
+                ],
+                iterations=agent_result["iterations"],
+                routing_info=routing_info,
+            )
+
+        elif target_agent_name == "learning":
             # 아직 구현되지 않은 Agent
             return AgentResponse(
-                response=f"{target_agent_name.capitalize()} Agent는 아직 구현되지 않았습니다. (Coming in Sprint 2-4)",
+                response="Learning Agent는 아직 구현되지 않았습니다. (Coming in Sprint 4)",
                 agent_name="MetaRouterAgent",
                 tool_calls=[],
                 iterations=1,
@@ -210,8 +236,9 @@ async def agent_status():
                 "available": True,
             },
             "bi": {
-                "available": False,
-                "note": "Coming in Sprint 2",
+                "name": bi_planner.name,
+                "model": bi_planner.model,
+                "available": True,
             },
             "learning": {
                 "available": False,

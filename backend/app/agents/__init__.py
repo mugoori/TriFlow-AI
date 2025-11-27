@@ -5,5 +5,12 @@ from .base_agent import BaseAgent
 from .meta_router import MetaRouterAgent
 from .judgment_agent import JudgmentAgent
 from .workflow_planner import WorkflowPlannerAgent
+from .bi_planner import BIPlannerAgent
 
-__all__ = ["BaseAgent", "MetaRouterAgent", "JudgmentAgent", "WorkflowPlannerAgent"]
+__all__ = [
+    "BaseAgent",
+    "MetaRouterAgent",
+    "JudgmentAgent",
+    "WorkflowPlannerAgent",
+    "BIPlannerAgent",
+]

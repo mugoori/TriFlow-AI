@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
 > **최종 업데이트**: 2025-11-27
-> **현재 Phase**: Sprint 2 - Workflow Planner Agent 구현 완료
+> **현재 Phase**: Sprint 2 완료 - Agent System (3/3 Agents 구현 완료)
 
 ---
 
@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | █████████░ 82% | 14/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | █████████░ 88% | 15/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -36,7 +36,7 @@
 | | **[Docker]** backend/Dockerfile 생성 | ✅ 완료 | ██████████ 100% |
 | **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ✅ 완료 | ██████████ 100% |
 | | **[Agent]** Workflow Planner (NL->DSL) 구현 | ✅ 완료 | ██████████ 100% |
-| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ✅ 완료 | ██████████ 100% |
 | **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending | ░░░░░░░░░░ 0% |
 
@@ -52,6 +52,19 @@
 ---
 
 ## 📋 현재 진행 중인 작업
+
+### BI Planner Agent 구현 ✅ (2025-11-27)
+- [x] BI Planner Agent 프롬프트 작성 (bi_planner.md)
+- [x] BI Planner Agent 클래스 구현 (bi_planner.py)
+  - 3개 Tools: get_table_schema, execute_safe_sql, generate_chart_config
+  - 보안: tenant_id 필수 필터링, SELECT-only SQL
+  - 차트 타입: line, bar, pie, area, scatter, table
+- [x] API 엔드포인트 통합 (agents.py)
+- [x] 테스트 완료 (3개 시나리오)
+  - ✅ sensor_data 테이블 스키마 조회 (General Agent로 라우팅)
+  - ✅ 최근 센서 데이터 라인 차트 시각화 (BI Agent 정상 동작, tenant_id 보안 확인)
+  - ✅ 라인별 평균 온도 Bar 차트 생성 (BI Agent 정상 동작, tenant_id 보안 확인)
+- [x] 보안 기능 검증: tenant_id 필터 없는 SQL 자동 거부 ✅
 
 ### Workflow Planner Agent 구현 ✅ (2025-11-27)
 - [x] Workflow Planner Agent 프롬프트 작성 (workflow_planner.md)
