@@ -1,54 +1,237 @@
 /**
  * DashboardPage
- * 고정된 차트들을 표시하는 대시보드 페이지
+ * 실제 센서 데이터 API 연동 대시보드 페이지
  */
 
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3, TrendingUp, AlertTriangle, CheckCircle, X, LayoutDashboard } from 'lucide-react';
+import {
+  BarChart3, TrendingUp, AlertTriangle, X, LayoutDashboard, RefreshCw,
+  Thermometer, Gauge, Droplets, Activity, Loader2
+} from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { ChartRenderer } from '@/components/charts';
+import { sensorService, SensorSummaryItem, SensorDataItem } from '@/services/sensorService';
+
+interface DashboardStats {
+  totalReadings: number;
+  avgTemperature: number;
+  avgPressure: number;
+  avgHumidity: number;
+  activeLines: number;
+  alerts: number;
+}
 
 export function DashboardPage() {
   const { savedCharts, removeChart } = useDashboard();
+  const [stats, setStats] = useState<DashboardStats>({
+    totalReadings: 0,
+    avgTemperature: 0,
+    avgPressure: 0,
+    avgHumidity: 0,
+    activeLines: 0,
+    alerts: 0,
+  });
+  const [lineSummary, setLineSummary] = useState<SensorSummaryItem[]>([]);
+  const [recentData, setRecentData] = useState<SensorDataItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const fetchDashboardData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // 병렬로 API 호출
+      const [summaryRes, dataRes] = await Promise.all([
+        sensorService.getSummary(),
+        sensorService.getData({ page_size: 10 }),
+      ]);
+
+      // 라인별 요약 데이터
+      setLineSummary(summaryRes.summary);
+      setRecentData(dataRes.data);
+
+      // 통계 계산
+      if (summaryRes.summary.length > 0) {
+        const totalReadings = summaryRes.summary.reduce((sum, line) => sum + line.total_readings, 0);
+        const validTemps = summaryRes.summary.filter(line => line.avg_temperature != null);
+        const validPress = summaryRes.summary.filter(line => line.avg_pressure != null);
+        const validHum = summaryRes.summary.filter(line => line.avg_humidity != null);
+
+        const avgTemp = validTemps.length > 0
+          ? validTemps.reduce((sum, line) => sum + (line.avg_temperature || 0), 0) / validTemps.length
+          : 0;
+        const avgPres = validPress.length > 0
+          ? validPress.reduce((sum, line) => sum + (line.avg_pressure || 0), 0) / validPress.length
+          : 0;
+        const avgHum = validHum.length > 0
+          ? validHum.reduce((sum, line) => sum + (line.avg_humidity || 0), 0) / validHum.length
+          : 0;
+
+        // 임계값 초과 알림 계산 (온도 > 70 또는 압력 > 8)
+        const alertCount = summaryRes.summary.filter(
+          line => (line.avg_temperature && line.avg_temperature > 70) || (line.avg_pressure && line.avg_pressure > 8)
+        ).length;
+
+        setStats({
+          totalReadings,
+          avgTemperature: Math.round(avgTemp * 10) / 10,
+          avgPressure: Math.round(avgPres * 100) / 100,
+          avgHumidity: Math.round(avgHum * 10) / 10,
+          activeLines: summaryRes.summary.length,
+          alerts: alertCount,
+        });
+      }
+
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error('Dashboard data fetch failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+    // 30초마다 자동 갱신
+    const interval = setInterval(fetchDashboardData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 space-y-6">
-        {/* Stats Grid */}
+        {/* Header with refresh button */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Dashboard</h2>
+            {lastUpdated && (
+              <p className="text-sm text-slate-500">
+                마지막 업데이트: {lastUpdated.toLocaleTimeString('ko-KR')}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={fetchDashboardData}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            새로고침
+          </button>
+        </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <AlertTriangle className="w-5 h-5" />
+              <span>{error}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Stats Grid - 실제 센서 데이터 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            title="생산량"
-            value="1,234"
-            unit="units"
-            change="+12.5%"
-            changeType="positive"
-            icon={TrendingUp}
+            title="평균 온도"
+            value={isLoading ? '-' : stats.avgTemperature.toFixed(1)}
+            unit="°C"
+            subtitle={`${stats.activeLines}개 라인`}
+            icon={Thermometer}
+            iconBgColor="bg-orange-100 dark:bg-orange-900"
+            iconColor="text-orange-600 dark:text-orange-400"
           />
           <StatCard
-            title="불량률"
-            value="2.3"
+            title="평균 압력"
+            value={isLoading ? '-' : stats.avgPressure.toFixed(2)}
+            unit="bar"
+            subtitle="최근 24시간"
+            icon={Gauge}
+            iconBgColor="bg-blue-100 dark:bg-blue-900"
+            iconColor="text-blue-600 dark:text-blue-400"
+          />
+          <StatCard
+            title="평균 습도"
+            value={isLoading ? '-' : stats.avgHumidity.toFixed(1)}
             unit="%"
-            change="-0.5%"
-            changeType="positive"
-            icon={CheckCircle}
+            subtitle="최근 24시간"
+            icon={Droplets}
+            iconBgColor="bg-cyan-100 dark:bg-cyan-900"
+            iconColor="text-cyan-600 dark:text-cyan-400"
           />
           <StatCard
-            title="가동률"
-            value="94.2"
-            unit="%"
-            change="+2.1%"
-            changeType="positive"
-            icon={BarChart3}
-          />
-          <StatCard
-            title="알림"
-            value="3"
+            title="센서 데이터"
+            value={isLoading ? '-' : stats.totalReadings.toLocaleString()}
             unit="건"
-            change="+2"
-            changeType="negative"
-            icon={AlertTriangle}
+            subtitle={stats.alerts > 0 ? `${stats.alerts}건 임계값 초과` : '정상'}
+            icon={stats.alerts > 0 ? AlertTriangle : Activity}
+            iconBgColor={stats.alerts > 0 ? "bg-red-100 dark:bg-red-900" : "bg-green-100 dark:bg-green-900"}
+            iconColor={stats.alerts > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}
           />
         </div>
+
+        {/* 라인별 센서 현황 */}
+        {lineSummary.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                라인별 센서 현황
+              </CardTitle>
+              <CardDescription>최근 24시간 평균값</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {lineSummary.map((line) => (
+                  <div
+                    key={line.line_code}
+                    className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-semibold text-slate-900 dark:text-slate-50">
+                        {line.line_code}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {line.total_readings.toLocaleString()} readings
+                      </span>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 dark:text-slate-400">온도</span>
+                        <span className={`font-medium ${
+                          (line.avg_temperature || 0) > 70 ? 'text-red-600' : 'text-slate-900 dark:text-slate-50'
+                        }`}>
+                          {line.avg_temperature?.toFixed(1) ?? '-'} °C
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 dark:text-slate-400">압력</span>
+                        <span className={`font-medium ${
+                          (line.avg_pressure || 0) > 8 ? 'text-red-600' : 'text-slate-900 dark:text-slate-50'
+                        }`}>
+                          {line.avg_pressure?.toFixed(2) ?? '-'} bar
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 dark:text-slate-400">습도</span>
+                        <span className="font-medium text-slate-900 dark:text-slate-50">
+                          {line.avg_humidity?.toFixed(1) ?? '-'} %
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 고정된 차트 섹션 */}
         <div>
@@ -102,65 +285,46 @@ export function DashboardPage() {
           )}
         </div>
 
-        {/* 기본 차트 플레이스홀더 (고정된 차트가 없을 때 안내용) */}
-        {savedCharts.length === 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>생산 추이</CardTitle>
-                <CardDescription>최근 7일간 생산량 변화</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-64 flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-lg">
-                  <p className="text-slate-500 text-center px-4">
-                    AI Chat에서 "최근 생산량 차트 보여줘"라고 요청하세요
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>센서 현황</CardTitle>
-                <CardDescription>실시간 센서 데이터</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-64 flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-lg">
-                  <p className="text-slate-500 text-center px-4">
-                    AI Chat에서 "센서 데이터 분석해줘"라고 요청하세요
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        {/* 최근 센서 데이터 */}
+        {recentData.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5" />
+                최근 센서 데이터
+              </CardTitle>
+              <CardDescription>최근 10건의 센서 측정값</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b dark:border-slate-700">
+                      <th className="text-left py-2 px-3 text-slate-600 dark:text-slate-400">시간</th>
+                      <th className="text-left py-2 px-3 text-slate-600 dark:text-slate-400">라인</th>
+                      <th className="text-left py-2 px-3 text-slate-600 dark:text-slate-400">센서</th>
+                      <th className="text-right py-2 px-3 text-slate-600 dark:text-slate-400">값</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentData.map((item) => (
+                      <tr key={item.sensor_id} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-2 px-3 text-slate-500">
+                          {new Date(item.recorded_at).toLocaleTimeString('ko-KR')}
+                        </td>
+                        <td className="py-2 px-3 font-medium">{item.line_code}</td>
+                        <td className="py-2 px-3">{item.sensor_type}</td>
+                        <td className="py-2 px-3 text-right font-mono">
+                          {item.value.toFixed(2)} {item.unit || ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         )}
-
-        {/* Recent Activity */}
-        <Card>
-          <CardHeader>
-            <CardTitle>최근 활동</CardTitle>
-            <CardDescription>AI 에이전트 처리 내역</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <ActivityItem
-                time="2분 전"
-                action="BI Agent"
-                description="센서 데이터 쿼리 실행 완료"
-              />
-              <ActivityItem
-                time="5분 전"
-                action="Workflow Agent"
-                description="알림 워크플로우 생성"
-              />
-              <ActivityItem
-                time="12분 전"
-                action="Judgment Agent"
-                description="온도 임계값 초과 판단"
-              />
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
@@ -170,12 +334,13 @@ interface StatCardProps {
   title: string;
   value: string;
   unit: string;
-  change: string;
-  changeType: 'positive' | 'negative';
+  subtitle: string;
   icon: React.ComponentType<{ className?: string }>;
+  iconBgColor: string;
+  iconColor: string;
 }
 
-function StatCard({ title, value, unit, change, changeType, icon: Icon }: StatCardProps) {
+function StatCard({ title, value, unit, subtitle, icon: Icon, iconBgColor, iconColor }: StatCardProps) {
   return (
     <Card>
       <CardContent className="pt-6">
@@ -186,38 +351,13 @@ function StatCard({ title, value, unit, change, changeType, icon: Icon }: StatCa
               <span className="text-2xl font-bold">{value}</span>
               <span className="text-sm text-slate-500">{unit}</span>
             </div>
-            <p className={`text-sm mt-1 ${
-              changeType === 'positive' ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {change}
-            </p>
+            <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
           </div>
-          <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
-            <Icon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+          <div className={`p-3 ${iconBgColor} rounded-lg`}>
+            <Icon className={`w-6 h-6 ${iconColor}`} />
           </div>
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-interface ActivityItemProps {
-  time: string;
-  action: string;
-  description: string;
-}
-
-function ActivityItem({ time, action, description }: ActivityItemProps) {
-  return (
-    <div className="flex items-center gap-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm">{action}</span>
-          <span className="text-xs text-slate-500">{time}</span>
-        </div>
-        <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
-      </div>
-    </div>
   );
 }
