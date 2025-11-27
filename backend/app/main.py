@@ -8,6 +8,8 @@ import logging
 import json
 
 from app.config import settings
+from app.database import check_db_connection
+from app.routers import tenants
 
 # 로깅 설정
 if settings.log_format == "json":
@@ -58,10 +60,12 @@ async def root():
 @app.get("/health")
 async def health_check():
     """헬스 체크 엔드포인트"""
+    db_status = "ok" if check_db_connection() else "error"
+
     return {
-        "status": "healthy",
+        "status": "healthy" if db_status == "ok" else "degraded",
         "checks": {
-            "database": "ok",  # TODO: 실제 DB 연결 체크
+            "database": db_status,
             "redis": "ok",  # TODO: 실제 Redis 연결 체크
         }
     }
@@ -78,7 +82,10 @@ async def api_info():
     }
 
 
-# TODO: 라우터 추가
+# 라우터 등록
+app.include_router(tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
+
+# TODO: 추가 라우터
 # from app.routers import agents, tools, bi
 # app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 # app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])
