@@ -116,6 +116,28 @@ class JudgmentAgent(BaseAgent):
                     "required": ["query"],
                 },
             },
+            {
+                "name": "get_line_status",
+                "description": "특정 생산 라인의 현재 상태를 종합적으로 조회하고 판단합니다. 온도, 압력, 습도 등 모든 센서 데이터를 확인하고 정상/경고/위험 상태를 판단합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "line_code": {
+                            "type": "string",
+                            "description": "라인 코드 (예: LINE_A, LINE_B, LINE_C, LINE_D)",
+                        },
+                    },
+                    "required": ["line_code"],
+                },
+            },
+            {
+                "name": "get_available_lines",
+                "description": "사용 가능한 생산 라인 목록을 조회합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
@@ -141,6 +163,14 @@ class JudgmentAgent(BaseAgent):
                 query=tool_input["query"],
                 top_k=tool_input.get("top_k", 3),
             )
+
+        elif tool_name == "get_line_status":
+            return self._get_line_status(
+                line_code=tool_input["line_code"],
+            )
+
+        elif tool_name == "get_available_lines":
+            return self._get_available_lines()
 
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
@@ -289,3 +319,125 @@ class JudgmentAgent(BaseAgent):
             "documents": dummy_docs[:top_k],
             "note": "MVP: Placeholder implementation. Real RAG coming in V1.",
         }
+
+    def _get_line_status(self, line_code: str) -> Dict[str, Any]:
+        """
+        특정 라인의 종합 상태 조회 및 판단
+        """
+        try:
+            from sqlalchemy import func, distinct
+
+            with get_db_context() as db:
+                # 최근 1시간 데이터 기준
+                cutoff_time = datetime.utcnow() - timedelta(hours=1)
+
+                # 센서 타입별 최신 평균값 조회
+                sensor_types = ['temperature', 'pressure', 'humidity', 'vibration', 'flow_rate']
+                sensor_data = {}
+
+                for sensor_type in sensor_types:
+                    result = db.query(
+                        func.avg(SensorData.value).label('avg_value'),
+                        func.max(SensorData.value).label('max_value'),
+                        func.min(SensorData.value).label('min_value'),
+                        func.count(SensorData.sensor_id).label('count'),
+                    ).filter(
+                        SensorData.line_code == line_code,
+                        SensorData.sensor_type == sensor_type,
+                        SensorData.recorded_at >= cutoff_time,
+                    ).first()
+
+                    if result and result.count > 0:
+                        sensor_data[sensor_type] = {
+                            "avg": round(result.avg_value, 2) if result.avg_value else None,
+                            "max": round(result.max_value, 2) if result.max_value else None,
+                            "min": round(result.min_value, 2) if result.min_value else None,
+                            "readings": result.count,
+                        }
+
+                if not sensor_data:
+                    return {
+                        "success": False,
+                        "line_code": line_code,
+                        "error": f"No sensor data found for {line_code} in the last hour",
+                    }
+
+                # 룰 엔진으로 판단 수행
+                input_for_rules = {
+                    "temperature": sensor_data.get("temperature", {}).get("avg", 0),
+                    "pressure": sensor_data.get("pressure", {}).get("avg", 0),
+                    "humidity": sensor_data.get("humidity", {}).get("avg", 0),
+                }
+
+                judgment_result = self.rhai_engine.execute(
+                    script="// Auto judgment",
+                    context={"input": input_for_rules},
+                )
+
+                # 상태 요약
+                overall_status = judgment_result.get("status", "UNKNOWN")
+                checks = judgment_result.get("checks", [])
+
+                logger.info(f"Line status check for {line_code}: {overall_status}")
+
+                return {
+                    "success": True,
+                    "line_code": line_code,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "overall_status": overall_status,
+                    "confidence": judgment_result.get("confidence", 0.9),
+                    "sensor_summary": sensor_data,
+                    "checks": checks,
+                    "recommendation": self._get_recommendation(overall_status, checks),
+                }
+
+        except Exception as e:
+            logger.error(f"Error getting line status: {e}")
+            return {
+                "success": False,
+                "line_code": line_code,
+                "error": str(e),
+            }
+
+    def _get_available_lines(self) -> Dict[str, Any]:
+        """
+        사용 가능한 라인 목록 조회
+        """
+        try:
+            from sqlalchemy import distinct
+
+            with get_db_context() as db:
+                # DB에서 실제 라인 목록 조회
+                lines = db.query(distinct(SensorData.line_code)).all()
+                line_list = [row[0] for row in lines if row[0]]
+
+                if not line_list:
+                    # 기본값
+                    line_list = ["LINE_A", "LINE_B", "LINE_C", "LINE_D"]
+
+                return {
+                    "success": True,
+                    "lines": sorted(line_list),
+                    "count": len(line_list),
+                }
+
+        except Exception as e:
+            logger.error(f"Error getting available lines: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "lines": ["LINE_A", "LINE_B", "LINE_C", "LINE_D"],  # fallback
+            }
+
+    def _get_recommendation(self, status: str, checks: List[Dict]) -> str:
+        """
+        상태에 따른 추천 조치 생성
+        """
+        if status == "CRITICAL":
+            issues = [c["message"] for c in checks if c.get("status") in ["CRITICAL", "HIGH"]]
+            return f"즉시 점검 필요: {'; '.join(issues)}"
+        elif status == "WARNING":
+            issues = [c["message"] for c in checks if c.get("status") in ["WARNING", "HIGH", "LOW"]]
+            return f"주의 관찰 필요: {'; '.join(issues)}"
+        else:
+            return "모든 센서가 정상 범위입니다. 특별한 조치가 필요하지 않습니다."

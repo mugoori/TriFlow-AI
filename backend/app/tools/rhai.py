@@ -66,27 +66,125 @@ class RhaiEngine:
         - 조건문: if expr { ... } else { ... }
         - 맵 생성: #{key: value, ...}
         """
-        # 샘플 데이터 기반 간단한 로직 실행
-        # 예제: defect rate 체크
-        defect_count = input_data.get('defect_count', 0)
-        production_count = input_data.get('production_count', 1)
+        result = {"status": "NORMAL", "confidence": 0.90, "checks": []}
 
-        if production_count == 0:
-            production_count = 1  # division by zero 방지
+        # 온도 체크
+        if 'temperature' in input_data:
+            temp = input_data['temperature']
+            threshold = 70.0  # 기본 임계값
 
-        defect_rate = defect_count / production_count
+            # 스크립트에서 임계값 추출 시도
+            if 'threshold' in script:
+                import re
+                match = re.search(r'threshold\s*=\s*([\d.]+)', script)
+                if match:
+                    threshold = float(match.group(1))
 
-        # Rhai 조건문 파싱 (매우 간단한 구현)
-        if 'if defect_rate >' in script:
-            if '> 0.05' in script and defect_rate > 0.05:
-                return {"status": "HIGH_DEFECT", "confidence": 0.95}
-            elif '> 0.02' in script and defect_rate > 0.02:
-                return {"status": "WARNING", "confidence": 0.80}
+            if temp > threshold:
+                result["checks"].append({
+                    "type": "temperature",
+                    "status": "HIGH",
+                    "value": temp,
+                    "threshold": threshold,
+                    "message": f"온도 {temp}°C가 임계값 {threshold}°C를 초과"
+                })
+                result["status"] = "WARNING"
+                result["confidence"] = 0.95
             else:
-                return {"status": "NORMAL", "confidence": 0.90}
+                result["checks"].append({
+                    "type": "temperature",
+                    "status": "NORMAL",
+                    "value": temp,
+                    "threshold": threshold,
+                    "message": f"온도 {temp}°C 정상 범위"
+                })
 
-        # 기본 반환값
-        return {"status": "UNKNOWN", "confidence": 0.0, "defect_rate": defect_rate}
+        # 압력 체크
+        if 'pressure' in input_data:
+            pressure = input_data['pressure']
+            min_pressure = 2.0
+            max_pressure = 8.0
+
+            if pressure < min_pressure:
+                result["checks"].append({
+                    "type": "pressure",
+                    "status": "LOW",
+                    "value": pressure,
+                    "range": [min_pressure, max_pressure],
+                    "message": f"압력 {pressure} bar가 최소 {min_pressure} bar 미만"
+                })
+                result["status"] = "WARNING"
+            elif pressure > max_pressure:
+                result["checks"].append({
+                    "type": "pressure",
+                    "status": "HIGH",
+                    "value": pressure,
+                    "range": [min_pressure, max_pressure],
+                    "message": f"압력 {pressure} bar가 최대 {max_pressure} bar 초과"
+                })
+                result["status"] = "WARNING"
+            else:
+                result["checks"].append({
+                    "type": "pressure",
+                    "status": "NORMAL",
+                    "value": pressure,
+                    "range": [min_pressure, max_pressure],
+                    "message": f"압력 {pressure} bar 정상 범위"
+                })
+
+        # 습도 체크
+        if 'humidity' in input_data:
+            humidity = input_data['humidity']
+            min_humidity = 30.0
+            max_humidity = 70.0
+
+            if humidity < min_humidity or humidity > max_humidity:
+                result["checks"].append({
+                    "type": "humidity",
+                    "status": "WARNING",
+                    "value": humidity,
+                    "range": [min_humidity, max_humidity],
+                    "message": f"습도 {humidity}%가 권장 범위({min_humidity}-{max_humidity}%) 벗어남"
+                })
+                if result["status"] == "NORMAL":
+                    result["status"] = "WARNING"
+            else:
+                result["checks"].append({
+                    "type": "humidity",
+                    "status": "NORMAL",
+                    "value": humidity,
+                    "range": [min_humidity, max_humidity],
+                    "message": f"습도 {humidity}% 정상 범위"
+                })
+
+        # 불량률 체크
+        defect_count = input_data.get('defect_count', 0)
+        production_count = input_data.get('production_count', 0)
+
+        if production_count > 0:
+            defect_rate = defect_count / production_count
+            if defect_rate > 0.05:
+                result["checks"].append({
+                    "type": "defect_rate",
+                    "status": "CRITICAL",
+                    "value": round(defect_rate * 100, 2),
+                    "threshold": 5.0,
+                    "message": f"불량률 {round(defect_rate * 100, 2)}%가 임계값 5% 초과"
+                })
+                result["status"] = "CRITICAL"
+                result["confidence"] = 0.95
+            elif defect_rate > 0.02:
+                result["checks"].append({
+                    "type": "defect_rate",
+                    "status": "WARNING",
+                    "value": round(defect_rate * 100, 2),
+                    "threshold": 2.0,
+                    "message": f"불량률 {round(defect_rate * 100, 2)}%가 주의 수준"
+                })
+                if result["status"] == "NORMAL":
+                    result["status"] = "WARNING"
+
+        return result
 
     def validate(self, script: str) -> bool:
         """
