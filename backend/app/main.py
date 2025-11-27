@@ -105,6 +105,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register workflows router: {e}")
 
+# Rulesets 라우터
+try:
+    from app.routers import rulesets
+    app.include_router(rulesets.router, prefix="/api/v1/rulesets", tags=["rulesets"])
+    logger.info("Rulesets router registered")
+except Exception as e:
+    logger.error(f"Failed to register rulesets router: {e}")
+
 # TODO: 추가 라우터
 # from app.routers import tools, bi
 # app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])

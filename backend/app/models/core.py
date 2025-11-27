@@ -87,7 +87,6 @@ class Ruleset(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="rulesets")
-    executions = relationship("JudgmentExecution", back_populates="ruleset")
 
     def __repr__(self):
         return f"<Ruleset(id={self.ruleset_id}, name='{self.name}')>"
@@ -142,25 +141,26 @@ class WorkflowInstance(Base):
 
 
 class JudgmentExecution(Base):
-    """판단 실행 로그 (Ruleset 실행 결과)"""
+    """판단 실행 로그 (Workflow/Ruleset 실행 결과)"""
 
     __tablename__ = "judgment_executions"
     __table_args__ = {"schema": "core"}
 
     execution_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    ruleset_id = Column(PGUUID(as_uuid=True), ForeignKey("core.rulesets.ruleset_id", ondelete="CASCADE"), nullable=False)
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    workflow_id = Column(PGUUID(as_uuid=True), ForeignKey("core.workflows.workflow_id", ondelete="SET NULL"), nullable=True)
     input_data = Column(JSONB, nullable=False)
     output_data = Column(JSONB, nullable=False)
-    confidence_score = Column(Float, nullable=True)
+    method_used = Column(String(50), nullable=False)  # RULE_ONLY, LLM_ONLY, HYBRID, etc.
+    confidence = Column(Float, nullable=True)  # DB column: confidence
     execution_time_ms = Column(Integer, nullable=True)
     executed_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    ruleset = relationship("Ruleset", back_populates="executions")
+    workflow = relationship("Workflow", backref="executions")
 
     def __repr__(self):
-        return f"<JudgmentExecution(id={self.execution_id}, confidence={self.confidence_score})>"
+        return f"<JudgmentExecution(id={self.execution_id}, confidence={self.confidence})>"
 
 
 class SensorData(Base):
