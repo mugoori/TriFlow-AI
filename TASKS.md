@@ -75,6 +75,22 @@
   - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
   - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
 
+### Data 페이지 구현 ✅ (2025-11-27)
+- [x] Backend: 센서 데이터 API 라우터 구현 (`backend/app/routers/sensors.py`)
+  - `GET /api/v1/sensors/data` - 센서 데이터 조회 (페이지네이션, 필터링)
+  - `GET /api/v1/sensors/filters` - 필터 옵션 (라인, 센서 타입)
+  - `GET /api/v1/sensors/summary` - 요약 통계
+  - Mock 데이터 생성 (LINE_A~D, 5가지 센서 타입)
+- [x] Frontend: 센서 데이터 서비스 구현 (`frontend/src/services/sensorService.ts`)
+- [x] Frontend: DataPage 컴포넌트 구현 (`frontend/src/components/pages/DataPage.tsx`)
+  - 테이블 뷰 (센서 ID, 기록 시간, 라인, 센서 타입, 값)
+  - 필터링 (날짜 범위, 생산 라인, 센서 타입)
+  - 페이지네이션 (20건씩)
+  - CSV 다운로드 기능
+  - 새로고침 버튼
+- [x] App.tsx 라우팅 연결 (PlaceholderPage → DataPage)
+- [x] BaseChartConfig에 title 속성 추가 (기존 타입 오류 수정)
+
 ### UI 개선 및 Dashboard 기능 강화 ✅ (2025-11-27)
 - [x] Sidebar Navigation 구현
   - Chat, Dashboard, Workflows, Data, Settings 탭

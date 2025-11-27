@@ -89,6 +89,10 @@ app.include_router(tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 from app.routers import agents
 app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 
+# Sensors 라우터
+from app.routers import sensors
+app.include_router(sensors.router, prefix="/api/v1/sensors", tags=["sensors"])
+
 # TODO: 추가 라우터
 # from app.routers import tools, bi
 # app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])

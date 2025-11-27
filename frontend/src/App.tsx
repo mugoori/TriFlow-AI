@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Sidebar, ViewType } from "./components/layout/Sidebar";
 import { ChatContainer } from "./components/ChatContainer";
 import { DashboardPage } from "./components/pages/DashboardPage";
+import { DataPage } from "./components/pages/DataPage";
 import { SettingsPage } from "./components/pages/SettingsPage";
 import { PlaceholderPage } from "./components/pages/PlaceholderPage";
 import { DashboardProvider } from "./contexts/DashboardContext";
@@ -33,11 +34,7 @@ function App() {
           />
         );
       case 'data':
-        return (
-          <PlaceholderPage
-            description="센서 데이터, 생산 데이터 등을 조회하고 관리합니다. AI Chat에서 데이터 관련 질문을 하면 BI Agent가 SQL을 생성하여 데이터를 조회합니다."
-          />
-        );
+        return <DataPage />;
       case 'settings':
         return <SettingsPage />;
       default:

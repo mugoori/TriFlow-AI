@@ -10,6 +10,7 @@ export type ChartType = 'line' | 'bar' | 'pie' | 'area' | 'scatter' | 'table';
  */
 export interface BaseChartConfig {
   type: ChartType;
+  title?: string;
   data: any[];
   analysis_goal?: string;
 }
