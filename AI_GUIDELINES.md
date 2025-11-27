@@ -157,3 +157,24 @@ concurrency:
 - 문서 B-1-4, D-1 등에 언급된 기술 스택은 **참고만** 하되, Rule 8이 우선한다.
 - `requirements.txt` 작성 시 OpenAI, LangChain 의존성을 포함하지 않는다.
 - 에이전트 구현 시 `anthropic` SDK의 Tool Use 기능을 직접 사용한다.
+
+---
+
+## 🛡️ Rule 9: Anti-Loop & Troubleshooting Protocol
+**AI가 동일한 오류 수정 시도를 반복(Loop)하는 것을 방지하기 위해 '트러블 슈팅 로그'를 강제한다.**
+
+### 1. Troubleshooting Log File
+- **파일 위치**: `docs/TROUBLESHOOTING.md`
+- **필수 항목**: 날짜, 에러 메시지(요약), 시도한 해결책, 결과(성공/실패), 근본 원인(RCA).
+
+### 2. Anti-Loop Workflow
+에러(CI 실패, 빌드 오류, 런타임 에러)가 발생하면 즉시 수정을 시도하지 말고 다음 절차를 따른다:
+
+1. **Check History**: `docs/TROUBLESHOOTING.md`를 읽어 동일한 에러가 이전에 발생했는지 확인한다.
+2. **Log First**: 현재 발생한 에러와 계획된 해결책을 로그 파일에 먼저 기록한다.
+3. **Verify Strategy**: 만약 이전에 실패했던 해결책과 동일하다면, **작업을 중단**하고 다른 접근 방식을 찾거나 사용자에게 조언을 구한다.
+4. **Commit Log**: 에러 수정 코드를 커밋할 때, 업데이트된 `TROUBLESHOOTING.md` 파일도 함께 커밋한다.
+
+### 3. Loop Break Condition
+- 동일한 에러로 **2회 이상 실패**할 경우, 즉시 멈추고 사용자에게 다음을 요청한다:
+  - *"이전 시도들이 실패했습니다. 로그를 확인하고 새로운 전략을 제안해 주십시오."*
