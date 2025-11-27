@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600">
+  <defs>
+    <style>
+      .font-inter { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+      .shadow { filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1)); }
+    </style>
+    <linearGradient id="phase0Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="sprint1Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="sprint2Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#0891b2"/>
+    </linearGradient>
+    <linearGradient id="sprint3Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <linearGradient id="sprint4Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <linearGradient id="sprint5Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ef4444"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <linearGradient id="sprint6Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ec4899"/>
+      <stop offset="100%" style="stop-color:#db2777"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 배경 -->
+  <rect width="1200" height="600" fill="#f8fafc"/>
+
+  <!-- 타이틀 -->
+  <text x="600" y="40" text-anchor="middle" class="font-inter" font-size="28" font-weight="700" fill="#0f172a">TriFlow AI MVP 로드맵</text>
+  <text x="600" y="65" text-anchor="middle" class="font-inter" font-size="14" fill="#64748b">Sprint 1~6 간트 차트 (12주 일정)</text>
+
+  <!-- 헤더 영역 -->
+  <rect x="50" y="90" width="1100" height="40" rx="8" fill="white" class="shadow"/>
+  <text x="130" y="116" text-anchor="middle" class="font-inter" font-size="12" font-weight="600" fill="#334155">Phase</text>
+
+  <!-- 주차 헤더 -->
+  <g class="font-inter" font-size="11" fill="#64748b">
+    <text x="260" y="116" text-anchor="middle">W1</text>
+    <text x="330" y="116" text-anchor="middle">W2</text>
+    <text x="400" y="116" text-anchor="middle">W3</text>
+    <text x="470" y="116" text-anchor="middle">W4</text>
+    <text x="540" y="116" text-anchor="middle">W5</text>
+    <text x="610" y="116" text-anchor="middle">W6</text>
+    <text x="680" y="116" text-anchor="middle">W7</text>
+    <text x="750" y="116" text-anchor="middle">W8</text>
+    <text x="820" y="116" text-anchor="middle">W9</text>
+    <text x="890" y="116" text-anchor="middle">W10</text>
+    <text x="960" y="116" text-anchor="middle">W11</text>
+    <text x="1030" y="116" text-anchor="middle">W12</text>
+  </g>
+
+  <!-- 세로 구분선 -->
+  <g stroke="#e2e8f0" stroke-width="1">
+    <line x1="225" y1="130" x2="225" y2="550"/>
+    <line x1="295" y1="130" x2="295" y2="550"/>
+    <line x1="365" y1="130" x2="365" y2="550"/>
+    <line x1="435" y1="130" x2="435" y2="550"/>
+    <line x1="505" y1="130" x2="505" y2="550"/>
+    <line x1="575" y1="130" x2="575" y2="550"/>
+    <line x1="645" y1="130" x2="645" y2="550"/>
+    <line x1="715" y1="130" x2="715" y2="550"/>
+    <line x1="785" y1="130" x2="785" y2="550"/>
+    <line x1="855" y1="130" x2="855" y2="550"/>
+    <line x1="925" y1="130" x2="925" y2="550"/>
+    <line x1="995" y1="130" x2="995" y2="550"/>
+    <line x1="1065" y1="130" x2="1065" y2="550"/>
+  </g>
+
+  <!-- Phase 0: 프로젝트 기획 -->
+  <g transform="translate(50, 145)">
+    <rect width="175" height="50" rx="8" fill="white" class="shadow"/>
+    <text x="15" y="25" class="font-inter" font-size="12" font-weight="600" fill="#0f172a">Phase 0</text>
+    <text x="15" y="40" class="font-inter" font-size="10" fill="#64748b">프로젝트 기획</text>
+    <!-- 간트 바 -->
+    <rect x="175" y="15" width="70" height="24" rx="6" fill="url(#phase0Grad)"/>
+    <text x="210" y="32" text-anchor="middle" class="font-inter" font-size="10" font-weight="500" fill="white">✓ 완료</text>
+  </g>
+
+  <!-- Sprint 1: 인프라 설정 -->
+  <g transform="translate(50, 205)">
+    <rect width="175" height="50" rx="8" fill="white" class="shadow"/>
+    <text x="15" y="25" class="font-inter" font-size="12" font-weight="600" fill="#0f172a">Sprint 1</text>
+    <text x="15" y="40" class="font-inter" font-size="10" fill="#64748b">인프라 설정</text>
+    <!-- 간트 바 -->
+    <rect x="245" y="15" width="140" height="24" rx="6" fill="url(#sprint1Grad)"/>
+    <text x="315" y="32" text-anchor="middle" class="font-inter" font-size="10" font-weight="500" fill="white">✓ 완료</text>
+  </g>
+
+  <!-- Sprint 2: 에이전트 시스템 -->
+  <g transform="translate(50, 265)">
+    <rect width="175" height="50" rx="8" fill="white" class="shadow"/>
+    <text x="15" y="25" class="font-inter" font-size="12" font-weight="600" fill="#0f172a">Sprint 2</text>
+    <text x="15" y="40" class="font-inter" font-size="10" fill="#64748b">에이전트 시스템</text>
+    <!-- 간트 바 -->
+    <rect x="385" y="15" width="140" height="24" rx="6" fill="url(#sprint2Grad)"/>
+    <text x="455" y="32" text-anchor="middle" class="font-inter" font-size="10" font-weight="500" fill="white">✓ 완료</text>
+  </g>
+
+  <!-- Sprint 3: Chat UI -->
+  <g transform="translate(50, 325)">
+    <rect width="175" height="50" rx="8" fill="white" class="shadow"/>
+    <text x="15" y="25" class="font-inter" font-size="12" font-weight="600" fill="#0f172a">Sprint 3</text>
+    <text x="15" y="40" class="font-inter" font-size="10" fill="#64748b">Chat UI 구현</text>
+    <!-- 간트 바 -->
+    <rect x="525" y="15" width="140" height="24" rx="6" fill="url(#sprint3Grad)"/>
+    <text x="595" y="32" text-anchor="middle" class="font-inter" font-size="10" font-weight="500" fill="white">✓ 완료</text>
+  </g>
+
+  <!-- Sprint 4: 학습 파이프라인 -->
+  <g transform="translate(50, 385)">
+    <rect width="175" height="50" rx="8" fill="white" class="shadow"/>
+    <text x="15" y="25" class="font-inter" font-size="12" font-weight="600" fill="#0f172a">Sprint 4</text>
+    <text x="15" y="40" class="font-inter" font-size="10" fill="#64748b">학습 파이프라인</text>
+    <!-- 간트 바 -->
+    <rect x="665" y="15" width="140" height="24" rx="6" fill="url(#sprint4Grad)" opacity="0.5"/>
+    <rect x="665" y="15" width="140" height="24" rx="6" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,2"/>
+    <text x="735" y="32" text-anchor="middle" class="font-inter" font-size="10" font-weight="500" fill="#92400e">예정</text>
+  </g>
+
+  <!-- Sprint 5: 보안 -->
+  <g transform="translate(50, 445)">
+    <rect width="175" height="50" rx="8" fill="white" class="shadow"/>
+    <text x="15" y="25" class="font-inter" font-size="12" font-weight="600" fill="#0f172a">Sprint 5</text>
+    <text x="15" y="40" class="font-inter" font-size="10" fill="#64748b">보안</text>
+    <!-- 간트 바 -->
+    <rect x="805" y="15" width="70" height="24" rx="6" fill="url(#sprint5Grad)" opacity="0.5"/>
+    <rect x="805" y="15" width="70" height="24" rx="6" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="4,2"/>
+    <text x="840" y="32" text-anchor="middle" class="font-inter" font-size="10" font-weight="500" fill="#991b1b">예정</text>
+  </g>
+
+  <!-- Sprint 6: 릴리스 -->
+  <g transform="translate(50, 505)">
+    <rect width="175" height="50" rx="8" fill="white" class="shadow"/>
+    <text x="15" y="25" class="font-inter" font-size="12" font-weight="600" fill="#0f172a">Sprint 6</text>
+    <text x="15" y="40" class="font-inter" font-size="10" fill="#64748b">릴리스</text>
+    <!-- 간트 바 -->
+    <rect x="875" y="15" width="140" height="24" rx="6" fill="url(#sprint6Grad)"/>
+    <text x="945" y="32" text-anchor="middle" class="font-inter" font-size="10" font-weight="500" fill="white">✓ 완료</text>
+  </g>
+
+  <!-- 마일스톤 표시 -->
+  <g transform="translate(1015, 520)">
+    <polygon points="0,-15 10,0 0,15 -10,0" fill="#ec4899"/>
+    <text x="0" y="35" text-anchor="middle" class="font-inter" font-size="10" font-weight="600" fill="#ec4899">v0.1.0</text>
+    <text x="0" y="48" text-anchor="middle" class="font-inter" font-size="9" fill="#64748b">MVP 출시</text>
+  </g>
+
+  <!-- 범례 -->
+  <g transform="translate(50, 575)">
+    <rect x="0" y="-12" width="16" height="16" rx="4" fill="#22c55e"/>
+    <text x="24" y="0" class="font-inter" font-size="11" fill="#334155">완료</text>
+    <rect x="80" y="-12" width="16" height="16" rx="4" fill="#f59e0b" opacity="0.5"/>
+    <rect x="80" y="-12" width="16" height="16" rx="4" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="2,1"/>
+    <text x="104" y="0" class="font-inter" font-size="11" fill="#334155">예정</text>
+    <polygon points="180,-4 190,4 180,12 170,4" fill="#ec4899"/>
+    <text x="200" y="0" class="font-inter" font-size="11" fill="#334155">마일스톤</text>
+  </g>
+
+  <!-- 진행률 표시 -->
+  <g transform="translate(950, 575)">
+    <text x="0" y="0" class="font-inter" font-size="13" font-weight="600" fill="#0f172a">전체 진행률: 82%</text>
+    <rect x="150" y="-10" width="100" height="12" rx="6" fill="#e2e8f0"/>
+    <rect x="150" y="-10" width="82" height="12" rx="6" fill="#22c55e"/>
+  </g>
+</svg>

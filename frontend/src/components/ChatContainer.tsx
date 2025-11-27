@@ -66,16 +66,6 @@ export function ChatContainer() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* 채팅 헤더 */}
-      <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4">
-        <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">
-          AI Agent Chat
-        </h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-          Meta Router를 통해 적절한 Agent와 대화합니다
-        </p>
-      </div>
-
       {/* 메시지 목록 */}
       <div className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-900">
         {messages.length === 0 ? (

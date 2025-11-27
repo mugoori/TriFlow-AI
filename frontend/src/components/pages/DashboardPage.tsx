@@ -14,16 +14,6 @@ export function DashboardPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 space-y-6">
-        {/* Header */}
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
-            Dashboard
-          </h2>
-          <p className="text-slate-600 dark:text-slate-400">
-            제조 현장 실시간 모니터링
-          </p>
-        </div>
-
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
