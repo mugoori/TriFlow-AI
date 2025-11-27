@@ -1,0 +1,257 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750">
+  <defs>
+    <style>
+      .font-inter { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+      .shadow { filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1)); }
+    </style>
+    <linearGradient id="v2Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ec4899"/>
+      <stop offset="100%" style="stop-color:#db2777"/>
+    </linearGradient>
+    <linearGradient id="mobileGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <linearGradient id="simulationGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="100%" style="stop-color:#ea580c"/>
+    </linearGradient>
+    <linearGradient id="multiTenantGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="advancedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 배경 -->
+  <rect width="1200" height="750" fill="#f8fafc"/>
+
+  <!-- 타이틀 -->
+  <text x="600" y="45" text-anchor="middle" class="font-inter" font-size="28" font-weight="700" fill="#0f172a">TriFlow AI V2 로드맵</text>
+  <text x="600" y="75" text-anchor="middle" class="font-inter" font-size="14" fill="#64748b">엔터프라이즈 확장 및 모바일 지원 (예상 6개월+)</text>
+
+  <!-- V2 배지 -->
+  <rect x="545" y="95" width="110" height="32" rx="16" fill="url(#v2Grad)"/>
+  <text x="600" y="117" text-anchor="middle" class="font-inter" font-size="14" font-weight="600" fill="white">Version 2.0</text>
+
+  <!-- V1 기반 표시 -->
+  <rect x="50" y="145" width="1100" height="50" rx="8" fill="#dbeafe"/>
+  <text x="100" y="177" class="font-inter" font-size="14" font-weight="600" fill="#1d4ed8">V1 v1.0.0 기반</text>
+  <text x="230" y="177" class="font-inter" font-size="12" fill="#1d4ed8">Desktop App 완성 후 Cross-Platform 및 엔터프라이즈 기능 확장</text>
+
+  <!-- 섹션 1: Mobile App -->
+  <g transform="translate(50, 215)">
+    <rect width="350" height="230" rx="12" fill="white" class="shadow"/>
+    <rect width="350" height="50" rx="12 12 0 0" fill="url(#mobileGrad)"/>
+    <text x="20" y="32" class="font-inter" font-size="16" font-weight="600" fill="white">Mobile App (iOS/Android)</text>
+
+    <!-- 기능 목록 -->
+    <g transform="translate(20, 70)">
+      <circle cx="8" cy="8" r="4" fill="#22c55e"/>
+      <text x="20" y="12" class="font-inter" font-size="12" fill="#334155">React Native / Flutter 앱</text>
+
+      <circle cx="8" cy="38" r="4" fill="#22c55e"/>
+      <text x="20" y="42" class="font-inter" font-size="12" fill="#334155">Push 알림 (FCM/APNS)</text>
+
+      <circle cx="8" cy="68" r="4" fill="#22c55e"/>
+      <text x="20" y="72" class="font-inter" font-size="12" fill="#334155">오프라인 동기화</text>
+
+      <circle cx="8" cy="98" r="4" fill="#22c55e"/>
+      <text x="20" y="102" class="font-inter" font-size="12" fill="#334155">모바일 대시보드</text>
+
+      <circle cx="8" cy="128" r="4" fill="#22c55e"/>
+      <text x="20" y="132" class="font-inter" font-size="12" fill="#334155">음성 인터페이스 (STT/TTS)</text>
+    </g>
+
+    <!-- 플랫폼 아이콘 -->
+    <g transform="translate(20, 165)">
+      <rect width="60" height="24" rx="4" fill="#dcfce7"/>
+      <text x="30" y="17" text-anchor="middle" class="font-inter" font-size="10" fill="#166534">iOS</text>
+      <rect x="70" y="0" width="80" height="24" rx="4" fill="#dcfce7"/>
+      <text x="110" y="17" text-anchor="middle" class="font-inter" font-size="10" fill="#166534">Android</text>
+    </g>
+
+    <!-- 예상 기간 -->
+    <rect x="20" y="200" width="80" height="20" rx="4" fill="#dcfce7"/>
+    <text x="60" y="214" text-anchor="middle" class="font-inter" font-size="10" fill="#166534">10~12주</text>
+  </g>
+
+  <!-- 섹션 2: Simulation Engine -->
+  <g transform="translate(425, 215)">
+    <rect width="350" height="230" rx="12" fill="white" class="shadow"/>
+    <rect width="350" height="50" rx="12 12 0 0" fill="url(#simulationGrad)"/>
+    <text x="20" y="32" class="font-inter" font-size="16" font-weight="600" fill="white">Simulation Engine</text>
+
+    <!-- 기능 목록 -->
+    <g transform="translate(20, 70)">
+      <circle cx="8" cy="8" r="4" fill="#f97316"/>
+      <text x="20" y="12" class="font-inter" font-size="12" fill="#334155">Digital Twin 시뮬레이션</text>
+
+      <circle cx="8" cy="38" r="4" fill="#f97316"/>
+      <text x="20" y="42" class="font-inter" font-size="12" fill="#334155">What-If 분석</text>
+
+      <circle cx="8" cy="68" r="4" fill="#f97316"/>
+      <text x="20" y="72" class="font-inter" font-size="12" fill="#334155">Z-Wave 시뮬레이터</text>
+
+      <circle cx="8" cy="98" r="4" fill="#f97316"/>
+      <text x="20" y="102" class="font-inter" font-size="12" fill="#334155">예측 유지보수 모델</text>
+
+      <circle cx="8" cy="128" r="4" fill="#f97316"/>
+      <text x="20" y="132" class="font-inter" font-size="12" fill="#334155">시나리오 테스트 자동화</text>
+    </g>
+
+    <!-- 새 탭 표시 -->
+    <g transform="translate(20, 165)">
+      <rect width="100" height="24" rx="4" fill="#fef3c7"/>
+      <text x="50" y="17" text-anchor="middle" class="font-inter" font-size="10" fill="#92400e">+Simulation 탭</text>
+    </g>
+
+    <!-- 예상 기간 -->
+    <rect x="20" y="200" width="80" height="20" rx="4" fill="#fed7aa"/>
+    <text x="60" y="214" text-anchor="middle" class="font-inter" font-size="10" fill="#c2410c">8~10주</text>
+  </g>
+
+  <!-- 섹션 3: Multi-Tenant -->
+  <g transform="translate(800, 215)">
+    <rect width="350" height="230" rx="12" fill="white" class="shadow"/>
+    <rect width="350" height="50" rx="12 12 0 0" fill="url(#multiTenantGrad)"/>
+    <text x="20" y="32" class="font-inter" font-size="16" font-weight="600" fill="white">Multi-Tenant 아키텍처</text>
+
+    <!-- 기능 목록 -->
+    <g transform="translate(20, 70)">
+      <circle cx="8" cy="8" r="4" fill="#3b82f6"/>
+      <text x="20" y="12" class="font-inter" font-size="12" fill="#334155">팀/조직 관리</text>
+
+      <circle cx="8" cy="38" r="4" fill="#3b82f6"/>
+      <text x="20" y="42" class="font-inter" font-size="12" fill="#334155">테넌트 격리 (데이터/설정)</text>
+
+      <circle cx="8" cy="68" r="4" fill="#3b82f6"/>
+      <text x="20" y="72" class="font-inter" font-size="12" fill="#334155">SSO 연동 (SAML/OIDC)</text>
+
+      <circle cx="8" cy="98" r="4" fill="#3b82f6"/>
+      <text x="20" y="102" class="font-inter" font-size="12" fill="#334155">관리자 콘솔</text>
+
+      <circle cx="8" cy="128" r="4" fill="#3b82f6"/>
+      <text x="20" y="132" class="font-inter" font-size="12" fill="#334155">사용량 모니터링 & 과금</text>
+    </g>
+
+    <!-- 새 탭 표시 -->
+    <g transform="translate(20, 165)">
+      <rect width="80" height="24" rx="4" fill="#dbeafe"/>
+      <text x="40" y="17" text-anchor="middle" class="font-inter" font-size="10" fill="#1d4ed8">+Admin 탭</text>
+    </g>
+
+    <!-- 예상 기간 -->
+    <rect x="20" y="200" width="80" height="20" rx="4" fill="#dbeafe"/>
+    <text x="60" y="214" text-anchor="middle" class="font-inter" font-size="10" fill="#1d4ed8">8~10주</text>
+  </g>
+
+  <!-- 섹션 4: 고급 AI 기능 -->
+  <g transform="translate(50, 470)">
+    <rect width="530" height="200" rx="12" fill="white" class="shadow"/>
+    <rect width="530" height="50" rx="12 12 0 0" fill="url(#advancedGrad)"/>
+    <text x="20" y="32" class="font-inter" font-size="16" font-weight="600" fill="white">고급 AI 기능</text>
+    <text x="200" y="32" class="font-inter" font-size="12" fill="rgba(255,255,255,0.8)">Chat/Dashboard 탭 확장</text>
+
+    <!-- 2열 레이아웃 -->
+    <g transform="translate(20, 70)">
+      <circle cx="8" cy="8" r="4" fill="#8b5cf6"/>
+      <text x="20" y="12" class="font-inter" font-size="12" fill="#334155">Multi-Modal AI (이미지 분석)</text>
+
+      <circle cx="8" cy="38" r="4" fill="#8b5cf6"/>
+      <text x="20" y="42" class="font-inter" font-size="12" fill="#334155">자연어 보고서 생성</text>
+
+      <circle cx="8" cy="68" r="4" fill="#8b5cf6"/>
+      <text x="20" y="72" class="font-inter" font-size="12" fill="#334155">이상 탐지 알고리즘</text>
+    </g>
+
+    <g transform="translate(280, 70)">
+      <circle cx="8" cy="8" r="4" fill="#8b5cf6"/>
+      <text x="20" y="12" class="font-inter" font-size="12" fill="#334155">예측 분석 대시보드</text>
+
+      <circle cx="8" cy="38" r="4" fill="#8b5cf6"/>
+      <text x="20" y="42" class="font-inter" font-size="12" fill="#334155">AI 추천 워크플로우</text>
+
+      <circle cx="8" cy="68" r="4" fill="#8b5cf6"/>
+      <text x="20" y="72" class="font-inter" font-size="12" fill="#334155">카스텀 LLM Fine-tuning</text>
+    </g>
+
+    <!-- 예상 기간 -->
+    <rect x="20" y="165" width="80" height="20" rx="4" fill="#ede9fe"/>
+    <text x="60" y="179" text-anchor="middle" class="font-inter" font-size="10" fill="#6d28d9">6~8주</text>
+  </g>
+
+  <!-- 타임라인 요약 -->
+  <g transform="translate(605, 470)">
+    <rect width="545" height="200" rx="12" fill="white" class="shadow"/>
+    <text x="20" y="30" class="font-inter" font-size="14" font-weight="600" fill="#0f172a">V2 개발 타임라인</text>
+
+    <!-- 타임라인 바 -->
+    <rect x="20" y="55" width="505" height="8" rx="4" fill="#e2e8f0"/>
+
+    <!-- Mobile -->
+    <rect x="20" y="55" width="160" height="8" rx="4" fill="url(#mobileGrad)"/>
+    <text x="100" y="80" text-anchor="middle" class="font-inter" font-size="10" fill="#22c55e">Mobile App</text>
+
+    <!-- Simulation -->
+    <rect x="180" y="55" width="120" height="8" rx="4" fill="url(#simulationGrad)"/>
+    <text x="240" y="80" text-anchor="middle" class="font-inter" font-size="10" fill="#f97316">Simulation</text>
+
+    <!-- Multi-Tenant -->
+    <rect x="300" y="55" width="120" height="8" rx="4" fill="url(#multiTenantGrad)"/>
+    <text x="360" y="80" text-anchor="middle" class="font-inter" font-size="10" fill="#3b82f6">Multi-Tenant</text>
+
+    <!-- Advanced AI -->
+    <rect x="420" y="55" width="105" height="8" rx="4" fill="url(#advancedGrad)"/>
+    <text x="472" y="80" text-anchor="middle" class="font-inter" font-size="10" fill="#8b5cf6">고급 AI</text>
+
+    <!-- 주차 표시 -->
+    <g class="font-inter" font-size="10" fill="#64748b">
+      <text x="20" y="100">W1</text>
+      <text x="180" y="100">W12</text>
+      <text x="300" y="100">W20</text>
+      <text x="420" y="100">W28</text>
+      <text x="505" y="100" text-anchor="end">W34</text>
+    </g>
+
+    <!-- 마일스톤 -->
+    <polygon points="525,48 535,55 525,62 515,55" fill="#ec4899"/>
+    <text x="525" y="110" text-anchor="middle" class="font-inter" font-size="11" font-weight="600" fill="#ec4899">v2.0.0</text>
+
+    <!-- 핵심 지표 -->
+    <g transform="translate(20, 130)">
+      <rect width="155" height="40" rx="6" fill="#f1f5f9"/>
+      <text x="15" y="26" class="font-inter" font-size="11" fill="#475569">예상 기간: 약 34주</text>
+    </g>
+    <g transform="translate(190, 130)">
+      <rect width="155" height="40" rx="6" fill="#f1f5f9"/>
+      <text x="15" y="26" class="font-inter" font-size="11" fill="#475569">주요 기능: 4개 모듈</text>
+    </g>
+    <g transform="translate(360, 130)">
+      <rect width="165" height="40" rx="6" fill="#fef3c7"/>
+      <text x="15" y="26" class="font-inter" font-size="11" fill="#92400e">탭 추가: +2개 예정</text>
+    </g>
+  </g>
+
+  <!-- V2 탭 구조 변경 안내 -->
+  <g transform="translate(50, 695)">
+    <rect width="1100" height="40" rx="6" fill="#fef3c7"/>
+    <text x="20" y="26" class="font-inter" font-size="12" font-weight="600" fill="#92400e">V2 탭 구조 (예상):</text>
+    <text x="170" y="26" class="font-inter" font-size="11" fill="#92400e">Chat | Dashboard | Workflows | Data | Simulation (신규) | Admin (신규) | Settings = 총 7개 탭</text>
+  </g>
+
+  <!-- 범례 -->
+  <g transform="translate(600, 710)">
+    <rect x="0" y="-10" width="14" height="14" rx="3" fill="url(#mobileGrad)"/>
+    <text x="20" y="1" class="font-inter" font-size="11" fill="#334155">Mobile</text>
+    <rect x="80" y="-10" width="14" height="14" rx="3" fill="url(#simulationGrad)"/>
+    <text x="100" y="1" class="font-inter" font-size="11" fill="#334155">Simulation</text>
+    <rect x="180" y="-10" width="14" height="14" rx="3" fill="url(#multiTenantGrad)"/>
+    <text x="200" y="1" class="font-inter" font-size="11" fill="#334155">Multi-Tenant</text>
+    <rect x="300" y="-10" width="14" height="14" rx="3" fill="url(#advancedGrad)"/>
+    <text x="320" y="1" class="font-inter" font-size="11" fill="#334155">고급 AI</text>
+  </g>
+</svg>

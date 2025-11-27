@@ -75,6 +75,15 @@
   - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
   - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
 
+### WBS 로드맵 다이어그램 추가 ✅ (2025-11-27)
+- [x] V1/V2 로드맵 SVG 다이어그램 생성 (`docs/diagrams/`)
+  - `wbs_v1_roadmap.svg` - V1 로드맵 (Builder UI, Learning Pipeline, 외부 연동, 보안 강화)
+    - 예상 기간: 약 16주 (3~4개월)
+    - 탭 구조: MVP와 동일 (5개 탭 유지)
+  - `wbs_v2_roadmap.svg` - V2 로드맵 (Mobile App, Simulation, Multi-Tenant, 고급 AI)
+    - 예상 기간: 약 34주 (6개월+)
+    - 탭 구조: +2개 추가 예정 (Simulation, Admin)
+
 ### UI 다이어그램 추가 ✅ (2025-11-27)
 - [x] 탭별 UI SVG 다이어그램 추가 (`docs/diagrams/`)
   - `ui_05_dashboard.svg` - Dashboard 페이지 (Stats Grid, 고정된 차트, 최근 활동)
