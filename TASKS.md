@@ -53,6 +53,25 @@
 
 ## 📋 현재 진행 중인 작업
 
+### Chat UI 통합 테스트 ✅ (2025-11-27)
+- [x] Backend 서버 상태 확인 (http://127.0.0.1:8000)
+- [x] Frontend 개발 서버 실행 (http://localhost:1420)
+- [x] agentService.ts import 오류 수정
+  - 문제: `import { api }` → 실제 export는 `apiClient`
+  - 해결: import 구문 수정 및 API 호출 패턴 변경
+- [x] CORS 설정 문제 해결
+  - 문제: `http://localhost:1420`이 CORS origins에 없음
+  - 해결: `backend/.env` 파일 생성 및 CORS_ORIGINS 업데이트
+  - 추가 문제: 환경변수가 .env 파일을 오버라이드
+  - 최종 해결: 환경변수 unset 후 서버 재시작
+- [x] Chat UI 기본 기능 테스트
+  - ✅ 메시지 입력 및 전송
+  - ✅ Agent 응답 수신 (MetaRouterAgent)
+  - ✅ Tool 호출 시각화 (classify_intent, extract_slots, route_request)
+  - ✅ JSON 포맷 렌더링
+  - ✅ 타임스탬프 표시
+  - ✅ 한글 메시지 처리
+
 ### CI/CD Optimization ✅
 - [x] AI_GUIDELINES.md에 Rule 2.2 추가 (CI Optimization - Concurrency)
 - [x] 모든 GitHub Actions 워크플로우에 Concurrency 설정 적용
