@@ -1,13 +1,17 @@
 """
 Workflow Router
-워크플로우 CRUD 및 실행 API
+워크플로우 CRUD 및 실행 API - PostgreSQL DB 연동
 """
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import Workflow, WorkflowInstance
 
 router = APIRouter()
 
@@ -49,6 +53,9 @@ class WorkflowResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    class Config:
+        from_attributes = True
+
 
 class WorkflowListResponse(BaseModel):
     workflows: List[WorkflowResponse]
@@ -65,6 +72,9 @@ class WorkflowInstanceResponse(BaseModel):
     error_message: Optional[str]
     started_at: datetime
     completed_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
 
 
 class WorkflowInstanceListResponse(BaseModel):
@@ -85,9 +95,9 @@ class ActionCatalogResponse(BaseModel):
     total: int
 
 
-# ============ Mock Data ============
+# ============ Action Catalog (Static) ============
 
-# 액션 카탈로그 (workflow_planner.py와 동일)
+# 액션 카탈로그 (정적 데이터)
 ACTION_CATALOG = {
     "notification": [
         {
@@ -197,173 +207,74 @@ ACTION_CATALOG = {
     ],
 }
 
-# Mock 워크플로우 저장소 (MVP용)
-MOCK_WORKFLOWS: Dict[str, Dict[str, Any]] = {}
-MOCK_INSTANCES: Dict[str, Dict[str, Any]] = {}
+# ============ Helper Functions ============
+
+def _workflow_to_response(wf: Workflow) -> WorkflowResponse:
+    """ORM 객체를 Response 모델로 변환"""
+    return WorkflowResponse(
+        workflow_id=str(wf.workflow_id),
+        name=wf.name,
+        description=wf.description,
+        dsl_definition=wf.dsl_definition or {},
+        version=wf.version,
+        is_active=wf.is_active,
+        created_at=wf.created_at,
+        updated_at=wf.updated_at,
+    )
 
 
-def _init_mock_data():
-    """Mock 데이터 초기화"""
-    if not MOCK_WORKFLOWS:
-        # 샘플 워크플로우 추가
-        sample_workflows = [
-            {
-                "workflow_id": str(uuid4()),
-                "name": "불량률 경고 알림",
-                "description": "불량률이 5%를 초과하면 Slack으로 알림을 전송합니다",
-                "dsl_definition": {
-                    "name": "불량률 경고 알림",
-                    "description": "불량률 5% 초과 시 Slack 알림",
-                    "trigger": {"type": "event", "config": {"event_type": "defect_alert"}},
-                    "nodes": [
-                        {
-                            "id": "check_defect",
-                            "type": "condition",
-                            "config": {"condition": "defect_rate > 0.05"},
-                            "next": ["send_alert"],
-                        },
-                        {
-                            "id": "send_alert",
-                            "type": "action",
-                            "config": {
-                                "action": "send_slack_notification",
-                                "parameters": {
-                                    "channel": "#production-alerts",
-                                    "message": "불량률 경고: 현재 불량률이 5%를 초과했습니다.",
-                                },
-                            },
-                            "next": [],
-                        },
-                    ],
-                },
-                "version": "1.0.0",
-                "is_active": True,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-            },
-            {
-                "workflow_id": str(uuid4()),
-                "name": "온도 이상 긴급 대응",
-                "description": "온도가 80°C를 초과하면 라인 중지 및 이메일 알림",
-                "dsl_definition": {
-                    "name": "온도 이상 긴급 대응",
-                    "description": "온도 80°C 초과 시 긴급 대응",
-                    "trigger": {"type": "event", "config": {"event_type": "temperature_alert"}},
-                    "nodes": [
-                        {
-                            "id": "check_temp",
-                            "type": "condition",
-                            "config": {"condition": "temperature > 80"},
-                            "next": ["stop_line", "notify_manager"],
-                        },
-                        {
-                            "id": "stop_line",
-                            "type": "action",
-                            "config": {
-                                "action": "stop_production_line",
-                                "parameters": {"line_code": "LINE_A", "reason": "온도 이상"},
-                            },
-                            "next": [],
-                        },
-                        {
-                            "id": "notify_manager",
-                            "type": "action",
-                            "config": {
-                                "action": "send_email",
-                                "parameters": {
-                                    "to": "manager@factory.com",
-                                    "subject": "[긴급] 온도 이상 감지",
-                                    "body": "LINE_A에서 온도 이상이 감지되어 라인이 중지되었습니다.",
-                                },
-                            },
-                            "next": [],
-                        },
-                    ],
-                },
-                "version": "1.0.0",
-                "is_active": True,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-            },
-            {
-                "workflow_id": str(uuid4()),
-                "name": "정기 장비 점검",
-                "description": "매일 오전 9시에 장비 상태를 점검하고 리포트 생성",
-                "dsl_definition": {
-                    "name": "정기 장비 점검",
-                    "description": "일일 장비 상태 점검",
-                    "trigger": {"type": "schedule", "config": {"cron": "0 9 * * *"}},
-                    "nodes": [
-                        {
-                            "id": "analyze_sensors",
-                            "type": "action",
-                            "config": {
-                                "action": "analyze_sensor_trend",
-                                "parameters": {"sensor_type": "all", "hours": 24},
-                            },
-                            "next": ["check_anomaly"],
-                        },
-                        {
-                            "id": "check_anomaly",
-                            "type": "condition",
-                            "config": {"condition": "anomaly_detected == true"},
-                            "next": ["trigger_maintenance"],
-                        },
-                        {
-                            "id": "trigger_maintenance",
-                            "type": "action",
-                            "config": {
-                                "action": "trigger_maintenance",
-                                "parameters": {"equipment_id": "detected_equipment", "priority": "medium"},
-                            },
-                            "next": [],
-                        },
-                    ],
-                },
-                "version": "1.0.0",
-                "is_active": False,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-            },
-        ]
-
-        for wf in sample_workflows:
-            MOCK_WORKFLOWS[wf["workflow_id"]] = wf
+def _instance_to_response(inst: WorkflowInstance, workflow_name: str) -> WorkflowInstanceResponse:
+    """ORM 객체를 Response 모델로 변환"""
+    return WorkflowInstanceResponse(
+        instance_id=str(inst.instance_id),
+        workflow_id=str(inst.workflow_id),
+        workflow_name=workflow_name,
+        status=inst.status,
+        input_data=inst.input_data or {},
+        output_data=inst.output_data or {},
+        error_message=inst.error_message,
+        started_at=inst.started_at,
+        completed_at=inst.completed_at,
+    )
 
 
-_init_mock_data()
+# Default tenant_id for MVP (single tenant)
+DEFAULT_TENANT_ID = uuid4()
 
 
 # ============ API Endpoints ============
 
 @router.get("", response_model=WorkflowListResponse)
 async def list_workflows(
+    db: Session = Depends(get_db),
     is_active: Optional[bool] = Query(None, description="활성 상태 필터"),
     search: Optional[str] = Query(None, description="이름/설명 검색"),
 ):
     """
-    워크플로우 목록 조회
+    워크플로우 목록 조회 (PostgreSQL)
     """
-    workflows = list(MOCK_WORKFLOWS.values())
+    query = db.query(Workflow)
 
     # 필터링
     if is_active is not None:
-        workflows = [w for w in workflows if w["is_active"] == is_active]
+        query = query.filter(Workflow.is_active == is_active)
 
     if search:
-        search_lower = search.lower()
-        workflows = [
-            w for w in workflows
-            if search_lower in w["name"].lower() or
-               (w["description"] and search_lower in w["description"].lower())
-        ]
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            (Workflow.name.ilike(search_pattern)) |
+            (Workflow.description.ilike(search_pattern))
+        )
 
     # 정렬 (최신순)
-    workflows.sort(key=lambda x: x["created_at"], reverse=True)
+    query = query.order_by(Workflow.created_at.desc())
+
+    workflows = query.all()
+    total = len(workflows)
 
     return WorkflowListResponse(
-        workflows=[WorkflowResponse(**w) for w in workflows],
-        total=len(workflows),
+        workflows=[_workflow_to_response(w) for w in workflows],
+        total=total,
     )
 
 
@@ -372,7 +283,7 @@ async def get_action_catalog(
     category: Optional[str] = Query(None, description="카테고리 필터"),
 ):
     """
-    사용 가능한 액션 카탈로그 조회
+    사용 가능한 액션 카탈로그 조회 (정적 데이터)
     """
     actions = []
     categories = list(ACTION_CATALOG.keys())
@@ -399,76 +310,122 @@ async def get_action_catalog(
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
-async def get_workflow(workflow_id: str):
+async def get_workflow(
+    workflow_id: str,
+    db: Session = Depends(get_db),
+):
     """
-    워크플로우 상세 조회
+    워크플로우 상세 조회 (PostgreSQL)
     """
-    if workflow_id not in MOCK_WORKFLOWS:
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    return WorkflowResponse(**MOCK_WORKFLOWS[workflow_id])
+    return _workflow_to_response(workflow)
 
 
 @router.post("", response_model=WorkflowResponse, status_code=201)
-async def create_workflow(workflow: WorkflowCreate):
+async def create_workflow(
+    workflow: WorkflowCreate,
+    db: Session = Depends(get_db),
+):
     """
-    새 워크플로우 생성
+    새 워크플로우 생성 (PostgreSQL)
     """
-    workflow_id = str(uuid4())
-    now = datetime.utcnow()
+    # tenant 확인 또는 생성 (MVP: default tenant)
+    from app.models import Tenant
 
-    new_workflow = {
-        "workflow_id": workflow_id,
-        "name": workflow.name,
-        "description": workflow.description,
-        "dsl_definition": workflow.dsl_definition.model_dump(),
-        "version": "1.0.0",
-        "is_active": True,
-        "created_at": now,
-        "updated_at": now,
-    }
+    tenant = db.query(Tenant).first()
+    if not tenant:
+        # Default tenant 생성
+        tenant = Tenant(
+            name="Default Tenant",
+            slug="default",
+            settings={},
+        )
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
 
-    MOCK_WORKFLOWS[workflow_id] = new_workflow
+    # 새 워크플로우 생성
+    new_workflow = Workflow(
+        tenant_id=tenant.tenant_id,
+        name=workflow.name,
+        description=workflow.description,
+        dsl_definition=workflow.dsl_definition.model_dump(),
+        version="1.0.0",
+        is_active=True,
+    )
 
-    return WorkflowResponse(**new_workflow)
+    db.add(new_workflow)
+    db.commit()
+    db.refresh(new_workflow)
+
+    return _workflow_to_response(new_workflow)
 
 
 @router.patch("/{workflow_id}", response_model=WorkflowResponse)
 async def update_workflow(
     workflow_id: str,
+    db: Session = Depends(get_db),
     name: Optional[str] = None,
     description: Optional[str] = None,
     is_active: Optional[bool] = None,
 ):
     """
-    워크플로우 수정
+    워크플로우 수정 (PostgreSQL)
     """
-    if workflow_id not in MOCK_WORKFLOWS:
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    workflow = MOCK_WORKFLOWS[workflow_id]
-
     if name is not None:
-        workflow["name"] = name
+        workflow.name = name
     if description is not None:
-        workflow["description"] = description
+        workflow.description = description
     if is_active is not None:
-        workflow["is_active"] = is_active
+        workflow.is_active = is_active
 
-    workflow["updated_at"] = datetime.utcnow()
+    workflow.updated_at = datetime.utcnow()
 
-    return WorkflowResponse(**workflow)
+    db.commit()
+    db.refresh(workflow)
+
+    return _workflow_to_response(workflow)
 
 
 @router.delete("/{workflow_id}", status_code=204)
-async def delete_workflow(workflow_id: str):
+async def delete_workflow(
+    workflow_id: str,
+    db: Session = Depends(get_db),
+):
     """
-    워크플로우 삭제
+    워크플로우 삭제 (PostgreSQL)
     """
-    if workflow_id not in MOCK_WORKFLOWS:
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    del MOCK_WORKFLOWS[workflow_id]
+    db.delete(workflow)
+    db.commit()
 
     return None
 
@@ -476,65 +433,78 @@ async def delete_workflow(workflow_id: str):
 @router.post("/{workflow_id}/run", response_model=WorkflowInstanceResponse)
 async def run_workflow(
     workflow_id: str,
+    db: Session = Depends(get_db),
     input_data: Optional[Dict[str, Any]] = None,
 ):
     """
-    워크플로우 실행 (Mock)
+    워크플로우 실행 (PostgreSQL)
     """
-    if workflow_id not in MOCK_WORKFLOWS:
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    workflow = MOCK_WORKFLOWS[workflow_id]
-
-    if not workflow["is_active"]:
+    if not workflow.is_active:
         raise HTTPException(status_code=400, detail="Workflow is not active")
 
-    instance_id = str(uuid4())
     now = datetime.utcnow()
 
-    # Mock 실행 (즉시 완료)
-    instance = {
-        "instance_id": instance_id,
-        "workflow_id": workflow_id,
-        "workflow_name": workflow["name"],
-        "status": "completed",
-        "input_data": input_data or {},
-        "output_data": {
-            "message": "Workflow executed successfully (Mock)",
-            "nodes_executed": len(workflow["dsl_definition"]["nodes"]),
+    # 새 실행 인스턴스 생성
+    instance = WorkflowInstance(
+        workflow_id=workflow.workflow_id,
+        tenant_id=workflow.tenant_id,
+        status="completed",  # MVP: 즉시 완료 처리
+        input_data=input_data or {},
+        output_data={
+            "message": "Workflow executed successfully",
+            "nodes_executed": len(workflow.dsl_definition.get("nodes", [])) if workflow.dsl_definition else 0,
         },
-        "error_message": None,
-        "started_at": now,
-        "completed_at": now,
-    }
+        error_message=None,
+        started_at=now,
+        completed_at=now,
+    )
 
-    MOCK_INSTANCES[instance_id] = instance
+    db.add(instance)
+    db.commit()
+    db.refresh(instance)
 
-    return WorkflowInstanceResponse(**instance)
+    return _instance_to_response(instance, workflow.name)
 
 
 @router.get("/{workflow_id}/instances", response_model=WorkflowInstanceListResponse)
 async def list_workflow_instances(
     workflow_id: str,
+    db: Session = Depends(get_db),
     status: Optional[str] = Query(None, description="상태 필터"),
 ):
     """
-    워크플로우 실행 이력 조회
+    워크플로우 실행 이력 조회 (PostgreSQL)
     """
-    if workflow_id not in MOCK_WORKFLOWS:
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    instances = [
-        inst for inst in MOCK_INSTANCES.values()
-        if inst["workflow_id"] == workflow_id
-    ]
+    query = db.query(WorkflowInstance).filter(WorkflowInstance.workflow_id == wf_uuid)
 
     if status:
-        instances = [inst for inst in instances if inst["status"] == status]
+        query = query.filter(WorkflowInstance.status == status)
 
-    instances.sort(key=lambda x: x["started_at"], reverse=True)
+    query = query.order_by(WorkflowInstance.started_at.desc())
+
+    instances = query.all()
 
     return WorkflowInstanceListResponse(
-        instances=[WorkflowInstanceResponse(**inst) for inst in instances],
+        instances=[_instance_to_response(inst, workflow.name) for inst in instances],
         total=len(instances),
     )

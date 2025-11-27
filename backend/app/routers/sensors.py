@@ -1,13 +1,17 @@
 """
 Sensor Data Router
-센서 데이터 조회 API
+센서 데이터 조회 API - PostgreSQL DB 연동
 """
 from datetime import datetime, timedelta
 from typing import List, Optional
-from uuid import UUID
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, Depends
 from pydantic import BaseModel
+from sqlalchemy import func, distinct
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import SensorData
 
 router = APIRouter()
 
@@ -20,6 +24,9 @@ class SensorDataItem(BaseModel):
     sensor_type: str
     value: float
     unit: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class SensorDataResponse(BaseModel):
@@ -34,69 +41,22 @@ class SensorFilterOptions(BaseModel):
     sensor_types: List[str]
 
 
-# Mock 데이터 생성 함수
-def generate_mock_sensor_data(
-    start_date: datetime,
-    end_date: datetime,
-    line_code: Optional[str] = None,
-    sensor_type: Optional[str] = None,
-    page: int = 1,
-    page_size: int = 50
-) -> tuple[List[dict], int]:
-    """Mock 센서 데이터 생성"""
-    import random
+class LineSummary(BaseModel):
+    line_code: str
+    avg_temperature: Optional[float] = None
+    avg_pressure: Optional[float] = None
+    avg_humidity: Optional[float] = None
+    total_readings: int
+    last_updated: Optional[str] = None
 
-    lines = ["LINE_A", "LINE_B", "LINE_C", "LINE_D"]
-    sensor_types_map = {
-        "temperature": {"unit": "°C", "min": 20, "max": 80},
-        "pressure": {"unit": "bar", "min": 1, "max": 10},
-        "humidity": {"unit": "%", "min": 30, "max": 90},
-        "vibration": {"unit": "mm/s", "min": 0, "max": 5},
-        "flow_rate": {"unit": "L/min", "min": 10, "max": 100},
-    }
 
-    # 필터링
-    if line_code:
-        lines = [line_code] if line_code in lines else lines
-
-    sensor_types_list = list(sensor_types_map.keys())
-    if sensor_type:
-        sensor_types_list = [sensor_type] if sensor_type in sensor_types_map else sensor_types_list
-
-    # 데이터 생성
-    all_data = []
-    current = start_date
-    sensor_counter = 1
-
-    while current <= end_date:
-        for line in lines:
-            for st in sensor_types_list:
-                config = sensor_types_map[st]
-                value = round(random.uniform(config["min"], config["max"]), 2)
-
-                all_data.append({
-                    "sensor_id": f"SENSOR_{sensor_counter:05d}",
-                    "recorded_at": current,
-                    "line_code": line,
-                    "sensor_type": st,
-                    "value": value,
-                    "unit": config["unit"],
-                })
-                sensor_counter += 1
-
-        current += timedelta(hours=1)
-
-    # 페이지네이션
-    total = len(all_data)
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
-    paginated_data = all_data[start_idx:end_idx]
-
-    return paginated_data, total
+class SensorSummaryResponse(BaseModel):
+    summary: List[LineSummary]
 
 
 @router.get("/data", response_model=SensorDataResponse)
 async def get_sensor_data(
+    db: Session = Depends(get_db),
     start_date: Optional[datetime] = Query(None, description="시작 날짜"),
     end_date: Optional[datetime] = Query(None, description="종료 날짜"),
     line_code: Optional[str] = Query(None, description="라인 코드"),
@@ -105,7 +65,7 @@ async def get_sensor_data(
     page_size: int = Query(50, ge=1, le=200, description="페이지 크기"),
 ):
     """
-    센서 데이터 조회
+    센서 데이터 조회 (PostgreSQL)
 
     필터링 옵션:
     - start_date: 시작 날짜
@@ -119,18 +79,40 @@ async def get_sensor_data(
     if not start_date:
         start_date = end_date - timedelta(days=1)
 
-    # Mock 데이터 사용 (실제 환경에서는 DB 조회)
-    data, total = generate_mock_sensor_data(
-        start_date=start_date,
-        end_date=end_date,
-        line_code=line_code,
-        sensor_type=sensor_type,
-        page=page,
-        page_size=page_size,
+    # Base query
+    query = db.query(SensorData).filter(
+        SensorData.recorded_at >= start_date,
+        SensorData.recorded_at <= end_date
     )
 
+    # 필터 적용
+    if line_code:
+        query = query.filter(SensorData.line_code == line_code)
+    if sensor_type:
+        query = query.filter(SensorData.sensor_type == sensor_type)
+
+    # Total count
+    total = query.count()
+
+    # 정렬 및 페이지네이션
+    offset = (page - 1) * page_size
+    data = query.order_by(SensorData.recorded_at.desc()).offset(offset).limit(page_size).all()
+
+    # Response 변환
+    items = [
+        SensorDataItem(
+            sensor_id=str(item.sensor_id),
+            recorded_at=item.recorded_at,
+            line_code=item.line_code,
+            sensor_type=item.sensor_type,
+            value=item.value,
+            unit=item.unit
+        )
+        for item in data
+    ]
+
     return SensorDataResponse(
-        data=[SensorDataItem(**item) for item in data],
+        data=items,
         total=total,
         page=page,
         page_size=page_size,
@@ -138,40 +120,91 @@ async def get_sensor_data(
 
 
 @router.get("/filters", response_model=SensorFilterOptions)
-async def get_filter_options():
+async def get_filter_options(db: Session = Depends(get_db)):
     """
-    필터 옵션 조회
+    필터 옵션 조회 (DB에서 실제 사용 가능한 값 조회)
 
     사용 가능한 라인 코드와 센서 타입 목록을 반환합니다.
     """
+    # DB에서 distinct 값 조회
+    lines = db.query(distinct(SensorData.line_code)).all()
+    sensor_types = db.query(distinct(SensorData.sensor_type)).all()
+
+    line_list = [row[0] for row in lines if row[0]]
+    sensor_type_list = [row[0] for row in sensor_types if row[0]]
+
+    # DB에 데이터가 없으면 기본값 반환
+    if not line_list:
+        line_list = ["LINE_A", "LINE_B", "LINE_C", "LINE_D"]
+    if not sensor_type_list:
+        sensor_type_list = ["temperature", "pressure", "humidity", "vibration", "flow_rate"]
+
     return SensorFilterOptions(
-        lines=["LINE_A", "LINE_B", "LINE_C", "LINE_D"],
-        sensor_types=["temperature", "pressure", "humidity", "vibration", "flow_rate"],
+        lines=sorted(line_list),
+        sensor_types=sorted(sensor_type_list),
     )
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=SensorSummaryResponse)
 async def get_sensor_summary(
+    db: Session = Depends(get_db),
     line_code: Optional[str] = Query(None, description="라인 코드"),
 ):
     """
-    센서 데이터 요약 통계
+    센서 데이터 요약 통계 (PostgreSQL)
     """
-    import random
+    # 최근 24시간 데이터 기준
+    since = datetime.utcnow() - timedelta(hours=24)
 
-    lines = ["LINE_A", "LINE_B", "LINE_C", "LINE_D"]
+    # Base query
+    query = db.query(
+        SensorData.line_code,
+        SensorData.sensor_type,
+        func.avg(SensorData.value).label("avg_value"),
+        func.count(SensorData.sensor_id).label("count"),
+        func.max(SensorData.recorded_at).label("last_recorded")
+    ).filter(
+        SensorData.recorded_at >= since
+    )
+
     if line_code:
-        lines = [line_code] if line_code in lines else lines
+        query = query.filter(SensorData.line_code == line_code)
 
-    summary = []
-    for line in lines:
-        summary.append({
-            "line_code": line,
-            "avg_temperature": round(random.uniform(35, 55), 1),
-            "avg_pressure": round(random.uniform(3, 7), 2),
-            "avg_humidity": round(random.uniform(45, 65), 1),
-            "total_readings": random.randint(1000, 5000),
-            "last_updated": datetime.utcnow().isoformat(),
-        })
+    # Group by line_code, sensor_type
+    results = query.group_by(SensorData.line_code, SensorData.sensor_type).all()
 
-    return {"summary": summary}
+    # 결과 집계 (line_code별로)
+    line_stats = {}
+    for row in results:
+        lc = row.line_code
+        if lc not in line_stats:
+            line_stats[lc] = {
+                "line_code": lc,
+                "avg_temperature": None,
+                "avg_pressure": None,
+                "avg_humidity": None,
+                "total_readings": 0,
+                "last_updated": None,
+            }
+
+        # sensor_type별 평균값 저장
+        if row.sensor_type == "temperature":
+            line_stats[lc]["avg_temperature"] = round(row.avg_value, 1) if row.avg_value else None
+        elif row.sensor_type == "pressure":
+            line_stats[lc]["avg_pressure"] = round(row.avg_value, 2) if row.avg_value else None
+        elif row.sensor_type == "humidity":
+            line_stats[lc]["avg_humidity"] = round(row.avg_value, 1) if row.avg_value else None
+
+        line_stats[lc]["total_readings"] += row.count
+
+        # 최신 시간 업데이트
+        if row.last_recorded:
+            current_last = line_stats[lc]["last_updated"]
+            row_time = row.last_recorded.isoformat()
+            if not current_last or row_time > current_last:
+                line_stats[lc]["last_updated"] = row_time
+
+    # DB에 데이터가 없으면 빈 배열 반환
+    summary = list(line_stats.values())
+
+    return SensorSummaryResponse(summary=summary)

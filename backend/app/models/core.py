@@ -78,7 +78,7 @@ class Ruleset(Base):
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    rhai_script = Column(Text, nullable=False)
+    rhai_script = Column("rhai_code", Text, nullable=False)  # DB column: rhai_code
     version = Column(String(50), default="1.0.0")
     is_active = Column(Boolean, default=True)
     created_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
@@ -103,7 +103,7 @@ class Workflow(Base):
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    dsl_definition = Column(JSONB, nullable=False)  # JSON DSL
+    dsl_definition = Column("dsl_json", JSONB, nullable=False)  # JSON DSL (DB column: dsl_json)
     version = Column(String(50), default="1.0.0")
     is_active = Column(Boolean, default=True)
     created_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)

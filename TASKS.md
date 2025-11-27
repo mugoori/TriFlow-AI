@@ -75,6 +75,30 @@
   - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
   - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
 
+### 샘플 센서 데이터 생성 ✅ (2025-11-27)
+- [x] SQL 스크립트 작성 (`backend/db/init/99_insert_sample_sensor_data.sql`)
+  - 최근 7일간 센서 데이터 (1시간 간격)
+  - 4개 라인 (LINE_A~D) × 5개 센서 타입 × 168시간 = 3,360건
+  - 센서 타입: temperature, pressure, humidity, vibration, flow_rate
+- [x] DB INSERT 완료 및 API 테스트 성공
+  - `/api/v1/sensors/data` - 480건 조회 (최근 24시간)
+  - `/api/v1/sensors/summary` - 라인별 평균값 정상 계산
+
+### Backend DB 실제 연결 ✅ (2025-11-27)
+- [x] Sensors API: Mock 데이터 → PostgreSQL DB 쿼리로 전환
+  - `GET /api/v1/sensors/data` - SensorData 모델 쿼리
+  - `GET /api/v1/sensors/filters` - DISTINCT 값 조회 (DB 데이터 없으면 기본값)
+  - `GET /api/v1/sensors/summary` - 집계 쿼리 (line_code별 평균, 카운트)
+- [x] Workflows API: Mock 데이터 → PostgreSQL DB 쿼리로 전환
+  - CRUD 엔드포인트 전체 DB 연동
+  - WorkflowInstance 실행 이력 DB 저장
+  - Default Tenant 자동 생성 (MVP)
+- [x] ORM 모델 DB 컬럼명 매핑 수정
+  - Workflow.dsl_definition → DB: dsl_json
+  - Ruleset.rhai_script → DB: rhai_code
+- [x] main.py 라우터 등록 에러 핸들링 추가 (try-except)
+- [x] API 테스트 완료 (sensors/filters, workflows 정상 동작)
+
 ### Settings 페이지 구현 ✅ (2025-11-27)
 - [x] SettingsPage 컴포넌트 전면 개편 (`frontend/src/components/pages/SettingsPage.tsx`)
   - 일반 설정: 테마 (시스템/라이트/다크), 언어, 알림 토글

@@ -90,12 +90,20 @@ from app.routers import agents
 app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 
 # Sensors 라우터
-from app.routers import sensors
-app.include_router(sensors.router, prefix="/api/v1/sensors", tags=["sensors"])
+try:
+    from app.routers import sensors
+    app.include_router(sensors.router, prefix="/api/v1/sensors", tags=["sensors"])
+    logger.info("Sensors router registered")
+except Exception as e:
+    logger.error(f"Failed to register sensors router: {e}")
 
 # Workflows 라우터
-from app.routers import workflows
-app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["workflows"])
+try:
+    from app.routers import workflows
+    app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["workflows"])
+    logger.info("Workflows router registered")
+except Exception as e:
+    logger.error(f"Failed to register workflows router: {e}")
 
 # TODO: 추가 라우터
 # from app.routers import tools, bi
