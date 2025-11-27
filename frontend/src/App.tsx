@@ -3,8 +3,8 @@ import { Sidebar, ViewType } from "./components/layout/Sidebar";
 import { ChatContainer } from "./components/ChatContainer";
 import { DashboardPage } from "./components/pages/DashboardPage";
 import { DataPage } from "./components/pages/DataPage";
+import { WorkflowsPage } from "./components/pages/WorkflowsPage";
 import { SettingsPage } from "./components/pages/SettingsPage";
-import { PlaceholderPage } from "./components/pages/PlaceholderPage";
 import { DashboardProvider } from "./contexts/DashboardContext";
 
 const PAGE_INFO: Record<ViewType, { title: string; description: string }> = {
@@ -28,11 +28,7 @@ function App() {
       case 'dashboard':
         return <DashboardPage />;
       case 'workflows':
-        return (
-          <PlaceholderPage
-            description="자동화 워크플로우를 생성하고 관리합니다. AI Chat에서 '워크플로우 만들어줘'라고 요청하면 Workflow Agent가 DSL을 생성합니다."
-          />
-        );
+        return <WorkflowsPage />;
       case 'data':
         return <DataPage />;
       case 'settings':

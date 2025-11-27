@@ -93,6 +93,10 @@ app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 from app.routers import sensors
 app.include_router(sensors.router, prefix="/api/v1/sensors", tags=["sensors"])
 
+# Workflows 라우터
+from app.routers import workflows
+app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["workflows"])
+
 # TODO: 추가 라우터
 # from app.routers import tools, bi
 # app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])

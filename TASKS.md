@@ -75,6 +75,26 @@
   - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
   - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
 
+### Workflows 페이지 구현 ✅ (2025-11-27)
+- [x] Backend: 워크플로우 API 라우터 구현 (`backend/app/routers/workflows.py`)
+  - `GET /api/v1/workflows` - 워크플로우 목록 조회 (검색, 활성 상태 필터)
+  - `GET /api/v1/workflows/{id}` - 워크플로우 상세 조회
+  - `POST /api/v1/workflows` - 워크플로우 생성
+  - `PATCH /api/v1/workflows/{id}` - 워크플로우 수정
+  - `DELETE /api/v1/workflows/{id}` - 워크플로우 삭제
+  - `POST /api/v1/workflows/{id}/run` - 워크플로우 실행
+  - `GET /api/v1/workflows/{id}/instances` - 실행 이력 조회
+  - `GET /api/v1/workflows/actions` - 액션 카탈로그 조회
+  - Mock 데이터: 3개 샘플 워크플로우 (불량률 경고, 온도 긴급 대응, 정기 점검)
+- [x] Frontend: 워크플로우 서비스 구현 (`frontend/src/services/workflowService.ts`)
+- [x] Frontend: WorkflowsPage 컴포넌트 구현 (`frontend/src/components/pages/WorkflowsPage.tsx`)
+  - 워크플로우 목록 테이블 (이름, 트리거, 상태, 버전, 수정일)
+  - 검색 및 활성 상태 필터
+  - 워크플로우 실행/활성화/삭제 기능
+  - 워크플로우 상세: DSL 노드 시각화, 실행 이력
+  - 액션 카탈로그 뷰 (12개 액션, 4개 카테고리)
+- [x] App.tsx 라우팅 연결 (PlaceholderPage → WorkflowsPage)
+
 ### Data 페이지 구현 ✅ (2025-11-27)
 - [x] Backend: 센서 데이터 API 라우터 구현 (`backend/app/routers/sensors.py`)
   - `GET /api/v1/sensors/data` - 센서 데이터 조회 (페이지네이션, 필터링)
