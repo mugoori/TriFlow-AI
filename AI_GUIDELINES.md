@@ -56,6 +56,28 @@
 
 ---
 
+## 🌿 Rule 2.1: Branch & Versioning Strategy (Desktop App Lifecycle)
+이 프로젝트는 설치형 애플리케이션이므로 **버전 태깅(Tagging)**과 **안정성** 중심의 브랜치 전략을 따른다.
+
+### 1. MVP 개발 단계 (Current Phase)
+- **전략**: **Trunk-Based Development (단일 브랜치)**
+- **Main Branch**: `main` 브랜치에서 모든 개발을 진행한다.
+- **Feature Branch**: 복잡한 기능 개발 시에만 `feature/기능명` 브랜치를 생성하고, 완료 즉시 `main`으로 머지(Squash & Merge)한다.
+
+### 2. MVP 배포 및 V1 개발 단계 (Post-MVP)
+MVP가 완성되어 `v0.1.0`으로 배포된 직후부터는 **Gitflow Lite** 전략으로 전환한다.
+
+1. **MVP 릴리즈 (Release)**: `main` 브랜치 커밋에 `v0.1.0` 태그를 생성하여 버전을 박제한다.
+2. **V1 개발 (Develop)**: `main`에서 `develop` 브랜치를 분기(Branching)한다. 이후 모든 V1 기능 개발은 `develop`을 기준으로 진행한다.
+3. **긴급 수정 (Hotfix)**: 배포된 MVP(`main`)에 버그가 발생하면 `hotfix/이슈명` 브랜치에서 수정 후 `main`에 머지하고 태그(`v0.1.1`)를 붙인다. 수정 사항은 반드시 `develop`에도 머지(Backport)한다.
+
+### 🏷️ Naming Convention
+- **Feature**: `feature/login-ui`, `feature/rhai-engine`
+- **Hotfix**: `hotfix/login-crash`
+- **Tags**: `v{Major}.{Minor}.{Patch}` (예: `v0.1.0`)
+
+---
+
 ## 🧩 Rule 3: Agent & Prompt Structure
 **프롬프트와 실행 코드를 분리한다.** (B-6 설계 반영)
 1. **Structure**: `prompts/` (Markdown/Jinja2), `agents/` (Logic), `tools/` (Execution).
