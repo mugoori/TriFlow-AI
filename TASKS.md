@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-11-26
-> **현재 Phase**: Phase 1 - 프로젝트 초기 설정
+> **최종 업데이트**: 2025-11-27
+> **현재 Phase**: Sprint 2 - 에이전트 시스템 구현 완료
 
 ---
 
@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ████░░░░░░ 41% | 7/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██████░░░░ 59% | 10/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -30,10 +30,11 @@
 | :--- | :--- | :--- | :--- |
 | **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ✅ 완료 | ██████████ 100% |
 | | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ✅ 완료 | ██████████ 100% |
-| | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
-| | **[Core]** `tools/db.py` (Safe Query) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ✅ 완료 | ██████████ 100% |
+| | **[Core]** `tools/db.py` (Safe Query) 구현 | ✅ 완료 | ██████████ 100% |
 | | **[CI/CD]** GitHub Actions 워크플로우 설정 | ✅ 완료 | ██████████ 100% |
-| **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Docker]** backend/Dockerfile 생성 | ✅ 완료 | ██████████ 100% |
+| **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ✅ 완료 | ██████████ 100% |
 | | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending | ░░░░░░░░░░ 0% |
@@ -52,11 +53,14 @@
 
 ## 📋 현재 진행 중인 작업
 
-### Phase 1: 프로젝트 초기 설정 ✅
-- [x] `AI_GUIDELINES.md` 생성 및 개발 가이드라인 저장
-- [x] `TASKS.md` 생성 및 초기 할 일 목록 작성
-- [x] `README.md` 생성
-- [x] Git 초기 커밋 및 푸시
+### Sprint 2: 에이전트 시스템 구현 ✅
+- [x] Base Agent 클래스 구현 (Anthropic Tool Calling Pattern)
+- [x] Meta Router Agent 구현 (Intent 분류 및 라우팅)
+- [x] Judgment Agent 구현 (센서 데이터 분석 + Rhai 엔진)
+- [x] Agent API 엔드포인트 구현 (`/api/v1/agents/chat`, `/api/v1/agents/judgment`, `/api/v1/agents/status`)
+- [x] Agent 프롬프트 작성 (meta_router.md, judgment_agent.md)
+- [x] Tools 모듈 구조화 (`backend/app/tools/`)
+- [x] Docker Build CI 수정 (backend/Dockerfile 생성)
 
 ---
 
@@ -75,9 +79,9 @@
   - [x] RAG 스키마 (documents, embeddings)
   - [x] Audit 스키마 (logs, feedback)
 
-- [ ] **[Core]** 핵심 도구 구현
-  - [ ] `tools/rhai.py` - Rhai 룰 엔진 Python 바인딩
-  - [ ] `tools/db.py` - 안전한 SQL 쿼리 실행기
+- [x] **[Core]** 핵심 도구 구현 ✅
+  - [x] `tools/rhai.py` - Rhai 룰 엔진 Python 바인딩
+  - [x] `tools/db.py` - 안전한 SQL 쿼리 실행기
 
 - [x] **[CI/CD]** GitHub Actions 워크플로우 ✅
   - [x] Lint & Test 워크플로우 (Python: ruff, pytest)
@@ -94,15 +98,20 @@
 ## 🗓️ Sprint 2: 에이전트 시스템 구현
 
 ### 🤖 AI 에이전트
-- [ ] **[Agent]** Meta Router Agent 구현
-  - [ ] 의도 분류 (classify_intent)
-  - [ ] 슬롯 추출 (extract_slots)
-  - [ ] 요청 라우팅 (route_request)
+- [x] **[Agent]** Base Agent 클래스 구현 ✅
+  - [x] Anthropic Tool Calling Pattern 적용
+  - [x] Tool 실행 루프 (최대 5회 반복)
+  - [x] 시스템 프롬프트 로딩 (Markdown 파일)
 
-- [ ] **[Agent]** Judgment Agent 구현
-  - [ ] Rhai 룰 엔진 실행 (run_rhai_engine)
-  - [ ] RAG 지식 조회 (query_rag_knowledge)
-  - [ ] 센서 히스토리 조회 (fetch_sensor_history)
+- [x] **[Agent]** Meta Router Agent 구현 ✅
+  - [x] 의도 분류 (classify_intent)
+  - [x] 슬롯 추출 (extract_slots)
+  - [x] 요청 라우팅 (route_request)
+
+- [x] **[Agent]** Judgment Agent 구현 ✅
+  - [x] Rhai 룰 엔진 실행 (run_rhai_engine)
+  - [x] RAG 지식 조회 (query_rag_knowledge) - MVP Placeholder
+  - [x] 센서 히스토리 조회 (fetch_sensor_history)
 
 - [ ] **[Agent]** Workflow Planner Agent 구현
   - [ ] 워크플로우 DSL 생성 (generate_workflow_dsl)
@@ -113,6 +122,22 @@
   - [ ] 테이블 스키마 조회 (get_table_schema)
   - [ ] 안전한 SQL 실행 (execute_safe_sql)
   - [ ] 차트 설정 생성 (generate_chart_config)
+
+### 🔌 API 엔드포인트
+- [x] **[API]** Agent 라우터 구현 ✅
+  - [x] `POST /api/v1/agents/chat` - Meta Router를 통한 채팅
+  - [x] `POST /api/v1/agents/judgment` - Judgment Agent 직접 실행
+  - [x] `GET /api/v1/agents/status` - Agent 시스템 상태 확인
+
+### 📝 프롬프트 작성
+- [x] **[Prompts]** Agent 시스템 프롬프트 ✅
+  - [x] `meta_router.md` - Meta Router 역할 정의
+  - [x] `judgment_agent.md` - Judgment Agent 역할 정의
+
+### 🛠️ 도구 모듈
+- [x] **[Tools]** 도구 모듈 재구성 ✅
+  - [x] `backend/tools` → `backend/app/tools` 이동
+  - [x] 모듈 구조 수정 및 import 경로 업데이트
 
 ---
 
