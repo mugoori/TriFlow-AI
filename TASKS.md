@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
 > **최종 업데이트**: 2025-11-27
-> **현재 Phase**: Sprint 2 완료 - Agent System (3/3 Agents 구현 완료)
+> **현재 Phase**: Sprint 6 진행 중 - Production Build 완료
 
 ---
 
@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | █████████░ 94% | 16/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██████████ 100% | 17/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -47,11 +47,33 @@
 | | **[Setup]** Tailwind + Shadcn/ui Config | ✅ 완료 | ██████████ 100% |
 | **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ✅ 완료 | ██████████ 100% |
 | | **[UI]** Dashboard & Chart Visualization | ✅ 완료 | ██████████ 100% |
-| **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 6** | **[Release]** UAT & Production Build | ✅ 완료 | ██████████ 100% |
 
 ---
 
 ## 📋 현재 진행 중인 작업
+
+### Sprint 6: Production Build & Release ✅ (2025-11-27)
+- [x] Tauri v2 앱 메타데이터 설정
+  - productName: "TriFlow AI"
+  - identifier: "com.triflow.ai"
+  - 윈도우 설정: 1280x800 (min 800x600), 중앙 배치
+  - 번들 정보: Productivity 카테고리, 설명, 저작권
+- [x] Rust 설정 업데이트 (Cargo.toml)
+  - name: "triflow-ai"
+  - lib name: "triflow_ai_lib"
+  - MIT 라이선스, GitHub 저장소 링크
+- [x] tauri-plugin-shell 설치 및 설정
+  - shell:allow-open, shell:allow-execute 권한 추가
+  - Docker 명령 실행을 위한 준비
+- [x] TypeScript 빌드 오류 수정
+  - shadcn/ui Alert, Table 컴포넌트 추가
+  - PieChartComponent 라벨 타입 수정
+  - ChartRenderer JSX namespace 수정
+- [x] Production 빌드 성공
+  - **MSI**: `TriFlow AI_0.1.0_x64_en-US.msi`
+  - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
+  - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
 
 ### Dashboard & Chart Visualization 구현 ✅ (2025-11-27)
 - [x] Recharts 라이브러리 설치 (v2.x, 178 packages)

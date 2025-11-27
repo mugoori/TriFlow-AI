@@ -12,11 +12,17 @@ interface TableComponentProps {
   config: TableConfig;
 }
 
+interface TableColumn {
+  key: string;
+  label: string;
+  width?: string;
+}
+
 export function TableComponent({ config }: TableComponentProps) {
   const { data, columns } = config;
 
   // Auto-generate columns from first data row if not provided
-  const tableColumns =
+  const tableColumns: TableColumn[] =
     columns ||
     (data.length > 0
       ? Object.keys(data[0]).map((key) => ({
@@ -31,7 +37,7 @@ export function TableComponent({ config }: TableComponentProps) {
         <TableHeader>
           <TableRow>
             {tableColumns.map((column) => (
-              <TableHead key={column.key} style={{ width: column.width }}>
+              <TableHead key={column.key} style={column.width ? { width: column.width } : undefined}>
                 {column.label}
               </TableHead>
             ))}

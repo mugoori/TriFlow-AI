@@ -1,3 +1,4 @@
+import React from 'react';
 import { ChartConfig } from '@/types/chart';
 import { LineChartComponent } from './LineChartComponent';
 import { BarChartComponent } from './BarChartComponent';
@@ -73,7 +74,7 @@ export function ChartRenderer({ config, error }: ChartRendererProps) {
 /**
  * Render appropriate chart component based on type
  */
-function renderChart(config: ChartConfig): JSX.Element {
+function renderChart(config: ChartConfig): React.ReactElement {
   try {
     switch (config.type) {
       case 'line':

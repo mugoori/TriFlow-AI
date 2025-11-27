@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import type { PieLabelRenderProps } from 'recharts';
 import { PieChartConfig, CHART_COLORS } from '@/types/chart';
 
 interface PieChartComponentProps {
@@ -8,6 +9,13 @@ interface PieChartComponentProps {
 export function PieChartComponent({ config }: PieChartComponentProps) {
   const { data, nameKey, valueKey, colors } = config;
   const chartColors = colors || CHART_COLORS;
+
+  // 라벨 렌더링 함수
+  const renderLabel = (props: PieLabelRenderProps) => {
+    const name = props.name || props.payload?.name || '';
+    const value = props.value || 0;
+    return `${name}: ${value}`;
+  };
 
   return (
     <div className="w-full h-[400px]">
@@ -20,10 +28,10 @@ export function PieChartComponent({ config }: PieChartComponentProps) {
             cx="50%"
             cy="50%"
             outerRadius={120}
-            label={(entry) => `${entry[nameKey]}: ${entry[valueKey]}`}
+            label={renderLabel}
             labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
           >
-            {data.map((entry, index) => (
+            {data.map((_, index) => (
               <Cell
                 key={`cell-${index}`}
                 fill={chartColors[index % chartColors.length]}

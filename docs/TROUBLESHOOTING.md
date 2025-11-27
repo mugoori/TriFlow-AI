@@ -40,7 +40,21 @@
 - 아직 기록된 이슈 없음
 
 #### 🎨 Frontend (Tauri/React)
-- 아직 기록된 이슈 없음
+
+**[2025-11-27] Tauri 빌드 시 TypeScript 컴파일 오류**
+- **에러**: `Cannot find module '@/components/ui/alert'`, `Cannot find module '@/components/ui/table'`
+- **해결책**: shadcn/ui의 alert.tsx, table.tsx 컴포넌트 수동 생성
+- **RCA**: 차트 컴포넌트에서 아직 설치되지 않은 UI 컴포넌트를 참조
+
+**[2025-11-27] PieChartComponent 타입 오류**
+- **에러**: `Type '(entry: Record<string, unknown>) => string' is not assignable to type 'PieLabel'`
+- **해결책**: `PieLabelRenderProps` 타입 import 후 props.name, props.value 사용
+- **RCA**: Recharts의 label prop은 특정 타입의 함수만 허용
+
+**[2025-11-27] Tauri config 오류**
+- **에러**: `dangerousRemoteDomainIpcAccess was unexpected`
+- **해결책**: tauri.conf.json에서 deprecated된 `dangerousRemoteDomainIpcAccess` 속성 제거
+- **RCA**: Tauri v2에서 해당 속성이 더 이상 지원되지 않음
 
 #### 🐳 Docker/Infrastructure
 - 아직 기록된 이슈 없음

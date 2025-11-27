@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "frontend",
+  "productName": "TriFlow AI",
   "version": "0.1.0",
-  "identifier": "com.solut.frontend",
+  "identifier": "com.triflow.ai",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,19 +12,18 @@
   "app": {
     "windows": [
       {
-        "title": "TriFlow AI",
-        "width": 1200,
-        "height": 800
+        "title": "TriFlow AI - 제조 AI 의사결정 엔진",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false
       }
     ],
     "security": {
-      "csp": null,
-      "dangerousRemoteDomainIpcAccess": [
-        {
-          "domain": "localhost",
-          "enableTauriAPI": false
-        }
-      ]
+      "csp": null
     }
   },
   "bundle": {
@@ -36,6 +35,14 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Productivity",
+    "shortDescription": "AI Factory Decision Engine",
+    "longDescription": "TriFlow AI는 제조 현장 데이터를 분석하고 의사결정을 지원하는 AI 솔루션입니다. Text-to-SQL, 워크플로우 자동화, 실시간 차트 시각화 기능을 제공합니다.",
+    "copyright": "© 2025 TriFlow AI",
+    "publisher": "TriFlow AI Team",
+    "windows": {
+      "allowDowngrades": false
+    }
   }
 }
