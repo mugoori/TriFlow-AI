@@ -75,6 +75,16 @@
   - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
   - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
 
+### Settings 페이지 구현 ✅ (2025-11-27)
+- [x] SettingsPage 컴포넌트 전면 개편 (`frontend/src/components/pages/SettingsPage.tsx`)
+  - 일반 설정: 테마 (시스템/라이트/다크), 언어, 알림 토글
+  - Backend 연결: 연결 상태 표시, API URL 설정, 연결 테스트, 자동 재연결
+  - AI 모델: 모델 선택 (Claude Sonnet 4.5/3.5/Haiku), Max Tokens, Tenant ID
+  - 앱 정보: 버전 (0.1.0), 빌드 (2025.11.27), 라이선스, GitHub 링크
+- [x] 테마 적용 기능 구현 (dark mode 지원)
+- [x] localStorage 설정 저장/불러오기
+- [x] 2x2 그리드 레이아웃 (반응형)
+
 ### WBS 로드맵 다이어그램 추가 ✅ (2025-11-27)
 - [x] V1/V2 로드맵 SVG 다이어그램 생성 (`docs/diagrams/`)
   - `wbs_v1_roadmap.svg` - V1 로드맵 (Builder UI, Learning Pipeline, 외부 연동, 보안 강화)
