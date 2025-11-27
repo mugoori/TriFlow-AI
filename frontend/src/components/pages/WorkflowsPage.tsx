@@ -3,7 +3,7 @@
  * 워크플로우 목록, 생성, 실행 관리 페이지
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -350,9 +350,8 @@ export function WorkflowsPage() {
                   </TableHeader>
                   <TableBody>
                     {workflows.map((workflow) => (
-                      <>
+                      <React.Fragment key={workflow.workflow_id}>
                         <TableRow
-                          key={workflow.workflow_id}
                           onClick={() => handleSelectWorkflow(workflow)}
                           className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
                         >
@@ -375,8 +374,10 @@ export function WorkflowsPage() {
                           </TableCell>
                           <TableCell>
                             <span className="px-2 py-1 text-xs rounded bg-slate-100 dark:bg-slate-800">
-                              {triggerTypeLabels[workflow.dsl_definition.trigger.type] ||
-                                workflow.dsl_definition.trigger.type}
+                              {workflow.dsl_definition?.trigger?.type
+                                ? (triggerTypeLabels[workflow.dsl_definition.trigger.type] ||
+                                    workflow.dsl_definition.trigger.type)
+                                : '-'}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -435,25 +436,29 @@ export function WorkflowsPage() {
                                 <div>
                                   <h4 className="text-sm font-semibold mb-2">워크플로우 구조</h4>
                                   <div className="flex flex-wrap gap-2">
-                                    {workflow.dsl_definition.nodes.map((node, idx) => (
-                                      <div
-                                        key={node.id}
-                                        className={`px-3 py-2 rounded-lg border ${
-                                          node.type === 'condition'
-                                            ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20'
-                                            : 'border-blue-300 bg-blue-50 dark:bg-blue-900/20'
-                                        }`}
-                                      >
-                                        <div className="text-xs text-slate-500">
-                                          {idx + 1}. {node.type === 'condition' ? '조건' : '액션'}
+                                    {workflow.dsl_definition?.nodes?.length > 0 ? (
+                                      workflow.dsl_definition.nodes.map((node, idx) => (
+                                        <div
+                                          key={node.id || idx}
+                                          className={`px-3 py-2 rounded-lg border ${
+                                            node.type === 'condition'
+                                              ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20'
+                                              : 'border-blue-300 bg-blue-50 dark:bg-blue-900/20'
+                                          }`}
+                                        >
+                                          <div className="text-xs text-slate-500">
+                                            {idx + 1}. {node.type === 'condition' ? '조건' : '액션'}
+                                          </div>
+                                          <div className="text-sm font-mono">
+                                            {node.type === 'condition'
+                                              ? (node.config as { condition?: string })?.condition || node.id
+                                              : (node.config as { action?: string })?.action || node.id}
+                                          </div>
                                         </div>
-                                        <div className="text-sm font-mono">
-                                          {node.type === 'condition'
-                                            ? (node.config as { condition?: string }).condition || node.id
-                                            : (node.config as { action?: string }).action || node.id}
-                                        </div>
-                                      </div>
-                                    ))}
+                                      ))
+                                    ) : (
+                                      <span className="text-sm text-slate-500">노드 정보 없음</span>
+                                    )}
                                   </div>
                                 </div>
 
@@ -499,7 +504,7 @@ export function WorkflowsPage() {
                             </TableCell>
                           </TableRow>
                         )}
-                      </>
+                      </React.Fragment>
                     ))}
                   </TableBody>
                 </Table>
