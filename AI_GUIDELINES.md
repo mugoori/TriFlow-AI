@@ -79,55 +79,6 @@
 ## 📝 Rule 4: Task & Roadmap Dashboard
 **작업 진행 시마다 `TASKS.md`에 작업 내용을 적고 현황판을 업데이트한 후 커밋한다.**
 
-### 📊 TriFlow AI Project Dashboard
-
-#### 📅 Product Roadmap
-| Milestone | Goal | Status | Progress | 완료/전체 |
-| :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | █████████░ 88% | 15/17 |
-| **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
-| **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
-
-#### 🚀 MVP Detailed Progress (Sprint 1~6)
-
-##### 📋 Phase 0: 프로젝트 기획 및 문서화
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| 프로젝트 문서 (A-1 ~ D-4) 작성 | ✅ 완료 | ██████████ 100% |
-| AI_GUIDELINES.md 작성 (Rule 0~8) | ✅ 완료 | ██████████ 100% |
-| TASKS.md 작성 | ✅ 완료 | ██████████ 100% |
-| README.md 작성 | ✅ 완료 | ██████████ 100% |
-| Git 저장소 초기화 | ✅ 완료 | ██████████ 100% |
-
-##### 🔙 Backend (Python/FastAPI)
-| Sprint | Task | Status | Progress |
-| :--- | :--- | :--- | :--- |
-| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ✅ 완료 | ██████████ 100% |
-| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ✅ 완료 | ██████████ 100% |
-| | **[DB]** SQLAlchemy ORM 모델 (Core 스키마) | ✅ 완료 | ██████████ 100% |
-| | **[DB]** Database 세션 관리 & 연결 풀 | ✅ 완료 | ██████████ 100% |
-| | **[Core]** `tools/rhai.py` (Rhai Engine MVP) 구현 | ✅ 완료 | ██████████ 100% |
-| | **[Core]** `tools/db.py` (Safe Query) 구현 | ✅ 완료 | ██████████ 100% |
-| | **[API]** FastAPI Main App & Tenants Router | ✅ 완료 | ██████████ 100% |
-| | **[CI/CD]** GitHub Actions 워크플로우 설정 | ✅ 완료 | ██████████ 100% |
-| **Sprint 2** | **[Agent]** Base Agent 클래스 & Tool Calling 패턴 | ✅ 완료 | ██████████ 100% |
-| | **[Agent]** Meta Router Agent 구현 | ✅ 완료 | ██████████ 100% |
-| | **[Agent]** Judgment Agent 구현 (Rhai + RAG) | ✅ 완료 | ██████████ 100% |
-| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
-| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
-| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending | ░░░░░░░░░░ 0% |
-| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending | ░░░░░░░░░░ 0% |
-
-##### 🎨 Frontend (Tauri/React)
-| Sprint | Task | Status | Progress |
-| :--- | :--- | :--- | :--- |
-| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ✅ 완료 | ██████████ 100% |
-| | **[Setup]** Tailwind + Shadcn/ui Config | ✅ 완료 | ██████████ 100% |
-| | **[UI]** Tenant 관리 UI (기본 CRUD) | ✅ 완료 | ██████████ 100% |
-| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ⏳ Pending | ░░░░░░░░░░ 0% |
-| | **[UI]** Dashboard & Chart Visualization | ⏳ Pending | ░░░░░░░░░░ 0% |
-| **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending | ░░░░░░░░░░ 0% |
-
 ---
 
 ## 📄 Rule 5: Document Governance
