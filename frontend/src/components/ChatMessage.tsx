@@ -4,7 +4,9 @@
  */
 
 import type { ChatMessage as ChatMessageType } from '../types/agent';
+import type { ChartConfig } from '../types/chart';
 import { Card, CardContent } from './ui/card';
+import { ChartRenderer } from './charts';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -13,9 +15,12 @@ interface ChatMessageProps {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
 
+  // Check if this message contains chart data from BI Agent
+  const chartConfig = extractChartConfig(message);
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
-      <div className={`max-w-[80%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+      <div className={`${chartConfig ? 'max-w-[95%]' : 'max-w-[80%]'} ${isUser ? 'ml-auto' : 'mr-auto'}`}>
         <Card className={isUser ? 'bg-blue-50 dark:bg-blue-950' : 'bg-slate-50 dark:bg-slate-900'}>
           <CardContent className="p-4">
             {/* 메시지 헤더 */}
@@ -35,6 +40,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <div className="text-sm text-slate-900 dark:text-slate-100 whitespace-pre-wrap">
               {message.content}
             </div>
+
+            {/* Chart Visualization */}
+            {chartConfig && (
+              <div className="mt-4">
+                <ChartRenderer config={chartConfig} />
+              </div>
+            )}
 
             {/* Tool 호출 정보 */}
             {message.tool_calls && message.tool_calls.length > 0 && (
@@ -66,4 +78,42 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
     </div>
   );
+}
+
+/**
+ * Extract chart configuration from BI Agent's tool calls
+ */
+function extractChartConfig(message: ChatMessageType): ChartConfig | null {
+  if (!message.tool_calls || message.tool_calls.length === 0) {
+    return null;
+  }
+
+  // Find generate_chart_config tool call
+  const chartTool = message.tool_calls.find(
+    (tc) => tc.tool === 'generate_chart_config'
+  );
+
+  if (!chartTool || !chartTool.result) {
+    return null;
+  }
+
+  // Extract chart config from result
+  try {
+    const result = chartTool.result;
+
+    // Check if result has the expected structure
+    if (
+      result &&
+      typeof result === 'object' &&
+      'type' in result &&
+      'data' in result
+    ) {
+      return result as ChartConfig;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Failed to extract chart config:', error);
+    return null;
+  }
 }

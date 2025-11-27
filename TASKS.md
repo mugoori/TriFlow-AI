@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | █████████░ 88% | 15/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | █████████░ 94% | 16/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -46,12 +46,37 @@
 | **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ✅ 완료 | ██████████ 100% |
 | | **[Setup]** Tailwind + Shadcn/ui Config | ✅ 완료 | ██████████ 100% |
 | **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ✅ 완료 | ██████████ 100% |
-| | **[UI]** Dashboard & Chart Visualization | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[UI]** Dashboard & Chart Visualization | ✅ 완료 | ██████████ 100% |
 | **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending | ░░░░░░░░░░ 0% |
 
 ---
 
 ## 📋 현재 진행 중인 작업
+
+### Dashboard & Chart Visualization 구현 ✅ (2025-11-27)
+- [x] Recharts 라이브러리 설치 (v2.x, 178 packages)
+- [x] Chart 타입 시스템 구현 (chart.ts)
+  - TypeScript Discriminated Union: ChartType = 'line' | 'bar' | 'pie' | 'area' | 'scatter' | 'table'
+  - 타입별 Config 인터페이스: LineChartConfig, BarChartConfig, PieChartConfig, etc.
+  - CHART_COLORS 팔레트 (8색) 및 DEFAULT_CHART_STYLE 정의
+- [x] Chart 컴포넌트 6종 구현
+  - ✅ LineChartComponent.tsx - 시계열 데이터 시각화
+  - ✅ BarChartComponent.tsx - 카테고리 비교 차트
+  - ✅ PieChartComponent.tsx - 비율 데이터 시각화
+  - ✅ AreaChartComponent.tsx - 누적 추이 분석
+  - ✅ ScatterChartComponent.tsx - 상관관계 분석
+  - ✅ TableComponent.tsx - 데이터 테이블 (shadcn/ui)
+- [x] ChartRenderer 구현
+  - Config 타입 기반 동적 컴포넌트 렌더링
+  - 에러 핸들링 및 유효성 검증
+  - Alert 컴포넌트를 통한 사용자 피드백
+- [x] Chat UI 통합
+  - ChatMessage.tsx에 extractChartConfig 함수 추가
+  - BI Agent의 generate_chart_config tool_call 결과 자동 감지
+  - 차트 포함 메시지는 max-width 95% (일반 메시지는 80%)
+- [x] 테스트 준비 완료
+  - 프론트엔드 서버 실행 중 (HMR 정상 동작)
+  - BI Agent와의 E2E 테스트 준비 완료
 
 ### BI Planner Agent 구현 ✅ (2025-11-27)
 - [x] BI Planner Agent 프롬프트 작성 (bi_planner.md)
