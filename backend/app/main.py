@@ -85,9 +85,12 @@ async def api_info():
 # 라우터 등록
 app.include_router(tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 
+# Agent 라우터
+from app.routers import agents
+app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
+
 # TODO: 추가 라우터
-# from app.routers import agents, tools, bi
-# app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
+# from app.routers import tools, bi
 # app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])
 # app.include_router(bi.router, prefix="/api/v1/bi", tags=["bi"])
 
