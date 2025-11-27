@@ -84,7 +84,7 @@
 #### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██████░░░░ 59% | 10/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ████████░░ 76% | 13/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -119,8 +119,9 @@
 ##### 🎨 Frontend (Tauri/React)
 | Sprint | Task | Status | Progress |
 | :--- | :--- | :--- | :--- |
-| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ⏳ Pending | ░░░░░░░░░░ 0% |
-| | **[Setup]** Tailwind + Shadcn/ui Config | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ✅ 완료 | ██████████ 100% |
+| | **[Setup]** Tailwind + Shadcn/ui Config | ✅ 완료 | ██████████ 100% |
+| | **[UI]** Tenant 관리 UI (기본 CRUD) | ✅ 완료 | ██████████ 100% |
 | **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ⏳ Pending | ░░░░░░░░░░ 0% |
 | | **[UI]** Dashboard & Chart Visualization | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending | ░░░░░░░░░░ 0% |
