@@ -78,6 +78,19 @@ MVP가 완성되어 `v0.1.0`으로 배포된 직후부터는 **Gitflow Lite** �
 
 ---
 
+## ⚡ Rule 2.2: CI Optimization (Concurrency)
+지속적인 커밋으로 인해 CI 파이프라인이 중복 실행되는 것을 방지하고 리소스를 절약하기 위해, 모든 GitHub Actions 워크플로우 파일(`.github/workflows/*.yml`)에는 반드시 **Concurrency(자동 취소)** 설정을 포함한다.
+
+**필수 적용 예시:**
+```yaml
+# 동일한 브랜치/PR에 새로운 커밋이 오면 기존 진행 중인 작업을 취소함
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+---
+
 ## 🧩 Rule 3: Agent & Prompt Structure
 **프롬프트와 실행 코드를 분리한다.** (B-6 설계 반영)
 1. **Structure**: `prompts/` (Markdown/Jinja2), `agents/` (Logic), `tools/` (Execution).

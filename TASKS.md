@@ -53,6 +53,13 @@
 
 ## 📋 현재 진행 중인 작업
 
+### CI/CD Optimization ✅
+- [x] AI_GUIDELINES.md에 Rule 2.2 추가 (CI Optimization - Concurrency)
+- [x] 모든 GitHub Actions 워크플로우에 Concurrency 설정 적용
+  - [x] backend-ci.yml
+  - [x] frontend-ci.yml
+  - [x] docker-build.yml
+
 ### Sprint 3: Chat UI 구현 ✅
 - [x] TypeScript 타입 정의 (`frontend/src/types/agent.ts`)
   - [x] ToolCall, AgentResponse, ChatMessage, AgentRequest 인터페이스
