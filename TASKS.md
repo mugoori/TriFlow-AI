@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
 > **최종 업데이트**: 2025-11-27
-> **현재 Phase**: Sprint 3 - Chat UI 구현 완료
+> **현재 Phase**: Sprint 2 - Workflow Planner Agent 구현 완료
 
 ---
 
@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ████████░░ 76% | 13/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | █████████░ 82% | 14/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -35,7 +35,7 @@
 | | **[CI/CD]** GitHub Actions 워크플로우 설정 | ✅ 완료 | ██████████ 100% |
 | | **[Docker]** backend/Dockerfile 생성 | ✅ 완료 | ██████████ 100% |
 | **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ✅ 완료 | ██████████ 100% |
-| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ✅ 완료 | ██████████ 100% |
 | | **[Agent]** BI Planner (Text-to-SQL) 구현 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending | ░░░░░░░░░░ 0% |
@@ -52,6 +52,21 @@
 ---
 
 ## 📋 현재 진행 중인 작업
+
+### Workflow Planner Agent 구현 ✅ (2025-11-27)
+- [x] Workflow Planner Agent 프롬프트 작성 (workflow_planner.md)
+- [x] Action Catalog 시스템 구현 (12개 액션)
+  - notification: send_slack_notification, send_email, send_sms
+  - data: save_to_database, export_to_csv, log_event
+  - control: stop_production_line, adjust_sensor_threshold, trigger_maintenance
+  - analysis: calculate_defect_rate, analyze_sensor_trend, predict_equipment_failure
+- [x] Workflow DSL 생성 로직 구현 (MVP: Template-based)
+- [x] Schema 검증 기능 구현 (validate_node_schema)
+- [x] API 엔드포인트 통합 (agents.py)
+- [x] 테스트 완료 (3개 시나리오)
+  - ✅ 불량률 5% 초과 시 Slack 알림 워크플로우
+  - ✅ 온도 80°C 초과 시 생산 라인 중지 + 이메일 알림
+  - ✅ 장비 고장 예측 기반 유지보수 자동화
 
 ### Chat UI 통합 테스트 ✅ (2025-11-27)
 - [x] Backend 서버 상태 확인 (http://127.0.0.1:8000)
@@ -162,10 +177,10 @@
   - [x] RAG 지식 조회 (query_rag_knowledge) - MVP Placeholder
   - [x] 센서 히스토리 조회 (fetch_sensor_history)
 
-- [ ] **[Agent]** Workflow Planner Agent 구현
-  - [ ] 워크플로우 DSL 생성 (generate_workflow_dsl)
-  - [ ] 노드 스키마 검증 (validate_node_schema)
-  - [ ] 액션 카탈로그 검색 (search_action_catalog)
+- [x] **[Agent]** Workflow Planner Agent 구현 ✅
+  - [x] 워크플로우 DSL 생성 (generate_workflow_dsl)
+  - [x] 노드 스키마 검증 (validate_node_schema)
+  - [x] 액션 카탈로그 검색 (search_action_catalog)
 
 - [ ] **[Agent]** BI Planner Agent 구현
   - [ ] 테이블 스키마 조회 (get_table_schema)
