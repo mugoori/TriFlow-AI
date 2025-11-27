@@ -135,7 +135,7 @@
       <text x="20" y="102" class="font-inter" font-size="12" fill="#334155">관리자 콘솔</text>
 
       <circle cx="8" cy="128" r="4" fill="#3b82f6"/>
-      <text x="20" y="132" class="font-inter" font-size="12" fill="#334155">사용량 모니터링 & 과금</text>
+      <text x="20" y="132" class="font-inter" font-size="12" fill="#334155">사용량 모니터링 &amp; 과금</text>
     </g>
 
     <!-- 새 탭 표시 -->
