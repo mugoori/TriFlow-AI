@@ -75,6 +75,26 @@
   - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
   - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
 
+### UI 개선 및 Dashboard 기능 강화 ✅ (2025-11-27)
+- [x] Sidebar Navigation 구현
+  - Chat, Dashboard, Workflows, Data, Settings 탭
+  - TriFlow AI 로고 및 브랜딩
+  - Backend 연결 상태 표시
+- [x] Dashboard 차트 고정 기능 (Option A)
+  - DashboardContext: 차트 상태 관리
+  - ChatMessage: "대시보드에 고정" 버튼
+  - DashboardPage: 고정된 차트 목록 & 삭제 기능
+  - 스크롤 지원
+- [x] Tool 호출 정보 UX 개선
+  - 기본: 간략한 근거 표시 (classify_intent reason)
+  - "상세 정보" 토글로 Tool 호출 JSON 확인
+- [x] BI Agent 차트 생성 개선
+  - 데이터 없을 때 데모 차트 생성 강제
+  - Frontend extractChartConfig: { success, config } 구조 지원
+- [x] Tauri 아이콘 교체
+  - TriFlow 커스텀 아이콘으로 전체 교체
+  - 128x128 고해상도 로고
+
 ### Dashboard & Chart Visualization 구현 ✅ (2025-11-27)
 - [x] Recharts 라이브러리 설치 (v2.x, 178 packages)
 - [x] Chart 타입 시스템 구현 (chart.ts)
@@ -242,10 +262,10 @@
   - [x] 노드 스키마 검증 (validate_node_schema)
   - [x] 액션 카탈로그 검색 (search_action_catalog)
 
-- [ ] **[Agent]** BI Planner Agent 구현
-  - [ ] 테이블 스키마 조회 (get_table_schema)
-  - [ ] 안전한 SQL 실행 (execute_safe_sql)
-  - [ ] 차트 설정 생성 (generate_chart_config)
+- [x] **[Agent]** BI Planner Agent 구현 ✅
+  - [x] 테이블 스키마 조회 (get_table_schema)
+  - [x] 안전한 SQL 실행 (execute_safe_sql)
+  - [x] 차트 설정 생성 (generate_chart_config)
 
 ### 🔌 API 엔드포인트
 - [x] **[API]** Agent 라우터 구현 ✅
@@ -279,9 +299,9 @@
   - [x] App.tsx 통합 (Chat/Tenants 뷰 전환)
 
 ### 📊 Dashboard & Visualization
-- [ ] **[UI]** 대시보드 레이아웃
-- [ ] **[UI]** 차트 시각화 컴포넌트 (Recharts/Chart.js)
-- [ ] **[UI]** 실시간 데이터 표시
+- [x] **[UI]** 대시보드 레이아웃 ✅
+- [x] **[UI]** 차트 시각화 컴포넌트 (Recharts/Chart.js) ✅
+- [x] **[UI]** 실시간 데이터 표시 ✅
 
 ---
 
@@ -305,12 +325,14 @@
 
 ---
 
-## 🗓️ Sprint 6: 릴리스
+## 🗓️ Sprint 6: 릴리스 ✅
 
 ### 🚀 Release
-- [ ] **[Release]** UAT (사용자 수용 테스트)
-- [ ] **[Release]** Production 빌드 생성
-- [ ] **[Release]** 설치 패키지 생성 (Windows/Mac/Linux)
+- [x] **[Release]** UAT (사용자 수용 테스트) ✅
+- [x] **[Release]** Production 빌드 생성 ✅
+- [x] **[Release]** 설치 패키지 생성 (Windows/Mac/Linux) ✅
+  - MSI: `TriFlow AI_0.1.0_x64_en-US.msi`
+  - NSIS: `TriFlow AI_0.1.0_x64-setup.exe`
 
 ---
 

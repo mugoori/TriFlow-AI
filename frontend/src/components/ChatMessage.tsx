@@ -3,10 +3,13 @@
  * 채팅 메시지를 렌더링하는 컴포넌트
  */
 
+import { useState } from 'react';
+import { ChevronDown, ChevronRight, Pin, Check } from 'lucide-react';
 import type { ChatMessage as ChatMessageType } from '../types/agent';
 import type { ChartConfig } from '../types/chart';
 import { Card, CardContent } from './ui/card';
 import { ChartRenderer } from './charts';
+import { useDashboard } from '../contexts/DashboardContext';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -14,9 +17,24 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
+  const [showDetails, setShowDetails] = useState(false);
+  const { addChart, hasChart } = useDashboard();
 
   // Check if this message contains chart data from BI Agent
   const chartConfig = extractChartConfig(message);
+
+  // 차트가 이미 대시보드에 고정되어 있는지 확인
+  const isChartPinned = chartConfig ? hasChart(chartConfig) : false;
+
+  // Extract reasoning summary from tool calls
+  const reasoningSummary = extractReasoningSummary(message);
+
+  // 대시보드에 차트 고정
+  const handlePinChart = () => {
+    if (chartConfig && !isChartPinned) {
+      addChart(chartConfig, chartConfig.title);
+    }
+  };
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -44,33 +62,76 @@ export function ChatMessage({ message }: ChatMessageProps) {
             {/* Chart Visualization */}
             {chartConfig && (
               <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {chartConfig.title || '차트'}
+                  </span>
+                  <button
+                    onClick={handlePinChart}
+                    disabled={isChartPinned}
+                    className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+                      isChartPinned
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 cursor-default'
+                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800'
+                    }`}
+                  >
+                    {isChartPinned ? (
+                      <>
+                        <Check className="w-3 h-3" />
+                        고정됨
+                      </>
+                    ) : (
+                      <>
+                        <Pin className="w-3 h-3" />
+                        대시보드에 고정
+                      </>
+                    )}
+                  </button>
+                </div>
                 <ChartRenderer config={chartConfig} />
               </div>
             )}
 
-            {/* Tool 호출 정보 */}
-            {message.tool_calls && message.tool_calls.length > 0 && (
-              <div className="mt-3 space-y-2">
-                <div className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                  Tool 호출:
+            {/* 간단한 근거 표시 (사용자 메시지가 아닐 때만) */}
+            {!isUser && reasoningSummary && (
+              <div className="mt-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                <div className="text-xs text-slate-500 dark:text-slate-400 italic">
+                  {reasoningSummary}
                 </div>
-                {message.tool_calls.map((tool, index) => (
-                  <div
-                    key={index}
-                    className="text-xs bg-slate-100 dark:bg-slate-800 rounded p-2"
+
+                {/* 상세 정보 토글 (개발 모드용) */}
+                {message.tool_calls && message.tool_calls.length > 0 && (
+                  <button
+                    onClick={() => setShowDetails(!showDetails)}
+                    className="flex items-center gap-1 mt-2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                   >
-                    <div className="font-mono text-blue-600 dark:text-blue-400">
-                      {tool.tool}
-                    </div>
-                    <div className="text-slate-600 dark:text-slate-400 mt-1">
-                      {Object.keys(tool.input).length > 0 && (
-                        <pre className="text-[10px] overflow-x-auto">
-                          {JSON.stringify(tool.input, null, 2)}
-                        </pre>
-                      )}
-                    </div>
+                    {showDetails ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    상세 정보
+                  </button>
+                )}
+
+                {/* 상세 Tool 호출 정보 (접힌 상태) */}
+                {showDetails && message.tool_calls && message.tool_calls.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {message.tool_calls.map((tool, index) => (
+                      <div
+                        key={index}
+                        className="text-xs bg-slate-100 dark:bg-slate-800 rounded p-2"
+                      >
+                        <div className="font-mono text-blue-600 dark:text-blue-400">
+                          {tool.tool}
+                        </div>
+                        <div className="text-slate-600 dark:text-slate-400 mt-1">
+                          {Object.keys(tool.input).length > 0 && (
+                            <pre className="text-[10px] overflow-x-auto">
+                              {JSON.stringify(tool.input, null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )}
           </CardContent>
@@ -78,6 +139,44 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
     </div>
   );
+}
+
+/**
+ * Extract a brief reasoning summary from tool calls
+ */
+function extractReasoningSummary(message: ChatMessageType): string | null {
+  if (!message.tool_calls || message.tool_calls.length === 0) {
+    return null;
+  }
+
+  // Try to find classify_intent or route_request for reasoning
+  const classifyTool = message.tool_calls.find(tc => tc.tool === 'classify_intent');
+  const routeTool = message.tool_calls.find(tc => tc.tool === 'route_request');
+
+  // Extract reason from classify_intent
+  if (classifyTool?.input) {
+    const input = classifyTool.input as { intent?: string; confidence?: number; reason?: string };
+    if (input.reason) {
+      const confidence = input.confidence ? ` (${Math.round(input.confidence * 100)}%)` : '';
+      return `${input.reason}${confidence}`;
+    }
+  }
+
+  // Extract from route_request
+  if (routeTool?.input) {
+    const input = routeTool.input as { target_agent?: string; processed_request?: string };
+    if (input.target_agent) {
+      const agentNames: Record<string, string> = {
+        'general': '일반 응답',
+        'judgment': '판단 에이전트',
+        'workflow': '워크플로우 에이전트',
+        'bi': 'BI 에이전트',
+      };
+      return `→ ${agentNames[input.target_agent] || input.target_agent}`;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -101,14 +200,27 @@ function extractChartConfig(message: ChatMessageType): ChartConfig | null {
   try {
     const result = chartTool.result;
 
-    // Check if result has the expected structure
+    // Backend returns: { success: true, config: { type, data, ... } }
+    // Or directly: { type, data, ... }
+    let config = result;
+
+    // Check if result is wrapped in { success, config } structure
+    if (result && typeof result === 'object' && 'success' in result && 'config' in result) {
+      if (!result.success) {
+        console.warn('Chart config generation failed:', result.error);
+        return null;
+      }
+      config = result.config;
+    }
+
+    // Check if config has the expected structure
     if (
-      result &&
-      typeof result === 'object' &&
-      'type' in result &&
-      'data' in result
+      config &&
+      typeof config === 'object' &&
+      'type' in config &&
+      'data' in config
     ) {
-      return result as ChartConfig;
+      return config as ChartConfig;
     }
 
     return null;
