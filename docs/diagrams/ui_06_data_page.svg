@@ -1,0 +1,185 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+      .font-inter { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+      .shadow { filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1)); }
+    </style>
+    <linearGradient id="sidebarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 배경 -->
+  <rect width="1200" height="750" fill="#f1f5f9"/>
+
+  <!-- 타이틀 -->
+  <text x="600" y="40" text-anchor="middle" class="font-inter" font-size="24" font-weight="700" fill="#0f172a">TriFlow AI - Data 페이지</text>
+  <text x="600" y="65" text-anchor="middle" class="font-inter" font-size="14" fill="#64748b">센서 및 생산 데이터 조회</text>
+
+  <!-- 앱 프레임 -->
+  <rect x="50" y="90" width="1100" height="630" rx="12" fill="white" class="shadow"/>
+  <rect x="50" y="90" width="1100" height="630" rx="12" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+
+  <!-- 사이드바 -->
+  <rect x="50" y="90" width="64" height="630" rx="12 0 0 12" fill="url(#sidebarGrad)"/>
+
+  <!-- 사이드바 로고 -->
+  <circle cx="82" cy="130" r="20" fill="#3b82f6"/>
+  <text x="82" y="136" text-anchor="middle" class="font-inter" font-size="14" font-weight="700" fill="white">TF</text>
+
+  <!-- 사이드바 메뉴 -->
+  <rect x="70" y="182" width="24" height="24" rx="4" fill="#475569"/>
+  <text x="82" y="222" text-anchor="middle" class="font-inter" font-size="9" fill="#64748b">Chat</text>
+
+  <rect x="70" y="260" width="24" height="24" rx="4" fill="#475569"/>
+  <text x="82" y="300" text-anchor="middle" class="font-inter" font-size="9" fill="#64748b">Dash</text>
+
+  <rect x="70" y="330" width="24" height="24" rx="4" fill="#475569"/>
+  <text x="82" y="370" text-anchor="middle" class="font-inter" font-size="9" fill="#64748b">Work</text>
+
+  <!-- Data (활성) -->
+  <rect x="58" y="388" width="48" height="48" rx="8" fill="#3b82f6" opacity="0.2"/>
+  <rect x="70" y="400" width="24" height="24" rx="4" fill="#3b82f6"/>
+  <text x="82" y="440" text-anchor="middle" class="font-inter" font-size="9" fill="#94a3b8">Data</text>
+
+  <rect x="70" y="470" width="24" height="24" rx="4" fill="#475569"/>
+  <text x="82" y="510" text-anchor="middle" class="font-inter" font-size="9" fill="#64748b">Set</text>
+
+  <!-- 연결 상태 -->
+  <circle cx="82" cy="690" r="6" fill="#22c55e"/>
+
+  <!-- 상단바 -->
+  <rect x="114" y="90" width="1036" height="56" fill="white"/>
+  <line x1="114" y1="146" x2="1150" y2="146" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="134" y="126" class="font-inter" font-size="18" font-weight="600" fill="#0f172a">Data</text>
+  <text x="195" y="126" class="font-inter" font-size="14" fill="#64748b">센서 및 생산 데이터 조회</text>
+
+  <!-- 메인 컨텐츠 영역 -->
+  <rect x="114" y="146" width="1036" height="574" fill="#f8fafc"/>
+
+  <!-- 필터 카드 -->
+  <rect x="134" y="166" width="1000" height="100" rx="12" fill="white" class="shadow"/>
+
+  <!-- 필터 헤더 -->
+  <text x="154" y="192" class="font-inter" font-size="14" font-weight="600" fill="#0f172a">🔍 필터</text>
+
+  <!-- 초기화 버튼 -->
+  <rect x="950" y="175" width="60" height="28" rx="6" fill="#f1f5f9"/>
+  <text x="980" y="194" text-anchor="middle" class="font-inter" font-size="11" fill="#64748b">초기화</text>
+
+  <!-- 새로고침 버튼 -->
+  <rect x="1020" y="175" width="90" height="28" rx="6" fill="#3b82f6"/>
+  <text x="1065" y="194" text-anchor="middle" class="font-inter" font-size="11" fill="white">🔄 새로고침</text>
+
+  <!-- 필터 입력들 -->
+  <!-- 시작 날짜 -->
+  <text x="154" y="225" class="font-inter" font-size="11" fill="#64748b">시작 날짜</text>
+  <rect x="154" y="232" width="200" height="32" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="170" y="253" class="font-inter" font-size="12" fill="#334155">2025-11-26</text>
+
+  <!-- 종료 날짜 -->
+  <text x="374" y="225" class="font-inter" font-size="11" fill="#64748b">종료 날짜</text>
+  <rect x="374" y="232" width="200" height="32" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="390" y="253" class="font-inter" font-size="12" fill="#334155">2025-11-27</text>
+
+  <!-- 생산 라인 -->
+  <text x="594" y="225" class="font-inter" font-size="11" fill="#64748b">생산 라인</text>
+  <rect x="594" y="232" width="200" height="32" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="610" y="253" class="font-inter" font-size="12" fill="#334155">전체</text>
+  <text x="778" y="253" class="font-inter" font-size="12" fill="#94a3b8">▼</text>
+
+  <!-- 센서 타입 -->
+  <text x="814" y="225" class="font-inter" font-size="11" fill="#64748b">센서 타입</text>
+  <rect x="814" y="232" width="200" height="32" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="830" y="253" class="font-inter" font-size="12" fill="#334155">전체</text>
+  <text x="998" y="253" class="font-inter" font-size="12" fill="#94a3b8">▼</text>
+
+  <!-- 데이터 테이블 카드 -->
+  <rect x="134" y="286" width="1000" height="370" rx="12" fill="white" class="shadow"/>
+
+  <!-- 테이블 헤더 -->
+  <text x="154" y="315" class="font-inter" font-size="14" font-weight="600" fill="#0f172a">💾 센서 데이터</text>
+  <text x="270" y="315" class="font-inter" font-size="12" fill="#64748b">(2,480건)</text>
+
+  <!-- CSV 다운로드 버튼 -->
+  <rect x="1000" y="298" width="115" height="28" rx="6" fill="#f1f5f9"/>
+  <text x="1057" y="317" text-anchor="middle" class="font-inter" font-size="11" fill="#64748b">📥 CSV 다운로드</text>
+
+  <!-- 테이블 헤더 행 -->
+  <rect x="154" y="335" width="960" height="36" rx="6" fill="#f1f5f9"/>
+  <text x="180" y="358" class="font-inter" font-size="12" font-weight="600" fill="#475569">센서 ID</text>
+  <text x="340" y="358" class="font-inter" font-size="12" font-weight="600" fill="#475569">기록 시간</text>
+  <text x="540" y="358" class="font-inter" font-size="12" font-weight="600" fill="#475569">라인</text>
+  <text x="680" y="358" class="font-inter" font-size="12" font-weight="600" fill="#475569">센서 타입</text>
+  <text x="900" y="358" text-anchor="end" class="font-inter" font-size="12" font-weight="600" fill="#475569">값</text>
+
+  <!-- 테이블 데이터 행들 -->
+  <!-- 행 1 -->
+  <text x="180" y="395" class="font-inter" font-size="12" fill="#334155">SENSOR_00001</text>
+  <text x="340" y="395" class="font-inter" font-size="12" fill="#334155">2025. 11. 27. 오후 2:00:00</text>
+  <rect x="530" y="380" width="60" height="22" rx="4" fill="#dbeafe"/>
+  <text x="560" y="396" text-anchor="middle" class="font-inter" font-size="11" fill="#1d4ed8">LINE_A</text>
+  <text x="680" y="395" class="font-inter" font-size="12" fill="#334155">🌡 온도</text>
+  <text x="900" y="395" text-anchor="end" class="font-inter" font-size="12" font-weight="600" fill="#334155">72.5</text>
+  <text x="920" y="395" class="font-inter" font-size="11" fill="#64748b">°C</text>
+
+  <line x1="154" y1="410" x2="1114" y2="410" stroke="#f1f5f9"/>
+
+  <!-- 행 2 -->
+  <text x="180" y="435" class="font-inter" font-size="12" fill="#334155">SENSOR_00002</text>
+  <text x="340" y="435" class="font-inter" font-size="12" fill="#334155">2025. 11. 27. 오후 2:00:00</text>
+  <rect x="530" y="420" width="60" height="22" rx="4" fill="#dbeafe"/>
+  <text x="560" y="436" text-anchor="middle" class="font-inter" font-size="11" fill="#1d4ed8">LINE_A</text>
+  <text x="680" y="435" class="font-inter" font-size="12" fill="#334155">📊 압력</text>
+  <text x="900" y="435" text-anchor="end" class="font-inter" font-size="12" font-weight="600" fill="#334155">4.2</text>
+  <text x="920" y="435" class="font-inter" font-size="11" fill="#64748b">bar</text>
+
+  <line x1="154" y1="450" x2="1114" y2="450" stroke="#f1f5f9"/>
+
+  <!-- 행 3 -->
+  <text x="180" y="475" class="font-inter" font-size="12" fill="#334155">SENSOR_00003</text>
+  <text x="340" y="475" class="font-inter" font-size="12" fill="#334155">2025. 11. 27. 오후 2:00:00</text>
+  <rect x="530" y="460" width="60" height="22" rx="4" fill="#dcfce7"/>
+  <text x="560" y="476" text-anchor="middle" class="font-inter" font-size="11" fill="#166534">LINE_B</text>
+  <text x="680" y="475" class="font-inter" font-size="12" fill="#334155">💧 습도</text>
+  <text x="900" y="475" text-anchor="end" class="font-inter" font-size="12" font-weight="600" fill="#334155">55.3</text>
+  <text x="920" y="475" class="font-inter" font-size="11" fill="#64748b">%</text>
+
+  <line x1="154" y1="490" x2="1114" y2="490" stroke="#f1f5f9"/>
+
+  <!-- 행 4 -->
+  <text x="180" y="515" class="font-inter" font-size="12" fill="#334155">SENSOR_00004</text>
+  <text x="340" y="515" class="font-inter" font-size="12" fill="#334155">2025. 11. 27. 오후 2:00:00</text>
+  <rect x="530" y="500" width="60" height="22" rx="4" fill="#dcfce7"/>
+  <text x="560" y="516" text-anchor="middle" class="font-inter" font-size="11" fill="#166534">LINE_B</text>
+  <text x="680" y="515" class="font-inter" font-size="12" fill="#334155">📳 진동</text>
+  <text x="900" y="515" text-anchor="end" class="font-inter" font-size="12" font-weight="600" fill="#334155">0.15</text>
+  <text x="920" y="515" class="font-inter" font-size="11" fill="#64748b">mm/s</text>
+
+  <line x1="154" y1="530" x2="1114" y2="530" stroke="#f1f5f9"/>
+
+  <!-- 행 5 -->
+  <text x="180" y="555" class="font-inter" font-size="12" fill="#334155">SENSOR_00005</text>
+  <text x="340" y="555" class="font-inter" font-size="12" fill="#334155">2025. 11. 27. 오후 2:00:00</text>
+  <rect x="530" y="540" width="60" height="22" rx="4" fill="#fef3c7"/>
+  <text x="560" y="556" text-anchor="middle" class="font-inter" font-size="11" fill="#92400e">LINE_C</text>
+  <text x="680" y="555" class="font-inter" font-size="12" fill="#334155">🌬 유량</text>
+  <text x="900" y="555" text-anchor="end" class="font-inter" font-size="12" font-weight="600" fill="#334155">45.8</text>
+  <text x="920" y="555" class="font-inter" font-size="11" fill="#64748b">L/min</text>
+
+  <!-- 페이지네이션 -->
+  <text x="154" y="630" class="font-inter" font-size="12" fill="#64748b">1 - 20 / 2,480건</text>
+
+  <!-- 페이지 버튼 -->
+  <rect x="1040" y="612" width="32" height="32" rx="6" fill="#f1f5f9"/>
+  <text x="1056" y="633" text-anchor="middle" class="font-inter" font-size="14" fill="#94a3b8">◀</text>
+  <text x="1085" y="633" text-anchor="middle" class="font-inter" font-size="12" fill="#64748b">1 / 124</text>
+  <rect x="1100" y="612" width="32" height="32" rx="6" fill="#f1f5f9"/>
+  <text x="1116" y="633" text-anchor="middle" class="font-inter" font-size="14" fill="#334155">▶</text>
+
+  <!-- 레이블 -->
+  <rect x="50" y="700" width="80" height="24" rx="4" fill="#3b82f6"/>
+  <text x="90" y="716" text-anchor="middle" class="font-inter" font-size="10" fill="white">Data 탭</text>
+</svg>

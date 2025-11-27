@@ -75,6 +75,12 @@
   - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
   - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
 
+### UI 다이어그램 추가 ✅ (2025-11-27)
+- [x] 탭별 UI SVG 다이어그램 추가 (`docs/diagrams/`)
+  - `ui_05_dashboard.svg` - Dashboard 페이지 (Stats Grid, 고정된 차트, 최근 활동)
+  - `ui_06_data_page.svg` - Data 페이지 (필터, 센서 데이터 테이블, 페이지네이션)
+  - `ui_07_settings_page.svg` - Settings 페이지 (일반 설정, Backend 연결, AI 모델, 앱 정보)
+
 ### Workflows 페이지 구현 ✅ (2025-11-27)
 - [x] Backend: 워크플로우 API 라우터 구현 (`backend/app/routers/workflows.py`)
   - `GET /api/v1/workflows` - 워크플로우 목록 조회 (검색, 활성 상태 필터)
