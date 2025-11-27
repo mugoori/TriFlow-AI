@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
 > **최종 업데이트**: 2025-11-27
-> **현재 Phase**: Sprint 2 - 에이전트 시스템 구현 완료
+> **현재 Phase**: Sprint 3 - Chat UI 구현 완료
 
 ---
 
@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██████░░░░ 59% | 10/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ████████░░ 76% | 13/17 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -43,15 +43,38 @@
 #### 🎨 Frontend (Tauri/React)
 | Sprint | Task | Status | Progress |
 | :--- | :--- | :--- | :--- |
-| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ⏳ Pending | ░░░░░░░░░░ 0% |
-| | **[Setup]** Tailwind + Shadcn/ui Config | ⏳ Pending | ░░░░░░░░░░ 0% |
-| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ✅ 완료 | ██████████ 100% |
+| | **[Setup]** Tailwind + Shadcn/ui Config | ✅ 완료 | ██████████ 100% |
+| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ✅ 완료 | ██████████ 100% |
 | | **[UI]** Dashboard & Chart Visualization | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **Sprint 6** | **[Release]** UAT & Production Build | ⏳ Pending | ░░░░░░░░░░ 0% |
 
 ---
 
 ## 📋 현재 진행 중인 작업
+
+### Sprint 3: Chat UI 구현 ✅
+- [x] TypeScript 타입 정의 (`frontend/src/types/agent.ts`)
+  - [x] ToolCall, AgentResponse, ChatMessage, AgentRequest 인터페이스
+- [x] Agent API 서비스 (`frontend/src/services/agentService.ts`)
+  - [x] chat() 메서드 - `/api/v1/agents/chat` 호출
+  - [x] status() 메서드 - `/api/v1/agents/status` 호출
+- [x] 채팅 메시지 컴포넌트 (`frontend/src/components/ChatMessage.tsx`)
+  - [x] User/Assistant 메시지 구분
+  - [x] Tool 호출 시각화 (JSON 포맷)
+  - [x] 타임스탬프 표시
+- [x] 메시지 입력 컴포넌트 (`frontend/src/components/ChatInput.tsx`)
+  - [x] Textarea + Send 버튼
+  - [x] Enter 키로 전송 (Shift+Enter로 줄바꿈)
+  - [x] Disabled 상태 처리
+- [x] 채팅 컨테이너 (`frontend/src/components/ChatContainer.tsx`)
+  - [x] 메시지 히스토리 관리
+  - [x] Auto-scroll 기능
+  - [x] Loading 애니메이션
+  - [x] 에러 처리
+- [x] App.tsx 통합
+  - [x] Chat/Tenants 뷰 전환 토글 버튼
+  - [x] Full-screen flex 레이아웃
 
 ### Sprint 2: 에이전트 시스템 구현 ✅
 - [x] Base Agent 클래스 구현 (Anthropic Tool Calling Pattern)
@@ -89,9 +112,9 @@
   - [x] Docker 이미지 빌드 및 푸시
 
 ### 🎨 Frontend 초기 설정
-- [ ] **[Setup]** Tauri v2 + React + Vite 프로젝트 초기화
-- [ ] **[Setup]** Tailwind CSS 설정
-- [ ] **[Setup]** Shadcn/ui 컴포넌트 라이브러리 설정
+- [x] **[Setup]** Tauri v2 + React + Vite 프로젝트 초기화 ✅
+- [x] **[Setup]** Tailwind CSS 설정 ✅
+- [x] **[Setup]** Shadcn/ui 컴포넌트 라이브러리 설정 ✅
 
 ---
 
@@ -144,10 +167,15 @@
 ## 🗓️ Sprint 3: UI 구현
 
 ### 💬 Chat-Centric Interface
-- [ ] **[UI]** 채팅 인터페이스 레이아웃
-  - [ ] 메시지 입력 컴포넌트
-  - [ ] 메시지 목록 컴포넌트
-  - [ ] 에이전트 응답 렌더링
+- [x] **[UI]** 채팅 인터페이스 레이아웃 ✅
+  - [x] 메시지 입력 컴포넌트 (ChatInput.tsx)
+  - [x] 메시지 목록 컴포넌트 (ChatContainer.tsx)
+  - [x] 에이전트 응답 렌더링 (ChatMessage.tsx)
+  - [x] Agent API 연동 (agentService.ts)
+  - [x] TypeScript 타입 정의 (agent.ts)
+  - [x] Tool 호출 시각화 (JSON 포맷)
+  - [x] Auto-scroll & Loading State
+  - [x] App.tsx 통합 (Chat/Tenants 뷰 전환)
 
 ### 📊 Dashboard & Visualization
 - [ ] **[UI]** 대시보드 레이아웃
