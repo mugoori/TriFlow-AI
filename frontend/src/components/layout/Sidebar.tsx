@@ -1,8 +1,8 @@
-import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User } from 'lucide-react';
+import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
 
-export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'data' | 'settings';
+export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'data' | 'settings';
 
 interface SidebarProps {
   currentView: ViewType;
@@ -34,6 +34,12 @@ const navItems: NavItem[] = [
     label: 'Workflows',
     icon: Workflow,
     description: '자동화 워크플로우',
+  },
+  {
+    id: 'rulesets',
+    label: 'Rulesets',
+    icon: FileCode,
+    description: 'Rhai 규칙 관리',
   },
   {
     id: 'data',

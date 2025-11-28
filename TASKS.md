@@ -74,8 +74,9 @@
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[UI]** Workflow Visual Editor (Drag & Drop) | ✅ 완료 | ██████████ 100% |
-| **[UI]** Ruleset Editor (Rhai Script 편집기) | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[UI]** Ruleset Editor (Rhai Script 편집기) | 🚧 개발 중 | ██░░░░░░░░ 20% |
 | **[UI]** Action Catalog 관리 UI | ✅ 완료 | ██████████ 100% |
+| **[i18n]** Action Catalog 한글화 | ✅ 완료 | ██████████ 100% |
 | **[Engine]** Workflow Execution Pipeline | ✅ 완료 | ██████████ 100% |
 | **[Engine]** Sensor Data Simulator | ✅ 완료 | ██████████ 100% |
 | **[UI]** Simulation Test Panel | ✅ 완료 | ██████████ 100% |
