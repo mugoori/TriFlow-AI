@@ -1,0 +1,18 @@
+# ===================================================
+# TriFlow AI Backend - ML Dependencies (Optional)
+# V1/V2에서 임베딩, 유사도 검색 등에 필요
+# Docker 빌드 시 별도 설치 (--build-arg INSTALL_ML=true)
+# ===================================================
+
+# PyTorch CPU-only 버전 강제 (약 200MB vs 2GB)
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Sentence Embeddings (V1: 문서 유사도 검색)
+sentence-transformers==2.2.2
+
+# Data Processing
+numpy==1.26.2
+pandas==2.1.3
+
+# ML Utilities
+scikit-learn==1.3.2
