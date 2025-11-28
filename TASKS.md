@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
 > **최종 업데이트**: 2025-11-28
-> **현재 Phase**: Sprint 4 완료 - Learning System 구현
+> **현재 Phase**: Sprint 5 완료 - Security (Auth + PII Masking) 구현
 
 ---
 
@@ -38,7 +38,7 @@
 | | **[Agent]** Workflow Planner (NL->DSL) 구현 | ✅ 완료 | ██████████ 100% |
 | | **[Agent]** BI Planner (Text-to-SQL) 구현 | ✅ 완료 | ██████████ 100% |
 | **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ✅ 완료 | ██████████ 100% |
-| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ✅ 완료 | ██████████ 100% |
 
 #### 🎨 Frontend (Tauri/React)
 | Sprint | Task | Status | Progress |
@@ -416,11 +416,56 @@
 
 ---
 
-## 🗓️ Sprint 5: 보안
+## 🗓️ Sprint 5: 보안 ✅
 
 ### 🔐 Security
-- [ ] **[Security]** 인증 시스템 구현
-- [ ] **[Security]** PII 마스킹 미들웨어
+- [x] **[Security]** 인증 시스템 구현 ✅
+- [x] **[Security]** PII 마스킹 미들웨어 ✅
+
+### 📋 Sprint 5 완료 작업 내역 (2025-11-28)
+
+#### 🔐 JWT 인증 시스템
+- [x] **[Auth]** Password Hashing (`backend/app/auth/password.py`)
+  - bcrypt 알고리즘 사용 (passlib)
+  - verify_password, get_password_hash 함수
+- [x] **[Auth]** JWT Token 관리 (`backend/app/auth/jwt.py`)
+  - Access Token (30분), Refresh Token (7일)
+  - 환경변수: JWT_SECRET_KEY, ACCESS_TOKEN_EXPIRE_MINUTES
+- [x] **[Auth]** FastAPI Dependencies (`backend/app/auth/dependencies.py`)
+  - get_current_user, get_current_active_user, get_optional_user
+  - Bearer Token 검증 및 사용자 조회
+- [x] **[Auth]** Auth Schemas (`backend/app/schemas/auth.py`)
+  - LoginRequest, RegisterRequest, TokenResponse, UserResponse 등
+- [x] **[Auth]** Auth API Router (`backend/app/routers/auth.py`)
+  - POST /login - 로그인 (이메일/비밀번호)
+  - POST /register - 회원가입
+  - POST /refresh - 토큰 갱신
+  - POST /change-password - 비밀번호 변경
+  - GET /me - 현재 사용자 정보
+  - GET /status - 인증 상태 확인
+- [x] **[DB]** Admin 계정 자동 시딩 (`backend/app/init_db.py`)
+  - 환경변수: ADMIN_EMAIL (기본: admin@triflow.ai), ADMIN_PASSWORD (기본: admin1234)
+  - 서버 시작 시 Default Tenant + Admin User 자동 생성
+
+#### 🛡️ PII 마스킹 미들웨어
+- [x] **[PII]** 한국 PII 패턴 정의 (`backend/app/utils/pii_patterns.py`)
+  - 10개 패턴: 주민등록번호, 외국인등록번호, 여권번호, 운전면허번호
+  - 휴대전화 (010), 일반전화, 이메일, 신용카드, 계좌번호, IP주소
+  - mask_pii(), contains_pii() 함수
+- [x] **[PII]** Request/Response 마스킹 미들웨어 (`backend/app/middleware/pii_masking.py`)
+  - BaseHTTPMiddleware 상속
+  - Request Body 마스킹 (LLM 보호 우선)
+  - Response Body 마스킹
+  - PIIMaskingFilter (로깅 마스킹)
+  - 환경변수: PII_MASKING_ENABLED (기본: true)
+- [x] **[Main]** main.py 통합
+  - lifespan 컨텍스트로 DB 초기화
+  - PIIMaskingMiddleware 등록
+  - Auth Router 등록 (/api/v1/auth)
+
+#### 🔒 인증 적용 범위 (Option B)
+- **Public APIs**: /health, /auth/*, /docs, /redoc, /openapi.json
+- **Protected APIs**: 모든 기타 API (MVP에서는 선택적 적용)
 
 ---
 
