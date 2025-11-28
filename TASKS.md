@@ -74,7 +74,7 @@
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[UI]** Workflow Visual Editor (Drag & Drop) | ✅ 완료 | ██████████ 100% |
-| **[UI]** Ruleset Editor (Rhai Script 편집기) | 🚧 개발 중 | ██░░░░░░░░ 20% |
+| **[UI]** Ruleset Editor (Rhai Script 편집기) | ✅ 완료 | ██████████ 100% |
 | **[UI]** Action Catalog 관리 UI | ✅ 완료 | ██████████ 100% |
 | **[i18n]** Action Catalog 한글화 | ✅ 완료 | ██████████ 100% |
 | **[Engine]** Workflow Execution Pipeline | ✅ 완료 | ██████████ 100% |
@@ -123,6 +123,21 @@
   - 실행 로그 실시간 표시
   - 로그 초기화 기능
   - 이벤트 타입/시간/상세정보 표시
+- [x] **[UI]** Ruleset Editor 구현 (`frontend/src/components/ruleset/`)
+  - `RulesetsPage.tsx` - 룰셋 목록/상세 페이지
+    - 검색 및 활성 상태 필터
+    - 룰셋 CRUD (생성, 편집, 삭제)
+    - 빠른 테스트 실행 패널
+  - `RulesetEditorModal.tsx` - Monaco Editor 기반 Rhai 편집기
+    - 커스텀 Rhai 구문 하이라이팅 (Monarch Tokenizer)
+    - 자동완성 (키워드, input 속성)
+    - 샘플 스크립트 선택 드롭다운
+    - 테스트 실행 및 결과 표시
+  - `rulesetService.ts` - Ruleset API 클라이언트
+- [x] **[i18n]** Action Catalog 한글화
+  - display_name, category_display_name 필드 추가
+  - 12개 액션 한글 이름 적용
+  - 4개 카테고리 한글 표시
 
 ### 🧠 V1 Sprint 2: Learning Pipeline 강화
 | Task | Status | Progress |
