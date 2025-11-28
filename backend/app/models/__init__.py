@@ -9,6 +9,8 @@ from app.models.core import (
     WorkflowInstance,
     JudgmentExecution,
     SensorData,
+    FeedbackLog,
+    ProposedRule,
 )
 
 __all__ = [
@@ -19,4 +21,6 @@ __all__ = [
     "WorkflowInstance",
     "JudgmentExecution",
     "SensorData",
+    "FeedbackLog",
+    "ProposedRule",
 ]

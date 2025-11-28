@@ -5,7 +5,7 @@ Agent API Router
 import logging
 from fastapi import APIRouter, HTTPException, status
 
-from app.agents import MetaRouterAgent, JudgmentAgent, WorkflowPlannerAgent, BIPlannerAgent
+from app.agents import MetaRouterAgent, JudgmentAgent, WorkflowPlannerAgent, BIPlannerAgent, LearningAgent
 from app.schemas.agent import AgentRequest, AgentResponse, JudgmentRequest
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ meta_router = MetaRouterAgent()
 judgment_agent = JudgmentAgent()
 workflow_planner = WorkflowPlannerAgent()
 bi_planner = BIPlannerAgent()
+learning_agent = LearningAgent()
 
 
 @router.post("/chat", response_model=AgentResponse)
@@ -123,12 +124,27 @@ async def chat_with_agent(request: AgentRequest):
             )
 
         elif target_agent_name == "learning":
-            # 아직 구현되지 않은 Agent
+            # Learning Agent 실행
+            agent_result = learning_agent.run(
+                user_message=routing_info.get("processed_request", request.message),
+                context={
+                    **(request.context or {}),
+                    **routing_info.get("context", {}),
+                },
+            )
+
             return AgentResponse(
-                response="Learning Agent는 아직 구현되지 않았습니다. (Coming in Sprint 4)",
-                agent_name="MetaRouterAgent",
-                tool_calls=[],
-                iterations=1,
+                response=agent_result["response"],
+                agent_name="LearningAgent",
+                tool_calls=[
+                    {
+                        "tool": tc["tool"],
+                        "input": tc["input"],
+                        "result": tc["result"],
+                    }
+                    for tc in agent_result.get("tool_calls", [])
+                ],
+                iterations=agent_result["iterations"],
                 routing_info=routing_info,
             )
 
@@ -241,8 +257,9 @@ async def agent_status():
                 "available": True,
             },
             "learning": {
-                "available": False,
-                "note": "Coming in Sprint 4",
+                "name": learning_agent.name,
+                "model": learning_agent.model,
+                "available": True,
             },
         },
     }

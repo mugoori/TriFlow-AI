@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-11-27
-> **현재 Phase**: Sprint 6 진행 중 - Production Build 완료
+> **최종 업데이트**: 2025-11-28
+> **현재 Phase**: Sprint 4 완료 - Learning System 구현
 
 ---
 
@@ -10,7 +10,7 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | 🔄 In Progress | ██████████ 100% | 17/17 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ 완료 | ██████████ 100% | 18/18 |
 | **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
@@ -37,7 +37,7 @@
 | **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ✅ 완료 | ██████████ 100% |
 | | **[Agent]** Workflow Planner (NL->DSL) 구현 | ✅ 완료 | ██████████ 100% |
 | | **[Agent]** BI Planner (Text-to-SQL) 구현 | ✅ 완료 | ██████████ 100% |
-| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ✅ 완료 | ██████████ 100% |
 | **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ⏳ Pending | ░░░░░░░░░░ 0% |
 
 #### 🎨 Frontend (Tauri/React)
@@ -390,15 +390,29 @@
 
 ---
 
-## 🗓️ Sprint 4: 학습 파이프라인
+## 🗓️ Sprint 4: 학습 파이프라인 ✅
 
 ### 🧠 Learning System
-- [ ] **[Learning]** Feedback Loop 구현
-  - [ ] 피드백 로그 분석 (analyze_feedback_logs)
-  - [ ] 신규 규칙 제안 (propose_new_rule)
+- [x] **[Learning]** Feedback Loop 구현 ✅
+  - [x] 피드백 로그 분석 (analyze_feedback_logs)
+  - [x] 신규 규칙 제안 (propose_new_rule)
+  - [x] 규칙 성능 분석 (get_rule_performance)
 
-- [ ] **[Learning]** Zwave 시뮬레이션 도구
-  - [ ] 시뮬레이션 실행 (run_zwave_simulation)
+- [x] **[Learning]** Zwave 시뮬레이션 도구 ✅
+  - [x] 시뮬레이션 실행 (run_zwave_simulation)
+
+### 📋 Sprint 4 완료 작업 내역 (2025-11-28)
+- [x] **[DB]** Learning System ORM 모델 추가
+  - `FeedbackLog` - 피드백 로그 저장 (feedback_type, original_output, corrected_output)
+  - `ProposedRule` - 제안된 규칙 저장 (rule_name, rhai_script, confidence, status)
+- [x] **[Agent]** Learning Agent 구현 (`backend/app/agents/learning_agent.py`)
+  - 4개 Tools: analyze_feedback_logs, propose_new_rule, run_zwave_simulation, get_rule_performance
+  - 피드백 패턴 분석 및 규칙 자동 생성
+  - Rhai 스크립트 자동 생성 (자연어 → DSL)
+  - Z-Wave 시뮬레이션 (정확도 측정, 재현율, F1 스코어)
+- [x] **[Prompts]** Learning Agent 프롬프트 작성 (`backend/app/prompts/learning_agent.md`)
+- [x] **[API]** Agent 라우터 통합 (target_agent="learning" 라우팅)
+- [x] **[Router]** Meta Router 업데이트 ("학습", "피드백", "시뮬레이션" 키워드 → learning)
 
 ---
 

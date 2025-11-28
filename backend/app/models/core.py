@@ -182,3 +182,57 @@ class SensorData(Base):
 
     def __repr__(self):
         return f"<SensorData(type='{self.sensor_type}', value={self.value}, recorded_at={self.recorded_at})>"
+
+
+class FeedbackLog(Base):
+    """피드백 로그 (Learning System용)"""
+
+    __tablename__ = "feedback_logs"
+    __table_args__ = {"schema": "core"}
+
+    feedback_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    execution_id = Column(PGUUID(as_uuid=True), ForeignKey("core.judgment_executions.execution_id", ondelete="SET NULL"), nullable=True)
+
+    feedback_type = Column(String(50), nullable=False)  # positive, negative, correction
+    original_output = Column(JSONB, nullable=True)  # AI가 제안한 원래 출력
+    corrected_output = Column(JSONB, nullable=True)  # 사용자가 수정한 출력
+    feedback_text = Column(Text, nullable=True)  # 사용자 피드백 코멘트
+
+    context_data = Column(JSONB, default={})  # 피드백 시점의 컨텍스트
+    is_processed = Column(Boolean, default=False)  # 학습에 반영되었는지
+    processed_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<FeedbackLog(id={self.feedback_id}, type='{self.feedback_type}')>"
+
+
+class ProposedRule(Base):
+    """제안된 규칙 (Learning System이 생성)"""
+
+    __tablename__ = "proposed_rules"
+    __table_args__ = {"schema": "core"}
+
+    proposal_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+
+    rule_name = Column(String(255), nullable=False)
+    rule_description = Column(Text, nullable=True)
+    rhai_script = Column(Text, nullable=False)  # 제안된 Rhai 스크립트
+
+    source_type = Column(String(50), nullable=False)  # feedback_analysis, pattern_detection, simulation
+    source_data = Column(JSONB, default={})  # 제안 근거 데이터
+    confidence = Column(Float, default=0.0)  # 제안 신뢰도 (0-1)
+
+    status = Column(String(50), default="pending")  # pending, approved, rejected, deployed
+    reviewed_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    review_comment = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ProposedRule(id={self.proposal_id}, name='{self.rule_name}', status='{self.status}')>"
