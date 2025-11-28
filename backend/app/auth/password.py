@@ -1,12 +1,8 @@
 """
 비밀번호 해싱 유틸리티
-bcrypt 알고리즘 사용
+bcrypt 알고리즘 사용 (passlib 대신 bcrypt 직접 사용 - 호환성 문제 해결)
 """
-from passlib.context import CryptContext
-
-# bcrypt 컨텍스트 설정
-# deprecated="auto": 새로운 해시 알고리즘이 추가되면 자동으로 마이그레이션
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -20,7 +16,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         일치 여부
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+    )
 
 
 def get_password_hash(password: str) -> str:
@@ -33,4 +31,6 @@ def get_password_hash(password: str) -> str:
     Returns:
         bcrypt 해시된 비밀번호
     """
-    return pwd_context.hash(password)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")

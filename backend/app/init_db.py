@@ -59,7 +59,7 @@ def _ensure_default_tenant(db: Session) -> Tenant:
     tenant = Tenant(
         tenant_id=uuid4(),
         name=DEFAULT_TENANT_NAME,
-        description="Default tenant for TriFlow AI MVP",
+        slug="default",
     )
 
     db.add(tenant)
@@ -92,7 +92,7 @@ def _ensure_admin_user(db: Session, tenant_id) -> User:
         tenant_id=tenant_id,
         email=ADMIN_EMAIL,
         password_hash=get_password_hash(ADMIN_PASSWORD),
-        display_name="Administrator",
+        username="Administrator",
         role="admin",
         is_active=True,
     )

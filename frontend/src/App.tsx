@@ -1,11 +1,15 @@
 import { useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar, ViewType } from "./components/layout/Sidebar";
 import { ChatContainer } from "./components/ChatContainer";
 import { DashboardPage } from "./components/pages/DashboardPage";
 import { DataPage } from "./components/pages/DataPage";
 import { WorkflowsPage } from "./components/pages/WorkflowsPage";
 import { SettingsPage } from "./components/pages/SettingsPage";
+import { LoginPage } from "./components/pages/LoginPage";
 import { DashboardProvider } from "./contexts/DashboardContext";
+import { AuthProvider } from "./contexts/AuthContext";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 const PAGE_INFO: Record<ViewType, { title: string; description: string }> = {
   chat: { title: 'AI Chat', description: '에이전트와 대화하기' },
@@ -18,7 +22,10 @@ const PAGE_INFO: Record<ViewType, { title: string; description: string }> = {
 const getPageTitle = (view: ViewType) => PAGE_INFO[view]?.title || view;
 const getPageDescription = (view: ViewType) => PAGE_INFO[view]?.description || '';
 
-function App() {
+/**
+ * 메인 레이아웃 (인증된 사용자용)
+ */
+function MainLayout() {
   const [currentView, setCurrentView] = useState<ViewType>('chat');
 
   const renderContent = () => {
@@ -63,6 +70,35 @@ function App() {
         </main>
       </div>
     </DashboardProvider>
+  );
+}
+
+/**
+ * 앱 루트 컴포넌트
+ */
+function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* 로그인 페이지 (Public) */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* 메인 앱 (Protected) */}
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 기본 리다이렉트 */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

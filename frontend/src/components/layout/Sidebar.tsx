@@ -1,5 +1,6 @@
-import { MessageSquare, BarChart3, Settings, Database, Workflow } from 'lucide-react';
+import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '../../contexts/AuthContext';
 
 export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'data' | 'settings';
 
@@ -49,6 +50,12 @@ const navItems: NavItem[] = [
 ];
 
 export function Sidebar({ currentView, onViewChange }: SidebarProps) {
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+  };
+
   return (
     <aside className="w-64 bg-slate-900 text-white flex flex-col h-full">
       {/* Logo */}
@@ -92,13 +99,34 @@ export function Sidebar({ currentView, onViewChange }: SidebarProps) {
         })}
       </nav>
 
+      {/* User Info & Logout */}
+      <div className="p-3 border-t border-slate-700">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors text-left group"
+        >
+          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+            <User className="w-4 h-4 text-slate-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm truncate">
+              {user?.display_name || user?.email || 'User'}
+            </div>
+            <div className="text-xs text-slate-500 truncate">
+              {user?.role || 'member'}
+            </div>
+          </div>
+          <LogOut className="w-4 h-4 text-slate-500 group-hover:text-red-400 flex-shrink-0" />
+        </button>
+      </div>
+
       {/* Footer */}
-      <div className="p-4 border-t border-slate-700">
+      <div className="px-4 pb-3">
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <div className="w-2 h-2 rounded-full bg-green-500"></div>
-          <span>Backend Connected</span>
+          <span>Connected</span>
+          <span className="text-slate-600">v0.1.0</span>
         </div>
-        <div className="text-xs text-slate-600 mt-1">v0.1.0</div>
       </div>
     </aside>
   );
