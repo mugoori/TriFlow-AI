@@ -178,6 +178,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register rulesets router: {e}")
 
+# Notifications 라우터
+try:
+    from app.routers import notifications
+    app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
+    logger.info("Notifications router registered")
+except Exception as e:
+    logger.error(f"Failed to register notifications router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

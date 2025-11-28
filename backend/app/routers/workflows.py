@@ -445,7 +445,14 @@ async def run_workflow(
 ):
     """
     워크플로우 실행 (PostgreSQL)
+
+    DSL 노드를 순차적으로 실행하고, 알림 액션은 실제로 전송합니다.
     """
+    from app.services.notifications import notification_manager, NotificationStatus
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     try:
         wf_uuid = UUID(workflow_id)
     except ValueError:
@@ -460,20 +467,87 @@ async def run_workflow(
         raise HTTPException(status_code=400, detail="Workflow is not active")
 
     now = datetime.utcnow()
+    execution_results = []
+    error_message = None
+    status = "completed"
+
+    # DSL 노드 실행
+    dsl = workflow.dsl_definition or {}
+    nodes = dsl.get("nodes", [])
+
+    for node in nodes:
+        node_type = node.get("type")
+        node_id = node.get("id")
+        config = node.get("config", {})
+
+        # 알림 액션 실행
+        if node_type == "action":
+            action_name = config.get("action")
+
+            # 알림 액션인 경우 실제 실행
+            if action_name in ["send_slack_notification", "send_email", "send_sms"]:
+                try:
+                    # input_data로 파라미터 오버라이드 가능
+                    merged_params = {**config.get("parameters", {})}
+                    if input_data:
+                        merged_params.update(input_data.get(node_id, {}))
+
+                    result = await notification_manager.execute_action(
+                        action_name,
+                        merged_params
+                    )
+
+                    execution_results.append({
+                        "node_id": node_id,
+                        "action": action_name,
+                        "status": result.status.value,
+                        "message": result.message,
+                        "details": result.details,
+                    })
+
+                    # FAILED 상태면 에러 기록 (SKIPPED는 설정 미완료로 허용)
+                    if result.status == NotificationStatus.FAILED:
+                        error_message = f"Node {node_id}: {result.message}"
+                        status = "failed"
+                        break
+
+                    logger.info(f"워크플로우 액션 실행: {action_name} -> {result.status.value}")
+
+                except Exception as e:
+                    logger.error(f"워크플로우 액션 실행 오류: {action_name} - {e}")
+                    error_message = f"Node {node_id}: {str(e)}"
+                    status = "failed"
+                    execution_results.append({
+                        "node_id": node_id,
+                        "action": action_name,
+                        "status": "error",
+                        "error": str(e),
+                    })
+                    break
+            else:
+                # 기타 액션은 로그만 기록 (V1에서 구현 예정)
+                execution_results.append({
+                    "node_id": node_id,
+                    "action": action_name,
+                    "status": "skipped",
+                    "message": "Action not implemented yet",
+                })
 
     # 새 실행 인스턴스 생성
     instance = WorkflowInstance(
         workflow_id=workflow.workflow_id,
         tenant_id=workflow.tenant_id,
-        status="completed",  # MVP: 즉시 완료 처리
+        status=status,
         input_data=input_data or {},
         output_data={
-            "message": "Workflow executed successfully",
-            "nodes_executed": len(workflow.dsl_definition.get("nodes", [])) if workflow.dsl_definition else 0,
+            "message": "Workflow executed" if status == "completed" else "Workflow failed",
+            "nodes_total": len(nodes),
+            "nodes_executed": len(execution_results),
+            "results": execution_results,
         },
-        error_message=None,
+        error_message=error_message,
         started_at=now,
-        completed_at=now,
+        completed_at=datetime.utcnow(),
     )
 
     db.add(instance)

@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ░░░░░░░░░░ 0% | 0/8 |
+| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ██░░░░░░░░ 25% | 2/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -84,11 +84,31 @@
 | **[Learning]** 규칙 자동 제안 개선 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **[Learning]** A/B 테스트 프레임워크 | ⏳ Pending | ░░░░░░░░░░ 0% |
 
-### 🔌 V1 Sprint 3: 외부 시스템 연동
+### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅
 | Task | Status | Progress |
 | :--- | :--- | :--- |
-| **[Integration]** Slack 알림 실제 연동 | ⏳ Pending | ░░░░░░░░░░ 0% |
-| **[Integration]** Email 알림 연동 (SMTP) | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[Integration]** Slack 알림 실제 연동 | ✅ 완료 | ██████████ 100% |
+| **[Integration]** Email 알림 연동 (SMTP) | ✅ 완료 | ██████████ 100% |
+
+#### 📋 V1 Sprint 3 완료 작업 내역 (2025-11-28)
+- [x] **[Service]** Notification Service 구현 (`backend/app/services/notifications.py`)
+  - `SlackNotificationService` - Slack Webhook 알림 (httpx async)
+  - `EmailNotificationService` - SMTP 이메일 (smtplib)
+  - `SMSNotificationService` - SMS 알림 플레이스홀더 (V2 예정)
+  - `NotificationManager` - 알림 통합 관리자
+  - 환경변수 기반 설정 (graceful degradation)
+- [x] **[API]** Notifications Router 구현 (`backend/app/routers/notifications.py`)
+  - `GET /api/v1/notifications/status` - 알림 서비스 상태 조회
+  - `POST /api/v1/notifications/test/slack` - Slack 테스트
+  - `POST /api/v1/notifications/test/email` - Email 테스트
+  - `POST /api/v1/notifications/send` - 범용 알림 전송
+- [x] **[Workflow]** 워크플로우 실행기 통합 (`backend/app/routers/workflows.py`)
+  - DSL 노드 순차 실행
+  - 알림 액션 자동 실행 (send_slack_notification, send_email, send_sms)
+  - 실행 결과 상세 로깅
+- [x] **[Config]** 환경변수 업데이트 (`.env.example`)
+  - Slack: SLACK_WEBHOOK_URL, SLACK_DEFAULT_CHANNEL
+  - Email: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS
 
 ---
 
