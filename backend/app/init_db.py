@@ -103,8 +103,8 @@ def _ensure_admin_user(db: Session, tenant_id) -> User:
 
     logger.info(f"Admin user created: {admin.email}")
     logger.warning(
-        f"Default admin password is set. "
-        f"Please change it in production! (ADMIN_PASSWORD env var)"
+        "Default admin password is set. "
+        "Please change it in production! (ADMIN_PASSWORD env var)"
     )
 
     return admin

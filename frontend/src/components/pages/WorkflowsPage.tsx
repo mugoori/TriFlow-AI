@@ -29,13 +29,24 @@ import {
   ChevronRight,
   AlertCircle,
   Settings,
+  Bell,
+  Database,
+  BarChart3,
+  Filter,
+  FlaskConical,
+  ScrollText,
+  Activity,
 } from 'lucide-react';
 import {
   workflowService,
   type Workflow,
   type WorkflowInstance,
   type ActionCatalogItem,
+  type ExecutionLog,
 } from '@/services/workflowService';
+import { ActionDetailModal } from '@/components/workflow/ActionDetailModal';
+import { WorkflowEditor } from '@/components/workflow/WorkflowEditor';
+import type { WorkflowDSL } from '@/services/workflowService';
 
 // 트리거 타입 한글 매핑
 const triggerTypeLabels: Record<string, string> = {
@@ -60,6 +71,30 @@ const statusColors: Record<string, string> = {
   pending: 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30',
 };
 
+// 카테고리별 아이콘 매핑
+const categoryIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  notification: Bell,
+  data: Database,
+  control: Settings,
+  analysis: BarChart3,
+};
+
+// 카테고리별 색상 매핑
+const categoryColors: Record<string, string> = {
+  notification: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800',
+  data: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800',
+  control: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800',
+  analysis: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800',
+};
+
+// 카테고리 한글 이름
+const categoryLabels: Record<string, string> = {
+  notification: '알림',
+  data: '데이터',
+  control: '제어',
+  analysis: '분석',
+};
+
 export function WorkflowsPage() {
   // 상태
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -76,7 +111,30 @@ export function WorkflowsPage() {
   // 액션 카탈로그
   const [showCatalog, setShowCatalog] = useState(false);
   const [actions, setActions] = useState<ActionCatalogItem[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // 액션 상세 모달
+  const [selectedAction, setSelectedAction] = useState<ActionCatalogItem | null>(null);
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+
+  // 워크플로우 에디터
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingWorkflowDSL, setEditingWorkflowDSL] = useState<WorkflowDSL | undefined>(undefined);
+
+  // 시뮬레이션 테스트 패널
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  const [testScenario, setTestScenario] = useState<'normal' | 'alert' | 'random'>('random');
+  const [presetScenario, setPresetScenario] = useState<string>('');
+  const [simulatedData, setSimulatedData] = useState<Record<string, unknown> | null>(null);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testResult, setTestResult] = useState<WorkflowInstance | null>(null);
+
+  // 실행 로그 패널
+  const [showLogPanel, setShowLogPanel] = useState(false);
+  const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   // 워크플로우 목록 로드
   const loadWorkflows = useCallback(async () => {
@@ -194,11 +252,137 @@ export function WorkflowsPage() {
     try {
       const response = await workflowService.getActionCatalog();
       setActions(response.actions);
+      setCategories(response.categories);
     } catch (err) {
       console.error('Failed to load action catalog:', err);
       setActions([]);
+      setCategories([]);
     } finally {
       setLoadingCatalog(false);
+    }
+  };
+
+  // 카테고리 필터링된 액션 목록
+  const filteredActions = selectedCategory
+    ? actions.filter((a) => a.category === selectedCategory)
+    : actions;
+
+  // 액션 클릭 핸들러
+  const handleActionClick = (action: ActionCatalogItem) => {
+    setSelectedAction(action);
+    setIsActionModalOpen(true);
+  };
+
+  // 카테고리 필터 토글
+  const handleCategoryFilter = (category: string) => {
+    setSelectedCategory(selectedCategory === category ? null : category);
+  };
+
+  // 새 워크플로우 에디터 열기
+  const handleOpenNewWorkflowEditor = () => {
+    setEditingWorkflowDSL(undefined);
+    setIsEditorOpen(true);
+  };
+
+  // 시뮬레이션 데이터 생성
+  const handleGenerateSimulatedData = async () => {
+    try {
+      const response = await workflowService.generateSimulatedData({
+        scenario: testScenario,
+        scenario_name: presetScenario || undefined,
+      });
+      setSimulatedData(response.data);
+    } catch (err) {
+      console.error('Failed to generate simulated data:', err);
+    }
+  };
+
+  // 시뮬레이션 테스트 실행
+  const handleRunWithSimulation = async (workflow: Workflow) => {
+    if (!workflow.is_active) {
+      alert('비활성 워크플로우는 실행할 수 없습니다.');
+      return;
+    }
+
+    setTestRunning(true);
+    setTestResult(null);
+
+    try {
+      const result = await workflowService.run(workflow.workflow_id, {
+        use_simulated_data: !simulatedData,
+        simulation_scenario: testScenario,
+        input_data: simulatedData || undefined,
+      });
+      setTestResult(result);
+
+      // 실행 이력 새로고침
+      if (selectedWorkflow?.workflow_id === workflow.workflow_id) {
+        const response = await workflowService.getInstances(workflow.workflow_id);
+        setInstances(response.instances);
+      }
+
+      // 실행 로그 새로고침
+      if (showLogPanel) {
+        loadExecutionLogs();
+      }
+    } catch (err) {
+      alert(`실행 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+    } finally {
+      setTestRunning(false);
+    }
+  };
+
+  // 실행 로그 로드
+  const loadExecutionLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const response = await workflowService.getExecutionLogs({
+        workflow_id: selectedWorkflow?.workflow_id,
+        limit: 50,
+      });
+      setExecutionLogs(response.logs);
+    } catch (err) {
+      console.error('Failed to load execution logs:', err);
+      setExecutionLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  // 실행 로그 패널 토글
+  const handleToggleLogPanel = async () => {
+    if (showLogPanel) {
+      setShowLogPanel(false);
+      return;
+    }
+    setShowLogPanel(true);
+    await loadExecutionLogs();
+  };
+
+  // 실행 로그 초기화
+  const handleClearLogs = async () => {
+    if (!confirm('모든 실행 로그를 삭제하시겠습니까?')) return;
+    try {
+      await workflowService.clearExecutionLogs();
+      setExecutionLogs([]);
+    } catch (err) {
+      console.error('Failed to clear logs:', err);
+    }
+  };
+
+  // 워크플로우 저장
+  const handleSaveWorkflow = async (dsl: WorkflowDSL) => {
+    try {
+      await workflowService.create({
+        name: dsl.name,
+        description: dsl.description,
+        dsl_definition: dsl,
+      });
+      setIsEditorOpen(false);
+      loadWorkflows();
+      alert('워크플로우가 생성되었습니다!');
+    } catch (err) {
+      alert(`저장 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     }
   };
 
@@ -247,6 +431,28 @@ export function WorkflowsPage() {
               액션 카탈로그
             </button>
             <button
+              onClick={() => setShowTestPanel(!showTestPanel)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                showTestPanel
+                  ? 'bg-green-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <FlaskConical className="w-4 h-4" />
+              시뮬레이션
+            </button>
+            <button
+              onClick={handleToggleLogPanel}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                showLogPanel
+                  ? 'bg-orange-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <ScrollText className="w-4 h-4" />
+              실행 로그
+            </button>
+            <button
               onClick={loadWorkflows}
               disabled={loading}
               className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
@@ -255,7 +461,7 @@ export function WorkflowsPage() {
               새로고침
             </button>
             <button
-              onClick={() => alert('AI Chat에서 "워크플로우 만들어줘"라고 요청하세요!')}
+              onClick={handleOpenNewWorkflowEditor}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -268,35 +474,308 @@ export function WorkflowsPage() {
         {showCatalog && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Zap className="w-5 h-5 text-purple-500" />
-                사용 가능한 액션
-              </CardTitle>
-              <CardDescription>
-                워크플로우에서 사용할 수 있는 액션 목록입니다
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-purple-500" />
+                    액션 카탈로그
+                    <span className="text-sm font-normal text-slate-500">
+                      ({filteredActions.length}개)
+                    </span>
+                  </CardTitle>
+                  <CardDescription>
+                    워크플로우에서 사용할 수 있는 액션 목록입니다. 클릭하여 상세 정보를 확인하세요.
+                  </CardDescription>
+                </div>
+              </div>
+
+              {/* 카테고리 필터 */}
+              {categories.length > 0 && (
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm text-slate-500">필터:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map((category) => {
+                      const CategoryIcon = categoryIcons[category] || Zap;
+                      const isSelected = selectedCategory === category;
+                      return (
+                        <button
+                          key={category}
+                          onClick={() => handleCategoryFilter(category)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-all ${
+                            isSelected
+                              ? categoryColors[category]
+                              : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <CategoryIcon className="w-3.5 h-3.5" />
+                          {categoryLabels[category] || category}
+                          <span className="text-xs opacity-70">
+                            ({actions.filter((a) => a.category === category).length})
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {selectedCategory && (
+                      <button
+                        onClick={() => setSelectedCategory(null)}
+                        className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                      >
+                        초기화
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {loadingCatalog ? (
-                <div className="text-center py-4">
-                  <RefreshCw className="w-6 h-6 mx-auto animate-spin text-slate-400" />
+                <div className="text-center py-8">
+                  <RefreshCw className="w-8 h-8 mx-auto animate-spin text-slate-400" />
+                  <p className="mt-2 text-sm text-slate-500">액션 목록을 불러오는 중...</p>
+                </div>
+              ) : filteredActions.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <Zap className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>해당 카테고리에 액션이 없습니다</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {actions.map((action) => (
-                    <div
-                      key={action.name}
-                      className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 text-xs rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                          {action.category}
-                        </span>
-                        <span className="font-mono text-sm font-medium">{action.name}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {filteredActions.map((action) => {
+                    const CategoryIcon = categoryIcons[action.category] || Zap;
+                    return (
+                      <div
+                        key={action.name}
+                        onClick={() => handleActionClick(action)}
+                        className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${categoryColors[action.category]}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded-lg bg-white/50 dark:bg-slate-900/50">
+                            <CategoryIcon className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-mono text-sm font-semibold truncate">
+                              {action.name}
+                            </h4>
+                            <p className="text-xs mt-0.5 opacity-80">
+                              {categoryLabels[action.category] || action.category}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-sm line-clamp-2">
+                          {action.description}
+                        </p>
+                        <div className="mt-2 flex items-center gap-1 text-xs opacity-70">
+                          <span>파라미터: {Object.keys(action.parameters).length}개</span>
+                        </div>
                       </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">
-                        {action.description}
-                      </p>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 액션 상세 모달 */}
+        <ActionDetailModal
+          action={selectedAction}
+          isOpen={isActionModalOpen}
+          onClose={() => {
+            setIsActionModalOpen(false);
+            setSelectedAction(null);
+          }}
+        />
+
+        {/* 시뮬레이션 테스트 패널 */}
+        {showTestPanel && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FlaskConical className="w-5 h-5 text-green-500" />
+                    시뮬레이션 테스트
+                  </CardTitle>
+                  <CardDescription>
+                    센서 데이터를 시뮬레이션하여 워크플로우를 테스트합니다.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 시뮬레이션 설정 */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">시나리오 타입</label>
+                    <select
+                      value={testScenario}
+                      onChange={(e) => setTestScenario(e.target.value as 'normal' | 'alert' | 'random')}
+                      className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600"
+                    >
+                      <option value="normal">정상 (Normal)</option>
+                      <option value="alert">경고 (Alert)</option>
+                      <option value="random">랜덤 (Random)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">사전 정의 시나리오</label>
+                    <select
+                      value={presetScenario}
+                      onChange={(e) => setPresetScenario(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600"
+                    >
+                      <option value="">선택 안 함</option>
+                      <option value="high_temperature">고온 경고</option>
+                      <option value="low_pressure">저압 경고</option>
+                      <option value="equipment_error">장비 오류</option>
+                      <option value="high_defect_rate">불량률 초과</option>
+                      <option value="production_delay">생산 지연</option>
+                      <option value="shift_change">교대 시간</option>
+                      <option value="normal_operation">정상 가동</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={handleGenerateSimulatedData}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    <Activity className="w-4 h-4" />
+                    데이터 생성
+                  </button>
+                </div>
+
+                {/* 생성된 데이터 미리보기 */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">생성된 센서 데이터</label>
+                  <div className="h-48 overflow-auto bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+                    {simulatedData ? (
+                      <pre className="text-xs font-mono whitespace-pre-wrap">
+                        {JSON.stringify(simulatedData, null, 2)}
+                      </pre>
+                    ) : (
+                      <div className="text-sm text-slate-500 text-center py-8">
+                        &quot;데이터 생성&quot; 버튼을 클릭하여 시뮬레이션 데이터를 생성하세요
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 테스트 결과 */}
+              {testResult && (
+                <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg">
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <span className={testResult.status === 'completed' ? 'text-green-500' : 'text-red-500'}>
+                      {testResult.status === 'completed' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                    </span>
+                    실행 결과: {testResult.status}
+                  </h4>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-slate-500">실행 노드:</span>{' '}
+                      <span className="font-medium">{(testResult.output_data as { nodes_executed?: number })?.nodes_executed || 0}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">스킵 노드:</span>{' '}
+                      <span className="font-medium">{(testResult.output_data as { nodes_skipped?: number })?.nodes_skipped || 0}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">실행 시간:</span>{' '}
+                      <span className="font-medium">{(testResult.output_data as { execution_time_ms?: number })?.execution_time_ms || 0}ms</span>
+                    </div>
+                  </div>
+                  {testResult.error_message && (
+                    <div className="mt-2 text-sm text-red-500">
+                      오류: {testResult.error_message}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 실행 로그 패널 */}
+        {showLogPanel && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ScrollText className="w-5 h-5 text-orange-500" />
+                    실행 로그
+                    <span className="text-sm font-normal text-slate-500">({executionLogs.length}개)</span>
+                  </CardTitle>
+                  <CardDescription>
+                    워크플로우 실행 중 발생한 이벤트 로그입니다.
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={loadExecutionLogs}
+                    disabled={loadingLogs}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingLogs ? 'animate-spin' : ''}`} />
+                    새로고침
+                  </button>
+                  <button
+                    onClick={handleClearLogs}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    초기화
+                  </button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingLogs ? (
+                <div className="text-center py-8 text-slate-500">
+                  <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin" />
+                  <p>로딩 중...</p>
+                </div>
+              ) : executionLogs.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <ScrollText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>실행 로그가 없습니다</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {executionLogs.map((log) => (
+                    <div
+                      key={log.log_id}
+                      className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 text-xs rounded ${
+                            log.event_type === 'general' ? 'bg-slate-200 dark:bg-slate-700' :
+                            log.event_type === 'database_save' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                            log.event_type === 'production_line_stop' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                            log.event_type === 'maintenance_triggered' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                            'bg-slate-200 dark:bg-slate-700'
+                          }`}>
+                            {log.event_type}
+                          </span>
+                          {log.node_id && (
+                            <span className="text-xs text-slate-500">
+                              노드: {log.node_id}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-slate-400">
+                          {new Date(log.timestamp).toLocaleString('ko-KR')}
+                        </span>
+                      </div>
+                      {log.details && Object.keys(log.details).length > 0 && (
+                        <div className="mt-2 text-xs font-mono text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 p-2 rounded overflow-x-auto">
+                          {JSON.stringify(log.details, null, 2)}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -432,6 +911,23 @@ export function WorkflowsPage() {
                           <TableRow>
                             <TableCell colSpan={7} className="bg-slate-50 dark:bg-slate-800/50 p-0">
                               <div className="p-4 space-y-4">
+                                {/* 시뮬레이션 테스트 버튼 */}
+                                {showTestPanel && (
+                                  <div className="mb-4">
+                                    <button
+                                      onClick={() => handleRunWithSimulation(workflow)}
+                                      disabled={!workflow.is_active || testRunning}
+                                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      <FlaskConical className={`w-4 h-4 ${testRunning ? 'animate-spin' : ''}`} />
+                                      {testRunning ? '테스트 실행 중...' : '시뮬레이션으로 테스트 실행'}
+                                    </button>
+                                    {!workflow.is_active && (
+                                      <p className="mt-1 text-xs text-yellow-600">워크플로우를 활성화하면 테스트할 수 있습니다.</p>
+                                    )}
+                                  </div>
+                                )}
+
                                 {/* DSL 미리보기 */}
                                 <div>
                                   <h4 className="text-sm font-semibold mb-2">워크플로우 구조</h4>
@@ -512,6 +1008,14 @@ export function WorkflowsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* 워크플로우 에디터 */}
+        <WorkflowEditor
+          initialDSL={editingWorkflowDSL}
+          isOpen={isEditorOpen}
+          onSave={handleSaveWorkflow}
+          onCancel={() => setIsEditorOpen(false)}
+        />
       </div>
     </div>
   );

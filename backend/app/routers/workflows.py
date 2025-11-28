@@ -437,18 +437,27 @@ async def delete_workflow(
     return None
 
 
+class WorkflowRunRequest(BaseModel):
+    """워크플로우 실행 요청"""
+    input_data: Optional[Dict[str, Any]] = Field(default=None, description="입력 데이터 (센서 값 등)")
+    use_simulated_data: bool = Field(default=False, description="시뮬레이션 데이터 사용 여부")
+    simulation_scenario: str = Field(default="random", description="시뮬레이션 시나리오 (normal, alert, random)")
+
+
 @router.post("/{workflow_id}/run", response_model=WorkflowInstanceResponse)
 async def run_workflow(
     workflow_id: str,
+    request: Optional[WorkflowRunRequest] = None,
     db: Session = Depends(get_db),
-    input_data: Optional[Dict[str, Any]] = None,
 ):
     """
-    워크플로우 실행 (PostgreSQL)
+    워크플로우 실행 (PostgreSQL + WorkflowEngine)
 
-    DSL 노드를 순차적으로 실행하고, 알림 액션은 실제로 전송합니다.
+    조건 노드를 평가하고, 액션을 실행합니다.
+    시뮬레이션 데이터를 사용하거나 직접 데이터를 전달할 수 있습니다.
     """
-    from app.services.notifications import notification_manager, NotificationStatus
+    from app.services.notifications import notification_manager
+    from app.services.workflow_engine import workflow_engine, sensor_simulator
     import logging
 
     logger = logging.getLogger(__name__)
@@ -467,71 +476,60 @@ async def run_workflow(
         raise HTTPException(status_code=400, detail="Workflow is not active")
 
     now = datetime.utcnow()
-    execution_results = []
-    error_message = None
-    status = "completed"
 
-    # DSL 노드 실행
+    # 요청 데이터 파싱
+    req = request or WorkflowRunRequest()
+    input_data = req.input_data
+
+    # 시뮬레이션 데이터 생성
+    if req.use_simulated_data and not input_data:
+        input_data = sensor_simulator.generate_sensor_data(scenario=req.simulation_scenario)
+        logger.info(f"시뮬레이션 데이터 생성됨: {req.simulation_scenario}")
+
+    # DSL 가져오기
     dsl = workflow.dsl_definition or {}
+
+    # 워크플로우 엔진으로 실행
+    engine_result = await workflow_engine.execute_workflow(
+        workflow_id=str(workflow.workflow_id),
+        dsl=dsl,
+        input_data=input_data,
+        use_simulated_data=False,  # 이미 위에서 생성함
+    )
+
+    # 알림 액션 별도 처리 (workflow_engine에서 delegated 처리된 것들)
     nodes = dsl.get("nodes", [])
-
     for node in nodes:
-        node_type = node.get("type")
-        node_id = node.get("id")
-        config = node.get("config", {})
-
-        # 알림 액션 실행
-        if node_type == "action":
+        if node.get("type") == "action":
+            config = node.get("config", {})
             action_name = config.get("action")
 
-            # 알림 액션인 경우 실제 실행
             if action_name in ["send_slack_notification", "send_email", "send_sms"]:
                 try:
-                    # input_data로 파라미터 오버라이드 가능
                     merged_params = {**config.get("parameters", {})}
                     if input_data:
-                        merged_params.update(input_data.get(node_id, {}))
+                        merged_params.update(input_data.get(node.get("id"), {}))
 
                     result = await notification_manager.execute_action(
                         action_name,
                         merged_params
                     )
 
-                    execution_results.append({
-                        "node_id": node_id,
-                        "action": action_name,
-                        "status": result.status.value,
-                        "message": result.message,
-                        "details": result.details,
-                    })
+                    # engine_result의 해당 노드 결과 업데이트
+                    for r in engine_result.get("results", []):
+                        if r.get("node_id") == node.get("id"):
+                            r["status"] = result.status.value
+                            r["message"] = result.message
+                            r["details"] = result.details
 
-                    # FAILED 상태면 에러 기록 (SKIPPED는 설정 미완료로 허용)
-                    if result.status == NotificationStatus.FAILED:
-                        error_message = f"Node {node_id}: {result.message}"
-                        status = "failed"
-                        break
-
-                    logger.info(f"워크플로우 액션 실행: {action_name} -> {result.status.value}")
+                    logger.info(f"알림 액션 실행: {action_name} -> {result.status.value}")
 
                 except Exception as e:
-                    logger.error(f"워크플로우 액션 실행 오류: {action_name} - {e}")
-                    error_message = f"Node {node_id}: {str(e)}"
-                    status = "failed"
-                    execution_results.append({
-                        "node_id": node_id,
-                        "action": action_name,
-                        "status": "error",
-                        "error": str(e),
-                    })
-                    break
-            else:
-                # 기타 액션은 로그만 기록 (V1에서 구현 예정)
-                execution_results.append({
-                    "node_id": node_id,
-                    "action": action_name,
-                    "status": "skipped",
-                    "message": "Action not implemented yet",
-                })
+                    logger.error(f"알림 액션 실행 오류: {action_name} - {e}")
+
+    # 최종 상태 결정
+    status = engine_result.get("status", "completed")
+    error_message = engine_result.get("error_message")
 
     # 새 실행 인스턴스 생성
     instance = WorkflowInstance(
@@ -541,9 +539,11 @@ async def run_workflow(
         input_data=input_data or {},
         output_data={
             "message": "Workflow executed" if status == "completed" else "Workflow failed",
-            "nodes_total": len(nodes),
-            "nodes_executed": len(execution_results),
-            "results": execution_results,
+            "nodes_total": engine_result.get("nodes_total", 0),
+            "nodes_executed": engine_result.get("nodes_executed", 0),
+            "nodes_skipped": engine_result.get("nodes_skipped", 0),
+            "results": engine_result.get("results", []),
+            "execution_time_ms": engine_result.get("execution_time_ms", 0),
         },
         error_message=error_message,
         started_at=now,
@@ -589,3 +589,141 @@ async def list_workflow_instances(
         instances=[_instance_to_response(inst, workflow.name) for inst in instances],
         total=len(instances),
     )
+
+
+# ============ 센서 시뮬레이터 API ============
+
+class SensorSimulatorRequest(BaseModel):
+    """센서 데이터 시뮬레이션 요청"""
+    sensors: Optional[List[str]] = Field(default=None, description="생성할 센서 목록")
+    scenario: str = Field(default="random", description="시나리오 (normal, alert, random)")
+    scenario_name: Optional[str] = Field(default=None, description="사전 정의된 시나리오 이름")
+
+
+@router.post("/simulator/generate")
+async def generate_simulated_data(
+    request: Optional[SensorSimulatorRequest] = None,
+):
+    """
+    센서 시뮬레이션 데이터 생성
+
+    시나리오:
+    - normal: 정상 범위 데이터
+    - alert: 임계값 초과 데이터
+    - random: 완전 랜덤 데이터
+
+    사전 정의된 시나리오:
+    - high_temperature, low_pressure, equipment_error
+    - high_defect_rate, production_delay, shift_change
+    - normal_operation
+    """
+    from app.services.workflow_engine import sensor_simulator
+
+    req = request or SensorSimulatorRequest()
+
+    # 사전 정의된 시나리오 사용
+    if req.scenario_name:
+        data = sensor_simulator.generate_test_scenario(req.scenario_name)
+    else:
+        data = sensor_simulator.generate_sensor_data(
+            sensors=req.sensors,
+            scenario=req.scenario
+        )
+
+    return {
+        "success": True,
+        "data": data,
+        "available_sensors": [
+            "temperature", "pressure", "humidity", "vibration",
+            "defect_rate", "consecutive_defects", "runtime_hours",
+            "production_count", "units_per_hour", "current_hour",
+            "equipment_status"
+        ],
+        "available_scenarios": [
+            "high_temperature", "low_pressure", "equipment_error",
+            "high_defect_rate", "production_delay", "shift_change",
+            "normal_operation"
+        ],
+    }
+
+
+# ============ 실행 로그 API ============
+
+class ExecutionLogResponse(BaseModel):
+    """실행 로그 응답"""
+    logs: List[Dict[str, Any]]
+    total: int
+
+
+@router.get("/logs/execution")
+async def get_execution_logs(
+    workflow_id: Optional[str] = Query(None, description="워크플로우 ID 필터"),
+    event_type: Optional[str] = Query(None, description="이벤트 타입 필터"),
+    limit: int = Query(50, ge=1, le=500, description="최대 조회 개수"),
+):
+    """
+    실행 로그 조회 (인메모리)
+
+    워크플로우 실행 중 기록된 이벤트 로그를 조회합니다.
+    """
+    from app.services.workflow_engine import execution_log_store
+
+    logs = execution_log_store.get_logs(
+        workflow_id=workflow_id,
+        event_type=event_type,
+        limit=limit
+    )
+
+    return ExecutionLogResponse(
+        logs=logs,
+        total=len(logs),
+    )
+
+
+@router.delete("/logs/execution")
+async def clear_execution_logs():
+    """
+    실행 로그 초기화 (인메모리)
+    """
+    from app.services.workflow_engine import execution_log_store
+
+    execution_log_store.clear()
+
+    return {"success": True, "message": "실행 로그가 초기화되었습니다."}
+
+
+# ============ 조건 평가 테스트 API ============
+
+class ConditionTestRequest(BaseModel):
+    """조건 평가 테스트 요청"""
+    condition: str = Field(..., description="평가할 조건식")
+    context: Dict[str, Any] = Field(default_factory=dict, description="컨텍스트 변수")
+
+
+@router.post("/test/condition")
+async def test_condition(
+    request: ConditionTestRequest,
+):
+    """
+    조건식 평가 테스트
+
+    조건식과 컨텍스트를 전달하면 평가 결과를 반환합니다.
+
+    예시:
+    - condition: "temperature > 80"
+    - context: {"temperature": 85}
+    - 결과: true
+    """
+    from app.services.workflow_engine import condition_evaluator
+
+    result, message = condition_evaluator.evaluate(
+        request.condition,
+        request.context
+    )
+
+    return {
+        "condition": request.condition,
+        "context": request.context,
+        "result": result,
+        "message": message,
+    }

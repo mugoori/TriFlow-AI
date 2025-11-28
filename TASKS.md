@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ██░░░░░░░░ 25% | 2/8 |
+| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ██████░░░░ 60% | 8/12 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -70,12 +70,58 @@
 
 ## 📋 V1 개발 작업 목록
 
-### 🔧 V1 Sprint 1: Builder UI
+### 🔧 V1 Sprint 1: Builder UI & Workflow Execution ✅
 | Task | Status | Progress |
 | :--- | :--- | :--- |
-| **[UI]** Workflow Visual Editor (Drag & Drop) | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[UI]** Workflow Visual Editor (Drag & Drop) | ✅ 완료 | ██████████ 100% |
 | **[UI]** Ruleset Editor (Rhai Script 편집기) | ⏳ Pending | ░░░░░░░░░░ 0% |
-| **[UI]** Action Catalog 관리 UI | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[UI]** Action Catalog 관리 UI | ✅ 완료 | ██████████ 100% |
+| **[Engine]** Workflow Execution Pipeline | ✅ 완료 | ██████████ 100% |
+| **[Engine]** Sensor Data Simulator | ✅ 완료 | ██████████ 100% |
+| **[UI]** Simulation Test Panel | ✅ 완료 | ██████████ 100% |
+| **[UI]** Execution Log Panel | ✅ 완료 | ██████████ 100% |
+
+#### 📋 V1 Sprint 1 완료 작업 내역 (2025-11-28)
+- [x] **[UI]** ActionDetailModal 컴포넌트 구현 (`frontend/src/components/workflow/ActionDetailModal.tsx`)
+  - 액션 상세 정보 표시 (이름, 설명, 카테고리)
+  - 파라미터 목록 및 타입 정보
+  - DSL 예시 생성 및 복사 기능
+  - 카테고리별 아이콘/색상 매핑
+- [x] **[UI]** WorkflowsPage 액션 카탈로그 개선 (`frontend/src/components/pages/WorkflowsPage.tsx`)
+  - 카테고리 필터링 (알림, 데이터, 제어, 분석)
+  - 액션 카드 클릭 시 상세 모달
+  - 개선된 UI (카테고리별 색상, 아이콘, 파라미터 수 표시)
+  - 필터 초기화 기능
+- [x] **[UI]** WorkflowEditor 컴포넌트 구현 (`frontend/src/components/workflow/WorkflowEditor.tsx`)
+  - 워크플로우 이름/설명 편집
+  - 트리거 타입 선택 (수동, 이벤트, 스케줄)
+  - 조건/액션 노드 추가/삭제/이동
+  - 노드 설정 (조건식, 액션 선택, 파라미터 JSON)
+  - DSL 실시간 미리보기
+  - WorkflowsPage와 통합 (새 워크플로우 버튼)
+- [x] **[Engine]** Workflow Execution Pipeline 구현 (`backend/app/services/workflow_engine.py`)
+  - `SensorSimulator`: 시나리오별 센서 데이터 생성 (normal, alert, random, preset)
+  - `ConditionEvaluator`: 조건식 평가 (>, <, >=, <=, ==, !=, &&, ||)
+  - `ActionExecutor`: 비알림 액션 실행 (log_event, save_to_database 등)
+  - `WorkflowEngine`: 전체 워크플로우 오케스트레이션
+  - `ExecutionLogStore`: 인메모리 실행 로그 저장소
+- [x] **[API]** Workflow Execution APIs 확장 (`backend/app/routers/workflows.py`)
+  - `POST /simulator/generate` - 센서 시뮬레이션 데이터 생성
+  - `GET /logs/execution` - 실행 로그 조회
+  - `DELETE /logs/execution` - 실행 로그 초기화
+  - `POST /test/condition` - 조건식 테스트
+  - `POST /{workflow_id}/run` - 시뮬레이션 옵션 지원
+- [x] **[Service]** Frontend Workflow Service 확장 (`frontend/src/services/workflowService.ts`)
+  - WorkflowRunOptions, SimulatorResponse, ConditionTestResponse, ExecutionLog 타입
+  - generateSimulatedData(), testCondition(), getExecutionLogs(), clearExecutionLogs()
+- [x] **[UI]** Simulation Test Panel 구현 (`frontend/src/components/pages/WorkflowsPage.tsx`)
+  - 시나리오 선택 (normal, alert, random)
+  - 시뮬레이션 데이터 생성 및 표시
+  - 워크플로우 실행 버튼 (시뮬레이션 모드)
+- [x] **[UI]** Execution Log Panel 구현
+  - 실행 로그 실시간 표시
+  - 로그 초기화 기능
+  - 이벤트 타입/시간/상세정보 표시
 
 ### 🧠 V1 Sprint 2: Learning Pipeline 강화
 | Task | Status | Progress |

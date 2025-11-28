@@ -83,6 +83,45 @@ export interface WorkflowListParams {
   search?: string;
 }
 
+// 시뮬레이션 실행 옵션
+export interface WorkflowRunOptions {
+  input_data?: Record<string, unknown>;
+  use_simulated_data?: boolean;
+  simulation_scenario?: 'normal' | 'alert' | 'random';
+}
+
+// 센서 시뮬레이터 응답
+export interface SimulatorResponse {
+  success: boolean;
+  data: Record<string, unknown>;
+  available_sensors: string[];
+  available_scenarios: string[];
+}
+
+// 조건 테스트 응답
+export interface ConditionTestResponse {
+  condition: string;
+  context: Record<string, unknown>;
+  result: boolean;
+  message: string;
+}
+
+// 실행 로그
+export interface ExecutionLog {
+  log_id: string;
+  timestamp: string;
+  event_type: string;
+  details: Record<string, unknown>;
+  workflow_id?: string;
+  node_id?: string;
+  context?: Record<string, unknown>;
+}
+
+export interface ExecutionLogResponse {
+  logs: ExecutionLog[];
+  total: number;
+}
+
 // ============ Service ============
 
 export const workflowService = {
@@ -137,13 +176,66 @@ export const workflowService = {
   },
 
   /**
-   * 워크플로우 실행
+   * 워크플로우 실행 (시뮬레이션 옵션 지원)
    */
-  async run(workflowId: string, inputData?: Record<string, unknown>): Promise<WorkflowInstance> {
+  async run(workflowId: string, options?: WorkflowRunOptions): Promise<WorkflowInstance> {
     return await apiClient.post<WorkflowInstance>(
       `/api/v1/workflows/${workflowId}/run`,
-      inputData || {}
+      options || {}
     );
+  },
+
+  /**
+   * 시뮬레이션 데이터 생성
+   */
+  async generateSimulatedData(params?: {
+    sensors?: string[];
+    scenario?: 'normal' | 'alert' | 'random';
+    scenario_name?: string;
+  }): Promise<SimulatorResponse> {
+    return await apiClient.post<SimulatorResponse>(
+      '/api/v1/workflows/simulator/generate',
+      params || {}
+    );
+  },
+
+  /**
+   * 조건식 테스트
+   */
+  async testCondition(
+    condition: string,
+    context: Record<string, unknown>
+  ): Promise<ConditionTestResponse> {
+    return await apiClient.post<ConditionTestResponse>('/api/v1/workflows/test/condition', {
+      condition,
+      context,
+    });
+  },
+
+  /**
+   * 실행 로그 조회
+   */
+  async getExecutionLogs(params?: {
+    workflow_id?: string;
+    event_type?: string;
+    limit?: number;
+  }): Promise<ExecutionLogResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.workflow_id) searchParams.append('workflow_id', params.workflow_id);
+    if (params?.event_type) searchParams.append('event_type', params.event_type);
+    if (params?.limit) searchParams.append('limit', params.limit.toString());
+
+    const query = searchParams.toString();
+    return await apiClient.get<ExecutionLogResponse>(
+      `/api/v1/workflows/logs/execution${query ? `?${query}` : ''}`
+    );
+  },
+
+  /**
+   * 실행 로그 초기화
+   */
+  async clearExecutionLogs(): Promise<{ success: boolean; message: string }> {
+    return await apiClient.delete('/api/v1/workflows/logs/execution');
   },
 
   /**

@@ -4,17 +4,15 @@ Learning Agent
 """
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import uuid4
 import logging
 import random
 from pathlib import Path
 
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 from .base_agent import BaseAgent
 from app.database import get_db_context
-from app.models.core import FeedbackLog, ProposedRule, Ruleset, JudgmentExecution, Tenant
+from app.models.core import FeedbackLog, ProposedRule, JudgmentExecution, Tenant
 
 logger = logging.getLogger(__name__)
 

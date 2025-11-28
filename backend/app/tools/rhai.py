@@ -6,7 +6,6 @@ Note: 현재는 Python eval 대신 안전한 인터페이스로 Mock 구현.
 향후 PyO3를 사용한 Rust 바인딩으로 교체 예정.
 """
 from typing import Any, Dict
-import json
 
 
 class RhaiEngine:

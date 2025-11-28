@@ -3,8 +3,7 @@ Core Schema ORM Models
 테넌트, 사용자, 룰셋, 워크플로, 센서 데이터 등
 """
 from datetime import datetime
-from typing import Optional
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from sqlalchemy import (
     Column,
@@ -15,7 +14,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Text,
-    Enum as SQLEnum,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.orm import relationship

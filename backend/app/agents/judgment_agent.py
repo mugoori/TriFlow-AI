@@ -8,7 +8,6 @@ from uuid import UUID
 import logging
 from pathlib import Path
 
-from sqlalchemy.orm import Session
 
 from .base_agent import BaseAgent
 from app.database import get_db_context
@@ -325,7 +324,7 @@ class JudgmentAgent(BaseAgent):
         특정 라인의 종합 상태 조회 및 판단
         """
         try:
-            from sqlalchemy import func, distinct
+            from sqlalchemy import func
 
             with get_db_context() as db:
                 # 최근 1시간 데이터 기준

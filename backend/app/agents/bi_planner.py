@@ -5,7 +5,6 @@ BI Planner Agent
 from typing import Any, Dict, List
 import logging
 from pathlib import Path
-import json
 
 from .base_agent import BaseAgent
 from app.tools.db import get_table_schema, execute_safe_sql

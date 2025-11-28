@@ -4,7 +4,6 @@
 # ===================================================
 
 import os
-import json
 import logging
 import smtplib
 from email.mime.text import MIMEText

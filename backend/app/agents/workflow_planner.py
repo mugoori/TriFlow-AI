@@ -5,7 +5,6 @@ Workflow Planner Agent
 from typing import Any, Dict, List
 import logging
 from pathlib import Path
-import json
 
 from .base_agent import BaseAgent
 
