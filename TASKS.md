@@ -1,7 +1,8 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
 > **최종 업데이트**: 2025-11-28
-> **현재 Phase**: Sprint 5 완료 - Security (Auth + PII Masking) 구현
+> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 시작
+> **현재 브랜치**: `develop` (V1 개발용)
 
 ---
 
@@ -10,8 +11,8 @@
 ### 📅 Product Roadmap
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ 완료 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline | ⏳ Pending | ░░░░░░░░░░ 0% | 0/8 |
+| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
+| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ░░░░░░░░░░ 0% | 0/8 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -51,7 +52,47 @@
 
 ---
 
-## 📋 현재 진행 중인 작업
+## 🏷️ MVP v0.1.0 릴리즈 (2025-11-28)
+
+### 릴리즈 정보
+- **태그**: `v0.1.0`
+- **브랜치**: `main` (안정 버전), `develop` (V1 개발)
+- **빌드**: Windows MSI/NSIS, Docker Image (ghcr.io)
+
+### 주요 기능
+- 5개 AI 에이전트 (Meta Router, Judgment, Workflow Planner, BI Planner, Learning)
+- Chat-Centric UI (Tauri v2 + React)
+- Dashboard & Chart Visualization (Recharts)
+- Workflows/Data/Settings 페이지
+- JWT 인증 + PII 마스킹
+
+---
+
+## 📋 V1 개발 작업 목록
+
+### 🔧 V1 Sprint 1: Builder UI
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[UI]** Workflow Visual Editor (Drag & Drop) | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[UI]** Ruleset Editor (Rhai Script 편집기) | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[UI]** Action Catalog 관리 UI | ⏳ Pending | ░░░░░░░░░░ 0% |
+
+### 🧠 V1 Sprint 2: Learning Pipeline 강화
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[Learning]** 피드백 수집 UI | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[Learning]** 규칙 자동 제안 개선 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[Learning]** A/B 테스트 프레임워크 | ⏳ Pending | ░░░░░░░░░░ 0% |
+
+### 🔌 V1 Sprint 3: 외부 시스템 연동
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[Integration]** Slack 알림 실제 연동 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[Integration]** Email 알림 연동 (SMTP) | ⏳ Pending | ░░░░░░░░░░ 0% |
+
+---
+
+## 📋 MVP 완료 작업 (Archive)
 
 ### Sprint 6: Production Build & Release ✅ (2025-11-27)
 - [x] Tauri v2 앱 메타데이터 설정
