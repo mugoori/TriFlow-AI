@@ -5,6 +5,8 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Pin, Check, FileCode, ExternalLink } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ChatMessage as ChatMessageType } from '../types/agent';
 import type { ChartConfig } from '../types/chart';
 import { Card, CardContent } from './ui/card';
@@ -68,8 +70,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
             </div>
 
             {/* 메시지 내용 */}
-            <div className="text-sm text-slate-900 dark:text-slate-100 whitespace-pre-wrap">
-              {message.content}
+            <div className="text-sm text-slate-900 dark:text-slate-100 prose-chat">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
             </div>
 
             {/* Chart Visualization */}
