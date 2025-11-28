@@ -2,6 +2,7 @@
 Workflow Router
 워크플로우 CRUD 및 실행 API - PostgreSQL DB 연동
 """
+import copy
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
@@ -9,6 +10,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Query, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.database import get_db
 from app.models import Workflow, WorkflowInstance
@@ -419,16 +421,24 @@ async def create_workflow(
     return _workflow_to_response(new_workflow)
 
 
+class WorkflowUpdate(BaseModel):
+    """워크플로우 수정 요청 모델"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    dsl_definition: Optional[WorkflowDSL] = None
+
+
 @router.patch("/{workflow_id}", response_model=WorkflowResponse)
 async def update_workflow(
     workflow_id: str,
+    update_data: WorkflowUpdate,
     db: Session = Depends(get_db),
-    name: Optional[str] = None,
-    description: Optional[str] = None,
-    is_active: Optional[bool] = None,
 ):
     """
     워크플로우 수정 (PostgreSQL)
+    - name, description, is_active: 기본 정보 수정
+    - dsl_definition: 워크플로우 DSL 전체 수정
     """
     try:
         wf_uuid = UUID(workflow_id)
@@ -440,12 +450,28 @@ async def update_workflow(
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    if name is not None:
-        workflow.name = name
-    if description is not None:
-        workflow.description = description
-    if is_active is not None:
-        workflow.is_active = is_active
+    if update_data.name is not None:
+        workflow.name = update_data.name
+    if update_data.description is not None:
+        workflow.description = update_data.description
+    if update_data.is_active is not None:
+        workflow.is_active = update_data.is_active
+    if update_data.dsl_definition is not None:
+        # DSL 업데이트 시 name, description도 함께 업데이트
+        dsl_dict = update_data.dsl_definition.model_dump()
+
+        # JSONB 필드 업데이트를 위해 새 dict로 복사하여 할당
+        new_dsl = copy.deepcopy(dsl_dict)
+        workflow.dsl_definition = new_dsl
+
+        # SQLAlchemy에 JSONB 필드 변경을 명시적으로 알림
+        flag_modified(workflow, "dsl_definition")
+
+        # DSL에서 name, description이 있으면 워크플로우에도 반영
+        if update_data.dsl_definition.name:
+            workflow.name = update_data.dsl_definition.name
+        if update_data.dsl_definition.description:
+            workflow.description = update_data.dsl_definition.description
 
     workflow.updated_at = datetime.utcnow()
 

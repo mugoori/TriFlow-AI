@@ -161,6 +161,14 @@
   - LearningAgent, WorkflowPlannerAgent, BIPlannerAgent 프롬프트 업데이트
   - UUID/코드 전문 출력 금지
   - 테이블 1개 + 다음 단계 액션 형식으로 통일
+- [x] **[Bug Fix]** Workflow 저장 안되는 버그 수정
+  - 원인: SQLAlchemy JSONB 필드 mutation detection 실패
+  - 해결: `copy.deepcopy()` + `flag_modified()` 적용
+  - 파일: `backend/app/routers/workflows.py`
+- [x] **[DX]** 백엔드 서버 관리 스크립트 추가
+  - `backend/start_server.bat` - 기존 프로세스 종료 + 서버 시작
+  - `scripts/kill_port.bat` - 포트 점유 프로세스 종료 유틸리티
+  - 다중 서버 인스턴스 문제 방지
 
 ### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅
 | Task | Status | Progress |
