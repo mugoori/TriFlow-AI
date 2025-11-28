@@ -41,9 +41,8 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
+# Note: alembic 폴더는 추후 DB 마이그레이션 추가 시 복사
 COPY ./app ./app
-COPY ./alembic ./alembic
-COPY ./alembic.ini .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

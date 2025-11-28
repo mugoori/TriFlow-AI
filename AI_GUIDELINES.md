@@ -178,3 +178,23 @@ concurrency:
 ### 3. Loop Break Condition
 - 동일한 에러로 **2회 이상 실패**할 경우, 즉시 멈추고 사용자에게 다음을 요청한다:
   - *"이전 시도들이 실패했습니다. 로그를 확인하고 새로운 전략을 제안해 주십시오."*
+
+---
+
+## 📉 Rule 10: Resource Efficiency & Minimalism (Core Engineering Principle)
+**"작동하는 가장 가벼운 방법"을 선택한다. 이는 MVP뿐만 아니라 V1, V2 등 프로젝트 전 라이프사이클에 적용되는 불변의 원칙이다.**
+
+### 1. Dependency Hygiene (의존성 다이어트)
+- **CPU First Strategy**: ML/AI 라이브러리는 **CPU 전용 버전을 기본(Default)**으로 한다. GPU 버전은 명확한 성능 요구사항이 증명된 경우에만 추가한다.
+  - *예시*: `torch` 설치 시 `--index-url https://download.pytorch.org/whl/cpu` 옵션 필수.
+- **Minimal Installation**: 무거운 전체 패키지 대신 `headless`, `slim`, `lite` 버전을 우선 사용한다.
+  - *예시*: `opencv-python-headless`, `python:3.11-slim`.
+
+### 2. Infrastructure Agnostic (인프라 중립성)
+- **Protocol over Vendor**: 특정 클라우드 벤더(AWS, GCP)의 종속적인 기능 대신, **표준 프로토콜**(S3 Protocol, Postgres Wire Protocol)을 준수하는 도구를 사용한다.
+  - *이유*: 이를 통해 로컬(Docker), 온프레미스, 클라우드 어디든 코드 수정 없이 배포할 수 있다.
+- **Container Optimization**: `Dockerfile`은 항상 Layer Caching과 Multi-stage build를 적용하여 빌드 속도와 용량을 최적화한다.
+
+### 3. YAGNI & Simple Design
+- **Complexity on Demand**: 확장성(Sharding, Microservices)은 **실제 병목이 발생했을 때** 도입한다. 미리 예측해서 구현하지 않는다.
+- **Understandable Code**: "멋진 코드"보다 "동료가 이해하기 쉬운 직관적인 코드"를 작성한다.
