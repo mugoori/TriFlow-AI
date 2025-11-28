@@ -157,6 +157,10 @@
   - "룰셋", "규칙 만들어", "판단 규칙", "~면 경고", "~면 위험" 키워드 → learning 라우팅
 - [x] **[API]** agents.py에 tool_choice 조건부 설정
   - 룰셋 생성 요청 감지 시 `create_ruleset` 도구 강제 호출
+- [x] **[UX]** 에이전트 응답 형식 간결화 (Chat-Optimized)
+  - LearningAgent, WorkflowPlannerAgent, BIPlannerAgent 프롬프트 업데이트
+  - UUID/코드 전문 출력 금지
+  - 테이블 1개 + 다음 단계 액션 형식으로 통일
 
 ### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅
 | Task | Status | Progress |
