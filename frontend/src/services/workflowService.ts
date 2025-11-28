@@ -61,13 +61,20 @@ export interface WorkflowInstanceListResponse {
 
 export interface ActionCatalogItem {
   name: string;
+  display_name: string;
   description: string;
   category: string;
+  category_display_name: string;
   parameters: Record<string, string>;
 }
 
+export interface CategoryInfo {
+  name: string;
+  display_name: string;
+}
+
 export interface ActionCatalogResponse {
-  categories: string[];
+  categories: CategoryInfo[];
   actions: ActionCatalogItem[];
   total: number;
 }

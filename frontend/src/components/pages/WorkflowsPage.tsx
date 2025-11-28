@@ -42,6 +42,7 @@ import {
   type Workflow,
   type WorkflowInstance,
   type ActionCatalogItem,
+  type CategoryInfo,
   type ExecutionLog,
 } from '@/services/workflowService';
 import { ActionDetailModal } from '@/components/workflow/ActionDetailModal';
@@ -87,13 +88,6 @@ const categoryColors: Record<string, string> = {
   analysis: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800',
 };
 
-// 카테고리 한글 이름
-const categoryLabels: Record<string, string> = {
-  notification: '알림',
-  data: '데이터',
-  control: '제어',
-  analysis: '분석',
-};
 
 export function WorkflowsPage() {
   // 상태
@@ -111,7 +105,7 @@ export function WorkflowsPage() {
   // 액션 카탈로그
   const [showCatalog, setShowCatalog] = useState(false);
   const [actions, setActions] = useState<ActionCatalogItem[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<CategoryInfo[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -495,23 +489,23 @@ export function WorkflowsPage() {
                   <Filter className="w-4 h-4 text-slate-400" />
                   <span className="text-sm text-slate-500">필터:</span>
                   <div className="flex flex-wrap gap-2">
-                    {categories.map((category) => {
-                      const CategoryIcon = categoryIcons[category] || Zap;
-                      const isSelected = selectedCategory === category;
+                    {categories.map((cat) => {
+                      const CategoryIcon = categoryIcons[cat.name] || Zap;
+                      const isSelected = selectedCategory === cat.name;
                       return (
                         <button
-                          key={category}
-                          onClick={() => handleCategoryFilter(category)}
+                          key={cat.name}
+                          onClick={() => handleCategoryFilter(cat.name)}
                           className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-all ${
                             isSelected
-                              ? categoryColors[category]
+                              ? categoryColors[cat.name]
                               : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                           }`}
                         >
                           <CategoryIcon className="w-3.5 h-3.5" />
-                          {categoryLabels[category] || category}
+                          {cat.display_name}
                           <span className="text-xs opacity-70">
-                            ({actions.filter((a) => a.category === category).length})
+                            ({actions.filter((a) => a.category === cat.name).length})
                           </span>
                         </button>
                       );
@@ -554,11 +548,11 @@ export function WorkflowsPage() {
                             <CategoryIcon className="w-5 h-5" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-mono text-sm font-semibold truncate">
-                              {action.name}
+                            <h4 className="text-sm font-semibold truncate">
+                              {action.display_name}
                             </h4>
                             <p className="text-xs mt-0.5 opacity-80">
-                              {categoryLabels[action.category] || action.category}
+                              {action.category_display_name}
                             </p>
                           </div>
                         </div>

@@ -84,13 +84,20 @@ class WorkflowInstanceListResponse(BaseModel):
 
 class ActionCatalogItem(BaseModel):
     name: str
+    display_name: str
     description: str
     category: str
+    category_display_name: str
     parameters: Dict[str, str]
 
 
+class CategoryInfo(BaseModel):
+    name: str
+    display_name: str
+
+
 class ActionCatalogResponse(BaseModel):
-    categories: List[str]
+    categories: List[CategoryInfo]
     actions: List[ActionCatalogItem]
     total: int
 
@@ -98,11 +105,20 @@ class ActionCatalogResponse(BaseModel):
 # ============ Action Catalog (Static) ============
 
 # 액션 카탈로그 (정적 데이터)
+# 카테고리 한글명 매핑
+CATEGORY_DISPLAY_NAMES = {
+    "notification": "알림",
+    "data": "데이터",
+    "control": "제어",
+    "analysis": "분석",
+}
+
 ACTION_CATALOG = {
     "notification": [
         {
             "name": "send_slack_notification",
-            "description": "Slack 채널에 알림을 전송합니다",
+            "display_name": "슬랙 알림 전송",
+            "description": "Slack 채널에 알림 메시지를 전송합니다",
             "parameters": {
                 "channel": "string (슬랙 채널명)",
                 "message": "string (메시지 내용)",
@@ -111,7 +127,8 @@ ACTION_CATALOG = {
         },
         {
             "name": "send_email",
-            "description": "이메일을 전송합니다",
+            "display_name": "이메일 전송",
+            "description": "지정된 수신자에게 이메일을 전송합니다",
             "parameters": {
                 "to": "string (수신자 이메일)",
                 "subject": "string (제목)",
@@ -120,7 +137,8 @@ ACTION_CATALOG = {
         },
         {
             "name": "send_sms",
-            "description": "SMS 문자를 전송합니다",
+            "display_name": "SMS 문자 전송",
+            "description": "휴대폰으로 SMS 문자를 전송합니다",
             "parameters": {
                 "phone": "string (전화번호)",
                 "message": "string (메시지 내용)",
@@ -130,7 +148,8 @@ ACTION_CATALOG = {
     "data": [
         {
             "name": "save_to_database",
-            "description": "데이터를 데이터베이스에 저장합니다",
+            "display_name": "DB 저장",
+            "description": "데이터를 데이터베이스 테이블에 저장합니다",
             "parameters": {
                 "table": "string (테이블명)",
                 "data": "object (저장할 데이터)",
@@ -138,6 +157,7 @@ ACTION_CATALOG = {
         },
         {
             "name": "export_to_csv",
+            "display_name": "CSV 내보내기",
             "description": "데이터를 CSV 파일로 내보냅니다",
             "parameters": {
                 "data": "array (내보낼 데이터)",
@@ -146,7 +166,8 @@ ACTION_CATALOG = {
         },
         {
             "name": "log_event",
-            "description": "이벤트를 로그에 기록합니다",
+            "display_name": "이벤트 로그 기록",
+            "description": "시스템 로그에 이벤트를 기록합니다",
             "parameters": {
                 "event_type": "string (이벤트 타입)",
                 "details": "object (상세 정보)",
@@ -156,7 +177,8 @@ ACTION_CATALOG = {
     "control": [
         {
             "name": "stop_production_line",
-            "description": "생산 라인을 중지합니다",
+            "display_name": "생산라인 중지",
+            "description": "지정된 생산 라인의 가동을 중지합니다",
             "parameters": {
                 "line_code": "string (라인 코드)",
                 "reason": "string (중지 사유)",
@@ -164,7 +186,8 @@ ACTION_CATALOG = {
         },
         {
             "name": "adjust_sensor_threshold",
-            "description": "센서 임계값을 조정합니다",
+            "display_name": "센서 임계값 조정",
+            "description": "센서의 경고/알림 임계값을 변경합니다",
             "parameters": {
                 "sensor_id": "string (센서 ID)",
                 "threshold": "number (새 임계값)",
@@ -172,7 +195,8 @@ ACTION_CATALOG = {
         },
         {
             "name": "trigger_maintenance",
-            "description": "유지보수 작업을 트리거합니다",
+            "display_name": "유지보수 요청",
+            "description": "장비 유지보수 작업을 요청합니다",
             "parameters": {
                 "equipment_id": "string (장비 ID)",
                 "priority": "string (우선순위: low, medium, high)",
@@ -182,7 +206,8 @@ ACTION_CATALOG = {
     "analysis": [
         {
             "name": "calculate_defect_rate",
-            "description": "불량률을 계산합니다",
+            "display_name": "불량률 계산",
+            "description": "생산 라인의 불량률을 계산합니다",
             "parameters": {
                 "line_code": "string (라인 코드)",
                 "time_range": "string (시간 범위)",
@@ -190,7 +215,8 @@ ACTION_CATALOG = {
         },
         {
             "name": "analyze_sensor_trend",
-            "description": "센서 데이터 추세를 분석합니다",
+            "display_name": "센서 추세 분석",
+            "description": "센서 데이터의 변화 추세를 분석합니다",
             "parameters": {
                 "sensor_type": "string (센서 타입)",
                 "hours": "number (분석 기간, 시간 단위)",
@@ -198,7 +224,8 @@ ACTION_CATALOG = {
         },
         {
             "name": "predict_equipment_failure",
-            "description": "장비 고장을 예측합니다",
+            "display_name": "고장 예측",
+            "description": "장비의 고장 가능성을 예측합니다",
             "parameters": {
                 "equipment_id": "string (장비 ID)",
                 "sensor_data": "array (센서 데이터)",
@@ -291,22 +318,37 @@ async def get_action_catalog(
 ):
     """
     사용 가능한 액션 카탈로그 조회 (정적 데이터)
+
+    한글 display_name과 category_display_name을 포함합니다.
     """
     actions = []
-    categories = list(ACTION_CATALOG.keys())
+    categories = [
+        CategoryInfo(name=cat, display_name=CATEGORY_DISPLAY_NAMES.get(cat, cat))
+        for cat in ACTION_CATALOG.keys()
+    ]
 
     if category and category in ACTION_CATALOG:
+        cat_display = CATEGORY_DISPLAY_NAMES.get(category, category)
         for action in ACTION_CATALOG[category]:
             actions.append(ActionCatalogItem(
-                **action,
+                name=action["name"],
+                display_name=action.get("display_name", action["name"]),
+                description=action["description"],
                 category=category,
+                category_display_name=cat_display,
+                parameters=action["parameters"],
             ))
     else:
         for cat, cat_actions in ACTION_CATALOG.items():
+            cat_display = CATEGORY_DISPLAY_NAMES.get(cat, cat)
             for action in cat_actions:
                 actions.append(ActionCatalogItem(
-                    **action,
+                    name=action["name"],
+                    display_name=action.get("display_name", action["name"]),
+                    description=action["description"],
                     category=cat,
+                    category_display_name=cat_display,
+                    parameters=action["parameters"],
                 ))
 
     return ActionCatalogResponse(

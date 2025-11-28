@@ -33,13 +33,6 @@ const categoryColors: Record<string, string> = {
   analysis: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
 };
 
-// 카테고리 한글 이름
-const categoryLabels: Record<string, string> = {
-  notification: '알림',
-  data: '데이터',
-  control: '제어',
-  analysis: '분석',
-};
 
 export function ActionDetailModal({ action, isOpen, onClose }: ActionDetailModalProps) {
   const [copied, setCopied] = React.useState(false);
@@ -91,10 +84,10 @@ export function ActionDetailModal({ action, isOpen, onClose }: ActionDetailModal
             </div>
             <div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                {action.name}
+                {action.display_name}
               </h2>
               <span className={`inline-block px-2 py-0.5 text-xs rounded ${categoryColors[action.category]}`}>
-                {categoryLabels[action.category] || action.category}
+                {action.category_display_name}
               </span>
             </div>
           </div>
