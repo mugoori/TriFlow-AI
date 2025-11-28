@@ -190,25 +190,32 @@ async def list_rulesets(
     """
     룰셋 목록 조회
     """
-    query = db.query(Ruleset)
+    try:
+        query = db.query(Ruleset)
 
-    if is_active is not None:
-        query = query.filter(Ruleset.is_active == is_active)
+        if is_active is not None:
+            query = query.filter(Ruleset.is_active == is_active)
 
-    if search:
-        search_pattern = f"%{search}%"
-        query = query.filter(
-            (Ruleset.name.ilike(search_pattern)) |
-            (Ruleset.description.ilike(search_pattern))
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                (Ruleset.name.ilike(search_pattern)) |
+                (Ruleset.description.ilike(search_pattern))
+            )
+
+        query = query.order_by(Ruleset.created_at.desc())
+        rulesets = query.all()
+
+        return RulesetListResponse(
+            rulesets=[_ruleset_to_response(r) for r in rulesets],
+            total=len(rulesets),
         )
-
-    query = query.order_by(Ruleset.created_at.desc())
-    rulesets = query.all()
-
-    return RulesetListResponse(
-        rulesets=[_ruleset_to_response(r) for r in rulesets],
-        total=len(rulesets),
-    )
+    except Exception:
+        # DB 연결 실패 시 빈 목록 반환
+        return RulesetListResponse(
+            rulesets=[],
+            total=0,
+        )
 
 
 @router.get("/samples")

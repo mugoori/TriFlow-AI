@@ -253,29 +253,36 @@ async def list_workflows(
     """
     워크플로우 목록 조회 (PostgreSQL)
     """
-    query = db.query(Workflow)
+    try:
+        query = db.query(Workflow)
 
-    # 필터링
-    if is_active is not None:
-        query = query.filter(Workflow.is_active == is_active)
+        # 필터링
+        if is_active is not None:
+            query = query.filter(Workflow.is_active == is_active)
 
-    if search:
-        search_pattern = f"%{search}%"
-        query = query.filter(
-            (Workflow.name.ilike(search_pattern)) |
-            (Workflow.description.ilike(search_pattern))
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                (Workflow.name.ilike(search_pattern)) |
+                (Workflow.description.ilike(search_pattern))
+            )
+
+        # 정렬 (최신순)
+        query = query.order_by(Workflow.created_at.desc())
+
+        workflows = query.all()
+        total = len(workflows)
+
+        return WorkflowListResponse(
+            workflows=[_workflow_to_response(w) for w in workflows],
+            total=total,
         )
-
-    # 정렬 (최신순)
-    query = query.order_by(Workflow.created_at.desc())
-
-    workflows = query.all()
-    total = len(workflows)
-
-    return WorkflowListResponse(
-        workflows=[_workflow_to_response(w) for w in workflows],
-        total=total,
-    )
+    except Exception:
+        # DB 연결 실패 시 빈 목록 반환
+        return WorkflowListResponse(
+            workflows=[],
+            total=0,
+        )
 
 
 @router.get("/actions", response_model=ActionCatalogResponse)

@@ -54,6 +54,11 @@ class SensorSummaryResponse(BaseModel):
     summary: List[LineSummary]
 
 
+# 기본값 상수
+DEFAULT_LINES = ["LINE_A", "LINE_B", "LINE_C", "LINE_D"]
+DEFAULT_SENSOR_TYPES = ["temperature", "pressure", "humidity", "vibration", "flow_rate"]
+
+
 @router.get("/data", response_model=SensorDataResponse)
 async def get_sensor_data(
     db: Session = Depends(get_db),
@@ -73,50 +78,59 @@ async def get_sensor_data(
     - line_code: 생산 라인 코드 (LINE_A, LINE_B, etc.)
     - sensor_type: 센서 타입 (temperature, pressure, humidity, vibration, flow_rate)
     """
-    # 기본값 설정
-    if not end_date:
-        end_date = datetime.utcnow()
-    if not start_date:
-        start_date = end_date - timedelta(days=1)
+    try:
+        # 기본값 설정
+        if not end_date:
+            end_date = datetime.utcnow()
+        if not start_date:
+            start_date = end_date - timedelta(days=1)
 
-    # Base query
-    query = db.query(SensorData).filter(
-        SensorData.recorded_at >= start_date,
-        SensorData.recorded_at <= end_date
-    )
-
-    # 필터 적용
-    if line_code:
-        query = query.filter(SensorData.line_code == line_code)
-    if sensor_type:
-        query = query.filter(SensorData.sensor_type == sensor_type)
-
-    # Total count
-    total = query.count()
-
-    # 정렬 및 페이지네이션
-    offset = (page - 1) * page_size
-    data = query.order_by(SensorData.recorded_at.desc()).offset(offset).limit(page_size).all()
-
-    # Response 변환
-    items = [
-        SensorDataItem(
-            sensor_id=str(item.sensor_id),
-            recorded_at=item.recorded_at,
-            line_code=item.line_code,
-            sensor_type=item.sensor_type,
-            value=item.value,
-            unit=item.unit
+        # Base query
+        query = db.query(SensorData).filter(
+            SensorData.recorded_at >= start_date,
+            SensorData.recorded_at <= end_date
         )
-        for item in data
-    ]
 
-    return SensorDataResponse(
-        data=items,
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
+        # 필터 적용
+        if line_code:
+            query = query.filter(SensorData.line_code == line_code)
+        if sensor_type:
+            query = query.filter(SensorData.sensor_type == sensor_type)
+
+        # Total count
+        total = query.count()
+
+        # 정렬 및 페이지네이션
+        offset = (page - 1) * page_size
+        data = query.order_by(SensorData.recorded_at.desc()).offset(offset).limit(page_size).all()
+
+        # Response 변환
+        items = [
+            SensorDataItem(
+                sensor_id=str(item.sensor_id),
+                recorded_at=item.recorded_at,
+                line_code=item.line_code,
+                sensor_type=item.sensor_type,
+                value=item.value,
+                unit=item.unit
+            )
+            for item in data
+        ]
+
+        return SensorDataResponse(
+            data=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception:
+        # DB 연결 실패 시 빈 데이터 반환
+        return SensorDataResponse(
+            data=[],
+            total=0,
+            page=page,
+            page_size=page_size,
+        )
 
 
 @router.get("/filters", response_model=SensorFilterOptions)
@@ -126,23 +140,30 @@ async def get_filter_options(db: Session = Depends(get_db)):
 
     사용 가능한 라인 코드와 센서 타입 목록을 반환합니다.
     """
-    # DB에서 distinct 값 조회
-    lines = db.query(distinct(SensorData.line_code)).all()
-    sensor_types = db.query(distinct(SensorData.sensor_type)).all()
+    try:
+        # DB에서 distinct 값 조회
+        lines = db.query(distinct(SensorData.line_code)).all()
+        sensor_types = db.query(distinct(SensorData.sensor_type)).all()
 
-    line_list = [row[0] for row in lines if row[0]]
-    sensor_type_list = [row[0] for row in sensor_types if row[0]]
+        line_list = [row[0] for row in lines if row[0]]
+        sensor_type_list = [row[0] for row in sensor_types if row[0]]
 
-    # DB에 데이터가 없으면 기본값 반환
-    if not line_list:
-        line_list = ["LINE_A", "LINE_B", "LINE_C", "LINE_D"]
-    if not sensor_type_list:
-        sensor_type_list = ["temperature", "pressure", "humidity", "vibration", "flow_rate"]
+        # DB에 데이터가 없으면 기본값 반환
+        if not line_list:
+            line_list = DEFAULT_LINES
+        if not sensor_type_list:
+            sensor_type_list = DEFAULT_SENSOR_TYPES
 
-    return SensorFilterOptions(
-        lines=sorted(line_list),
-        sensor_types=sorted(sensor_type_list),
-    )
+        return SensorFilterOptions(
+            lines=sorted(line_list),
+            sensor_types=sorted(sensor_type_list),
+        )
+    except Exception:
+        # DB 연결 실패 시 기본값 반환
+        return SensorFilterOptions(
+            lines=DEFAULT_LINES,
+            sensor_types=DEFAULT_SENSOR_TYPES,
+        )
 
 
 @router.get("/summary", response_model=SensorSummaryResponse)
@@ -153,58 +174,62 @@ async def get_sensor_summary(
     """
     센서 데이터 요약 통계 (PostgreSQL)
     """
-    # 최근 24시간 데이터 기준
-    since = datetime.utcnow() - timedelta(hours=24)
+    try:
+        # 최근 24시간 데이터 기준
+        since = datetime.utcnow() - timedelta(hours=24)
 
-    # Base query
-    query = db.query(
-        SensorData.line_code,
-        SensorData.sensor_type,
-        func.avg(SensorData.value).label("avg_value"),
-        func.count(SensorData.sensor_id).label("count"),
-        func.max(SensorData.recorded_at).label("last_recorded")
-    ).filter(
-        SensorData.recorded_at >= since
-    )
+        # Base query
+        query = db.query(
+            SensorData.line_code,
+            SensorData.sensor_type,
+            func.avg(SensorData.value).label("avg_value"),
+            func.count(SensorData.sensor_id).label("count"),
+            func.max(SensorData.recorded_at).label("last_recorded")
+        ).filter(
+            SensorData.recorded_at >= since
+        )
 
-    if line_code:
-        query = query.filter(SensorData.line_code == line_code)
+        if line_code:
+            query = query.filter(SensorData.line_code == line_code)
 
-    # Group by line_code, sensor_type
-    results = query.group_by(SensorData.line_code, SensorData.sensor_type).all()
+        # Group by line_code, sensor_type
+        results = query.group_by(SensorData.line_code, SensorData.sensor_type).all()
 
-    # 결과 집계 (line_code별로)
-    line_stats = {}
-    for row in results:
-        lc = row.line_code
-        if lc not in line_stats:
-            line_stats[lc] = {
-                "line_code": lc,
-                "avg_temperature": None,
-                "avg_pressure": None,
-                "avg_humidity": None,
-                "total_readings": 0,
-                "last_updated": None,
-            }
+        # 결과 집계 (line_code별로)
+        line_stats = {}
+        for row in results:
+            lc = row.line_code
+            if lc not in line_stats:
+                line_stats[lc] = {
+                    "line_code": lc,
+                    "avg_temperature": None,
+                    "avg_pressure": None,
+                    "avg_humidity": None,
+                    "total_readings": 0,
+                    "last_updated": None,
+                }
 
-        # sensor_type별 평균값 저장
-        if row.sensor_type == "temperature":
-            line_stats[lc]["avg_temperature"] = round(row.avg_value, 1) if row.avg_value else None
-        elif row.sensor_type == "pressure":
-            line_stats[lc]["avg_pressure"] = round(row.avg_value, 2) if row.avg_value else None
-        elif row.sensor_type == "humidity":
-            line_stats[lc]["avg_humidity"] = round(row.avg_value, 1) if row.avg_value else None
+            # sensor_type별 평균값 저장
+            if row.sensor_type == "temperature":
+                line_stats[lc]["avg_temperature"] = round(row.avg_value, 1) if row.avg_value else None
+            elif row.sensor_type == "pressure":
+                line_stats[lc]["avg_pressure"] = round(row.avg_value, 2) if row.avg_value else None
+            elif row.sensor_type == "humidity":
+                line_stats[lc]["avg_humidity"] = round(row.avg_value, 1) if row.avg_value else None
 
-        line_stats[lc]["total_readings"] += row.count
+            line_stats[lc]["total_readings"] += row.count
 
-        # 최신 시간 업데이트
-        if row.last_recorded:
-            current_last = line_stats[lc]["last_updated"]
-            row_time = row.last_recorded.isoformat()
-            if not current_last or row_time > current_last:
-                line_stats[lc]["last_updated"] = row_time
+            # 최신 시간 업데이트
+            if row.last_recorded:
+                current_last = line_stats[lc]["last_updated"]
+                row_time = row.last_recorded.isoformat()
+                if not current_last or row_time > current_last:
+                    line_stats[lc]["last_updated"] = row_time
 
-    # DB에 데이터가 없으면 빈 배열 반환
-    summary = list(line_stats.values())
+        # DB에 데이터가 없으면 빈 배열 반환
+        summary = list(line_stats.values())
 
-    return SensorSummaryResponse(summary=summary)
+        return SensorSummaryResponse(summary=summary)
+    except Exception:
+        # DB 연결 실패 시 빈 배열 반환
+        return SensorSummaryResponse(summary=[])
