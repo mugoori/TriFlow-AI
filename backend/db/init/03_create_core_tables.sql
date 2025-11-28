@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS workflow_instances (
     tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
     workflow_id UUID NOT NULL REFERENCES workflows(workflow_id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL,  -- RUNNING, COMPLETED, FAILED, CANCELLED
-    context JSONB DEFAULT '{}',
+    input_data JSONB DEFAULT '{}',
+    output_data JSONB DEFAULT '{}',
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
     error_message TEXT
