@@ -4,9 +4,13 @@ Workflow Planner Agent
 """
 from typing import Any, Dict, List
 import logging
+import json
 from pathlib import Path
+from uuid import uuid4
 
 from .base_agent import BaseAgent
+from ..models.core import Workflow
+from ..database import get_db_context
 
 logger = logging.getLogger(__name__)
 
@@ -43,83 +47,83 @@ class WorkflowPlannerAgent(BaseAgent):
     def get_tools(self) -> List[Dict[str, Any]]:
         """
         Workflow Planner Agent의 Tool 정의
+        create_workflow만 사용하여 워크플로우 생성에 집중
         """
         return [
             {
-                "name": "search_action_catalog",
-                "description": "사용 가능한 액션 목록을 검색합니다.",
+                "name": "create_workflow",
+                "description": "워크플로우를 DB에 저장합니다. 사용자의 자연어 요청을 기반으로 워크플로우를 생성합니다. 예: '온도가 80도 넘으면 슬랙 알림' → 자동 워크플로우 생성",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "query": {
+                        "name": {
                             "type": "string",
-                            "description": "검색 쿼리 (예: '알림', '데이터 저장', '센서 제어')",
+                            "description": "워크플로우 이름 (한글 가능, 예: '온도 경고 워크플로우')",
                         },
-                        "category": {
+                        "description": {
                             "type": "string",
-                            "description": "액션 카테고리 (notification, data, control, analysis)",
-                            "enum": ["notification", "data", "control", "analysis", "all"],
+                            "description": "워크플로우 설명",
+                        },
+                        "trigger_type": {
+                            "type": "string",
+                            "enum": ["event", "schedule", "manual"],
+                            "description": "트리거 유형: event(이벤트 기반), schedule(스케줄), manual(수동)",
+                        },
+                        "event_type": {
+                            "type": "string",
+                            "enum": ["sensor_alert", "defect_detected", "threshold_exceeded", "line_stopped", "maintenance_due"],
+                            "description": "이벤트 타입 (trigger_type이 event일 때 사용)",
+                        },
+                        "condition_sensor_type": {
+                            "type": "string",
+                            "enum": ["temperature", "pressure", "humidity", "vibration", "flow_rate", "defect_rate"],
+                            "description": "조건에 사용할 센서/데이터 타입",
+                        },
+                        "condition_operator": {
+                            "type": "string",
+                            "enum": [">", "<", ">=", "<=", "==", "!="],
+                            "description": "비교 연산자",
+                        },
+                        "condition_value": {
+                            "type": "number",
+                            "description": "조건 임계값 (숫자)",
+                        },
+                        "action_type": {
+                            "type": "string",
+                            "enum": ["send_slack_notification", "send_email", "send_sms", "log_event", "stop_production_line", "trigger_maintenance"],
+                            "description": "실행할 액션 유형",
+                        },
+                        "action_channel": {
+                            "type": "string",
+                            "description": "알림 채널 (Slack 채널명, 이메일 주소 등)",
+                        },
+                        "action_message": {
+                            "type": "string",
+                            "description": "알림/로그 메시지",
                         },
                     },
-                    "required": ["query"],
-                },
-            },
-            {
-                "name": "generate_workflow_dsl",
-                "description": "자연어 요청을 Workflow DSL로 변환합니다.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "user_request": {
-                            "type": "string",
-                            "description": "사용자의 자연어 요청",
-                        },
-                        "available_actions": {
-                            "type": "array",
-                            "description": "사용 가능한 액션 리스트",
-                            "items": {"type": "string"},
-                        },
-                    },
-                    "required": ["user_request", "available_actions"],
-                },
-            },
-            {
-                "name": "validate_node_schema",
-                "description": "생성된 워크플로우 노드의 스키마를 검증합니다.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "workflow_dsl": {
-                            "type": "object",
-                            "description": "검증할 Workflow DSL",
-                        },
-                    },
-                    "required": ["workflow_dsl"],
+                    "required": ["name", "trigger_type", "condition_sensor_type", "condition_operator", "condition_value", "action_type"],
                 },
             },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
         """
-        Tool 실행
+        Tool 실행 - create_workflow 전용
         """
-        if tool_name == "search_action_catalog":
-            return self._search_action_catalog(
-                query=tool_input["query"],
-                category=tool_input.get("category", "all"),
+        if tool_name == "create_workflow":
+            return self._create_workflow(
+                name=tool_input["name"],
+                description=tool_input.get("description"),
+                trigger_type=tool_input["trigger_type"],
+                event_type=tool_input.get("event_type"),
+                condition_sensor_type=tool_input["condition_sensor_type"],
+                condition_operator=tool_input["condition_operator"],
+                condition_value=tool_input["condition_value"],
+                action_type=tool_input["action_type"],
+                action_channel=tool_input.get("action_channel"),
+                action_message=tool_input.get("action_message"),
             )
-
-        elif tool_name == "generate_workflow_dsl":
-            return self._generate_workflow_dsl(
-                user_request=tool_input["user_request"],
-                available_actions=tool_input["available_actions"],
-            )
-
-        elif tool_name == "validate_node_schema":
-            return self._validate_node_schema(
-                workflow_dsl=tool_input["workflow_dsl"],
-            )
-
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
 
@@ -402,5 +406,157 @@ class WorkflowPlannerAgent(BaseAgent):
             return {
                 "success": False,
                 "valid": False,
+                "error": str(e),
+            }
+
+    def _create_workflow(
+        self,
+        name: str,
+        trigger_type: str,
+        condition_sensor_type: str,
+        condition_operator: str,
+        condition_value: float,
+        action_type: str,
+        description: str | None = None,
+        event_type: str | None = None,
+        action_channel: str | None = None,
+        action_message: str | None = None,
+    ) -> Dict[str, Any]:
+        """
+        구조화된 파라미터를 받아 워크플로우 DSL을 생성하고 DB에 저장
+        """
+        try:
+            # 센서 타입별 한글 이름
+            sensor_names = {
+                "temperature": "온도",
+                "pressure": "압력",
+                "humidity": "습도",
+                "vibration": "진동",
+                "flow_rate": "유량",
+                "defect_rate": "불량률",
+            }
+            sensor_name_kr = sensor_names.get(condition_sensor_type, condition_sensor_type)
+
+            # 액션 타입별 기본 설정
+            action_configs = {
+                "send_slack_notification": {
+                    "action": "send_slack_notification",
+                    "parameters": {
+                        "channel": action_channel or "#alerts",
+                        "message": action_message or f"{sensor_name_kr} 이상 감지: {condition_operator} {condition_value}",
+                    },
+                },
+                "send_email": {
+                    "action": "send_email",
+                    "parameters": {
+                        "to": action_channel or "admin@example.com",
+                        "subject": f"[경고] {sensor_name_kr} 이상",
+                        "body": action_message or f"{sensor_name_kr}가 임계값을 초과했습니다.",
+                    },
+                },
+                "send_sms": {
+                    "action": "send_sms",
+                    "parameters": {
+                        "phone": action_channel or "",
+                        "message": action_message or f"{sensor_name_kr} 경고",
+                    },
+                },
+                "log_event": {
+                    "action": "log_event",
+                    "parameters": {
+                        "event_type": "sensor_alert",
+                        "details": {
+                            "sensor_type": condition_sensor_type,
+                            "condition": f"{condition_operator} {condition_value}",
+                            "message": action_message or f"{sensor_name_kr} 이상",
+                        },
+                    },
+                },
+                "stop_production_line": {
+                    "action": "stop_production_line",
+                    "parameters": {
+                        "line_code": action_channel or "LINE_A",
+                        "reason": action_message or f"{sensor_name_kr} 임계값 초과로 자동 중지",
+                    },
+                },
+                "trigger_maintenance": {
+                    "action": "trigger_maintenance",
+                    "parameters": {
+                        "equipment_id": action_channel or "EQ_001",
+                        "priority": "high",
+                    },
+                },
+            }
+
+            # Workflow DSL 생성
+            workflow_dsl = {
+                "name": name,
+                "description": description or f"{sensor_name_kr} {condition_operator} {condition_value} 시 {action_type}",
+                "trigger": {
+                    "type": trigger_type,
+                    "config": {
+                        "event_type": event_type or "threshold_exceeded",
+                    },
+                },
+                "nodes": [
+                    {
+                        "id": "node_1",
+                        "type": "condition",
+                        "config": {
+                            "condition": f"{condition_sensor_type} {condition_operator} {condition_value}",
+                        },
+                        "next": ["node_2"],
+                    },
+                    {
+                        "id": "node_2",
+                        "type": "action",
+                        "config": action_configs.get(action_type, action_configs["log_event"]),
+                        "next": [],
+                    },
+                ],
+            }
+
+            workflow_id = str(uuid4())
+
+            with get_db_context() as db:
+                # 기본 테넌트 조회
+                from ..models.core import Tenant
+                default_tenant = db.query(Tenant).filter(Tenant.name == "Default").first()
+                if not default_tenant:
+                    return {
+                        "success": False,
+                        "error": "Default tenant not found",
+                    }
+
+                workflow = Workflow(
+                    workflow_id=workflow_id,
+                    tenant_id=default_tenant.tenant_id,
+                    name=name,
+                    description=description or workflow_dsl["description"],
+                    dsl_definition=workflow_dsl,
+                    version="1.0.0",
+                    is_active=True,
+                )
+                db.add(workflow)
+                db.commit()
+                db.refresh(workflow)
+
+                logger.info(f"Created workflow: {workflow_id} - {name}")
+
+                return {
+                    "success": True,
+                    "workflow_id": workflow_id,
+                    "name": name,
+                    "description": workflow.description,
+                    "trigger_type": trigger_type,
+                    "condition": f"{sensor_name_kr} {condition_operator} {condition_value}",
+                    "action": action_type,
+                    "message": f"워크플로우 '{name}'이(가) 성공적으로 생성되었습니다. Workflows 탭에서 확인하세요.",
+                }
+
+        except Exception as e:
+            logger.error(f"Error creating workflow: {e}")
+            return {
+                "success": False,
                 "error": str(e),
             }

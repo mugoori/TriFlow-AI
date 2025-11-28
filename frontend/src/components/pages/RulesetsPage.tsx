@@ -27,8 +27,13 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { rulesetService, type Ruleset, type RulesetExecuteResponse } from '@/services/rulesetService';
 import { RulesetEditorModal } from '@/components/ruleset/RulesetEditorModal';
+import { Sparkles } from 'lucide-react';
 
-export function RulesetsPage() {
+interface RulesetsPageProps {
+  highlightRulesetId?: string | null;
+}
+
+export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
   // Data state
   const [rulesets, setRulesets] = useState<Ruleset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +81,18 @@ export function RulesetsPage() {
   useEffect(() => {
     loadRulesets();
   }, [loadRulesets]);
+
+  // Highlight 된 룰셋 자동 선택
+  useEffect(() => {
+    if (highlightRulesetId && rulesets.length > 0) {
+      const targetRuleset = rulesets.find(r => r.ruleset_id === highlightRulesetId);
+      if (targetRuleset) {
+        setSelectedRuleset(targetRuleset);
+        setQuickTestResult(null);
+        setQuickTestError(null);
+      }
+    }
+  }, [highlightRulesetId, rulesets]);
 
   // Create new ruleset
   const handleCreate = () => {
@@ -272,7 +289,9 @@ export function RulesetsPage() {
             </div>
           ) : (
             <div className="divide-y divide-slate-200 dark:divide-slate-700">
-              {rulesets.map((ruleset) => (
+              {rulesets.map((ruleset) => {
+                const isHighlighted = highlightRulesetId === ruleset.ruleset_id;
+                return (
                 <div
                   key={ruleset.ruleset_id}
                   onClick={() => {
@@ -280,9 +299,13 @@ export function RulesetsPage() {
                     setQuickTestResult(null);
                     setQuickTestError(null);
                   }}
-                  className={`p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                  className={`p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-all ${
                     selectedRuleset?.ruleset_id === ruleset.ruleset_id
                       ? 'bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500'
+                      : ''
+                  } ${
+                    isHighlighted
+                      ? 'ring-2 ring-purple-500 ring-inset animate-pulse bg-purple-50 dark:bg-purple-900/20'
                       : ''
                   }`}
                 >
@@ -292,6 +315,12 @@ export function RulesetsPage() {
                         <span className="font-medium text-slate-900 dark:text-white truncate">
                           {ruleset.name}
                         </span>
+                        {isHighlighted && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 rounded-full">
+                            <Sparkles className="w-3 h-3" />
+                            방금 생성됨
+                          </span>
+                        )}
                         {ruleset.is_active ? (
                           <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                         ) : (
@@ -372,7 +401,8 @@ export function RulesetsPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

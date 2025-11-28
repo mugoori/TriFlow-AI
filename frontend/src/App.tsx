@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar, ViewType } from "./components/layout/Sidebar";
 import { ChatContainer } from "./components/ChatContainer";
@@ -9,6 +9,7 @@ import { RulesetsPage } from "./components/pages/RulesetsPage";
 import { SettingsPage } from "./components/pages/SettingsPage";
 import { LoginPage } from "./components/pages/LoginPage";
 import { DashboardProvider } from "./contexts/DashboardContext";
+import { ChatProvider } from "./contexts/ChatContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -29,6 +30,22 @@ const getPageDescription = (view: ViewType) => PAGE_INFO[view]?.description || '
  */
 function MainLayout() {
   const [currentView, setCurrentView] = useState<ViewType>('chat');
+  const [highlightRulesetId, setHighlightRulesetId] = useState<string | null>(null);
+
+  // navigate-to-rulesets 이벤트 리스너
+  const handleNavigateToRulesets = useCallback((event: CustomEvent<{ rulesetId: string }>) => {
+    setHighlightRulesetId(event.detail.rulesetId);
+    setCurrentView('rulesets');
+    // 5초 후 하이라이트 해제
+    setTimeout(() => setHighlightRulesetId(null), 5000);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('navigate-to-rulesets', handleNavigateToRulesets as EventListener);
+    return () => {
+      window.removeEventListener('navigate-to-rulesets', handleNavigateToRulesets as EventListener);
+    };
+  }, [handleNavigateToRulesets]);
 
   const renderContent = () => {
     switch (currentView) {
@@ -39,7 +56,7 @@ function MainLayout() {
       case 'workflows':
         return <WorkflowsPage />;
       case 'rulesets':
-        return <RulesetsPage />;
+        return <RulesetsPage highlightRulesetId={highlightRulesetId} />;
       case 'data':
         return <DataPage />;
       case 'settings':
@@ -50,8 +67,9 @@ function MainLayout() {
   };
 
   return (
-    <DashboardProvider>
-      <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
+    <ChatProvider>
+      <DashboardProvider>
+        <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
         {/* Sidebar */}
         <Sidebar currentView={currentView} onViewChange={setCurrentView} />
 
@@ -72,8 +90,9 @@ function MainLayout() {
             {renderContent()}
           </div>
         </main>
-      </div>
-    </DashboardProvider>
+        </div>
+      </DashboardProvider>
+    </ChatProvider>
   );
 }
 

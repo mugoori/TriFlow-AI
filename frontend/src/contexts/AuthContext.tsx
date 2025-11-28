@@ -94,9 +94,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = useCallback(async (email: string, password: string) => {
     const response = await authService.login(email, password);
 
+    // 백엔드 응답 형식: { user, tokens: { access_token, refresh_token } }
+    const accessTokenValue = response.tokens?.access_token || response.access_token;
+    const refreshTokenValue = response.tokens?.refresh_token || response.refresh_token;
+
     setUser(response.user);
-    setAccessToken(response.access_token);
-    setRefreshToken(response.refresh_token);
+    setAccessToken(accessTokenValue || null);
+    setRefreshToken(refreshTokenValue || null);
   }, []);
 
   // 앱 시작 시 자동 로그인 시도

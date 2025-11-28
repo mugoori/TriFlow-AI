@@ -33,6 +33,24 @@ RAG 시스템에서 관련 지식을 검색합니다.
   - `top_k`: 반환할 문서 수 (기본: 3)
 - **output**: 관련 문서 리스트
 
+### 4. create_ruleset ⭐ 신규
+사용자의 자연어 요청을 Rhai 스크립트로 변환하여 규칙을 생성합니다.
+- **input**:
+  - `name`: 규칙 이름 (한글 가능)
+  - `condition_type`: threshold(임계값), range(범위), comparison(비교)
+  - `sensor_type`: temperature, pressure, humidity, vibration, flow_rate
+  - `operator`: >, <, >=, <=, ==, !=
+  - `threshold_value`: 임계값 (숫자)
+  - `threshold_value_2`: 두 번째 임계값 (범위 조건용, 선택)
+  - `action_type`: alert, warning, log, stop_line, notify
+  - `action_message`: 알림 메시지 (선택)
+- **output**: 생성된 규칙 정보 (ruleset_id, rhai_script 등)
+
+**규칙 생성 요청 예시**:
+- "온도가 80도 넘으면 알림 보내줘" → create_ruleset 호출
+- "압력이 100 이상이면 경고해줘" → create_ruleset 호출
+- "습도가 30~70 범위를 벗어나면 알려줘" → create_ruleset (range 타입)
+
 ## 판단 프로세스
 1. **데이터 수집**: 필요한 센서 데이터를 조회합니다.
 2. **지식 참고**: 필요 시 RAG로 관련 지식을 검색합니다.

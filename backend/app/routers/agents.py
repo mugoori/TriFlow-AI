@@ -75,12 +75,15 @@ async def chat_with_agent(request: AgentRequest):
 
         elif target_agent_name == "workflow":
             # Workflow Planner Agent 실행
+            # tool_choice로 create_workflow tool 호출 강제
             agent_result = workflow_planner.run(
                 user_message=routing_info.get("processed_request", request.message),
                 context={
                     **(request.context or {}),
                     **routing_info.get("context", {}),
                 },
+                max_iterations=5,
+                tool_choice={"type": "tool", "name": "create_workflow"},
             )
 
             return AgentResponse(
@@ -125,12 +128,22 @@ async def chat_with_agent(request: AgentRequest):
 
         elif target_agent_name == "learning":
             # Learning Agent 실행
+            # 룰셋 생성 요청인지 확인
+            msg_lower = request.message.lower()
+            is_ruleset_creation = any(kw in msg_lower for kw in [
+                "룰셋", "규칙 만들", "규칙 생성", "판단 규칙",
+                "경고", "위험", "임계", "threshold",
+                "ruleset", "create rule"
+            ])
+
             agent_result = learning_agent.run(
                 user_message=routing_info.get("processed_request", request.message),
                 context={
                     **(request.context or {}),
                     **routing_info.get("context", {}),
                 },
+                max_iterations=5,
+                tool_choice={"type": "tool", "name": "create_ruleset"} if is_ruleset_creation else None,
             )
 
             return AgentResponse(

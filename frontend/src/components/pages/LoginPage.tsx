@@ -61,9 +61,11 @@ export function LoginPage() {
         <CardHeader className="space-y-1 text-center">
           {/* Logo */}
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-2xl">TF</span>
-            </div>
+            <img
+              src="/logo.png"
+              alt="TriFlow AI Logo"
+              className="w-16 h-16 rounded-xl"
+            />
           </div>
           <CardTitle className="text-2xl font-bold">TriFlow AI</CardTitle>
           <CardDescription>

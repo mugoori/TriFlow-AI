@@ -88,7 +88,13 @@ export async function login(
   const data: LoginResponse = await response.json();
 
   // 토큰 및 사용자 정보 저장
-  saveTokens(data.access_token, data.refresh_token);
+  // 백엔드가 { user, tokens: { access_token, refresh_token } } 형식으로 응답
+  const accessToken = data.tokens?.access_token || data.access_token;
+  const refreshToken = data.tokens?.refresh_token || data.refresh_token;
+
+  if (accessToken && refreshToken) {
+    saveTokens(accessToken, refreshToken);
+  }
   saveUser(data.user);
 
   return data;

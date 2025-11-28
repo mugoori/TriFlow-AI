@@ -17,12 +17,21 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface LoginResponse {
+export interface TokenInfo {
   access_token: string;
   refresh_token: string;
   token_type: string;
   expires_in: number;
+}
+
+export interface LoginResponse {
   user: User;
+  tokens: TokenInfo;
+  // 호환성을 위한 옵션 필드
+  access_token?: string;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in?: number;
 }
 
 export interface RefreshTokenRequest {

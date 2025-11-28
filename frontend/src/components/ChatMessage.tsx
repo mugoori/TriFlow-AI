@@ -4,12 +4,22 @@
  */
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Pin, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pin, Check, FileCode, ExternalLink } from 'lucide-react';
 import type { ChatMessage as ChatMessageType } from '../types/agent';
 import type { ChartConfig } from '../types/chart';
 import { Card, CardContent } from './ui/card';
 import { ChartRenderer } from './charts';
 import { useDashboard } from '../contexts/DashboardContext';
+
+// Ruleset 생성 결과 타입
+interface RulesetCreationResult {
+  success: boolean;
+  ruleset_id: string;
+  name: string;
+  description?: string;
+  rhai_script?: string;
+  message?: string;
+}
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -28,6 +38,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
   // Extract reasoning summary from tool calls
   const reasoningSummary = extractReasoningSummary(message);
+
+  // Check if this message contains ruleset creation result
+  const rulesetResult = extractRulesetCreationResult(message);
 
   // 대시보드에 차트 고정
   const handlePinChart = () => {
@@ -89,6 +102,43 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   </button>
                 </div>
                 <ChartRenderer config={chartConfig} />
+              </div>
+            )}
+
+            {/* Ruleset Creation Result */}
+            {rulesetResult && rulesetResult.success && (
+              <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileCode className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                    규칙이 생성되었습니다
+                  </span>
+                </div>
+                <div className="text-sm text-green-800 dark:text-green-200">
+                  <div className="font-medium">{rulesetResult.name}</div>
+                  {rulesetResult.description && (
+                    <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                      {rulesetResult.description}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/50 px-2 py-0.5 rounded">
+                    비활성 (테스트 필요)
+                  </span>
+                  <button
+                    onClick={() => {
+                      // Rulesets 탭으로 이동하는 이벤트 발행
+                      window.dispatchEvent(new CustomEvent('navigate-to-rulesets', {
+                        detail: { rulesetId: rulesetResult.ruleset_id }
+                      }));
+                    }}
+                    className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Rulesets에서 확인
+                  </button>
+                </div>
               </div>
             )}
 
@@ -226,6 +276,43 @@ function extractChartConfig(message: ChatMessageType): ChartConfig | null {
     return null;
   } catch (error) {
     console.error('Failed to extract chart config:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract ruleset creation result from create_ruleset tool call
+ */
+function extractRulesetCreationResult(message: ChatMessageType): RulesetCreationResult | null {
+  if (!message.tool_calls || message.tool_calls.length === 0) {
+    return null;
+  }
+
+  // Find create_ruleset tool call
+  const rulesetTool = message.tool_calls.find(
+    (tc) => tc.tool === 'create_ruleset'
+  );
+
+  if (!rulesetTool || !rulesetTool.result) {
+    return null;
+  }
+
+  try {
+    const result = rulesetTool.result;
+
+    // Check if it has the expected structure
+    if (
+      result &&
+      typeof result === 'object' &&
+      'success' in result &&
+      'ruleset_id' in result
+    ) {
+      return result as RulesetCreationResult;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Failed to extract ruleset creation result:', error);
     return null;
   }
 }

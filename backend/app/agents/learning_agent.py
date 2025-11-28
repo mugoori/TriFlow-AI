@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .base_agent import BaseAgent
 from app.database import get_db_context
-from app.models.core import FeedbackLog, ProposedRule, JudgmentExecution, Tenant
+from app.models.core import FeedbackLog, ProposedRule, JudgmentExecution, Tenant, Ruleset
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +150,47 @@ class LearningAgent(BaseAgent):
                     "required": [],
                 },
             },
+            {
+                "name": "create_ruleset",
+                "description": "새로운 룰셋(판단 규칙)을 DB에 저장합니다. 사용자의 자연어 요청을 기반으로 Rhai 스크립트를 생성하고 저장합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "룰셋 이름 (예: '온도 경고 규칙')",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "룰셋 설명",
+                        },
+                        "sensor_type": {
+                            "type": "string",
+                            "enum": ["temperature", "pressure", "humidity", "vibration", "flow_rate", "defect_rate"],
+                            "description": "센서/데이터 타입",
+                        },
+                        "warning_threshold": {
+                            "type": "number",
+                            "description": "경고(WARNING) 임계값",
+                        },
+                        "critical_threshold": {
+                            "type": "number",
+                            "description": "위험(CRITICAL) 임계값",
+                        },
+                        "operator": {
+                            "type": "string",
+                            "enum": [">", "<", ">=", "<="],
+                            "description": "비교 연산자 (기본: >)",
+                        },
+                        "action_type": {
+                            "type": "string",
+                            "enum": ["notification", "stop_line", "log", "maintenance"],
+                            "description": "트리거될 액션 유형",
+                        },
+                    },
+                    "required": ["name", "sensor_type", "warning_threshold", "critical_threshold"],
+                },
+            },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
@@ -183,6 +224,17 @@ class LearningAgent(BaseAgent):
             return self._get_rule_performance(
                 ruleset_id=tool_input.get("ruleset_id"),
                 days=tool_input.get("days", 30),
+            )
+
+        elif tool_name == "create_ruleset":
+            return self._create_ruleset(
+                name=tool_input["name"],
+                sensor_type=tool_input["sensor_type"],
+                warning_threshold=tool_input["warning_threshold"],
+                critical_threshold=tool_input["critical_threshold"],
+                description=tool_input.get("description"),
+                operator=tool_input.get("operator", ">"),
+                action_type=tool_input.get("action_type", "notification"),
             )
 
         else:
@@ -756,4 +808,149 @@ result.actions.push(#{
                 "period_days": days,
                 "performance": {},
                 "note": "DB 연결 없이 기본값 반환",
+            }
+
+    def _create_ruleset(
+        self,
+        name: str,
+        sensor_type: str,
+        warning_threshold: float,
+        critical_threshold: float,
+        description: str | None = None,
+        operator: str = ">",
+        action_type: str = "notification",
+    ) -> Dict[str, Any]:
+        """
+        새로운 룰셋을 DB에 저장
+        """
+        try:
+            # 센서 타입별 한글 이름
+            sensor_names = {
+                "temperature": "온도",
+                "pressure": "압력",
+                "humidity": "습도",
+                "vibration": "진동",
+                "flow_rate": "유량",
+                "defect_rate": "불량률",
+            }
+            sensor_name_kr = sensor_names.get(sensor_type, sensor_type)
+
+            # 액션 타입별 Rhai 코드
+            action_codes = {
+                "notification": '''result.actions = result.actions ?? [];
+result.actions.push(#{
+    type: "notification",
+    channel: "slack",
+    message: result.checks.map(|c| c.message).join("; ")
+});''',
+                "stop_line": '''result.actions = result.actions ?? [];
+result.actions.push(#{
+    type: "control",
+    command: "stop_line",
+    reason: result.checks.map(|c| c.message).join("; ")
+});''',
+                "log": '''result.actions = result.actions ?? [];
+result.actions.push(#{
+    type: "log",
+    level: "warning",
+    message: result.checks.map(|c| c.message).join("; ")
+});''',
+                "maintenance": '''result.actions = result.actions ?? [];
+result.actions.push(#{
+    type: "maintenance",
+    priority: "high",
+    equipment_id: context["equipment_id"] ?? "unknown"
+});''',
+            }
+            action_code = action_codes.get(action_type, action_codes["log"])
+
+            # Rhai 스크립트 생성
+            rhai_script = f'''// Ruleset: {name}
+// Generated by: Learning Agent
+// Timestamp: {datetime.utcnow().isoformat()}
+
+let input = context["input"];
+
+let result = #{{
+    status: "NORMAL",
+    checks: [],
+    confidence: 0.90,
+    rule_name: "{name}"
+}};
+
+// {sensor_name_kr} 체크
+let value = input.{sensor_type} ?? 0.0;
+
+if value {operator} {critical_threshold} {{
+    result.status = "CRITICAL";
+    result.checks.push(#{{
+        type: "{sensor_type}",
+        status: "CRITICAL",
+        value: value,
+        threshold: {critical_threshold},
+        message: "{sensor_name_kr}가 위험 수준입니다: " + value.to_string() + " ({operator} {critical_threshold})"
+    }});
+}} else if value {operator} {warning_threshold} {{
+    result.status = "WARNING";
+    result.checks.push(#{{
+        type: "{sensor_type}",
+        status: "WARNING",
+        value: value,
+        threshold: {warning_threshold},
+        message: "{sensor_name_kr}가 경고 수준입니다: " + value.to_string() + " ({operator} {warning_threshold})"
+    }});
+}}
+
+// 액션 추가
+if result.status != "NORMAL" {{
+    {action_code}
+}}
+
+result
+'''
+
+            ruleset_id = str(uuid4())
+
+            with get_db_context() as db:
+                # 기본 테넌트 조회
+                default_tenant = db.query(Tenant).filter(Tenant.name == "Default").first()
+                if not default_tenant:
+                    return {
+                        "success": False,
+                        "error": "Default tenant not found",
+                    }
+
+                ruleset = Ruleset(
+                    ruleset_id=ruleset_id,
+                    tenant_id=default_tenant.tenant_id,
+                    name=name,
+                    description=description or f"{sensor_name_kr} {operator} {warning_threshold} 경고, {operator} {critical_threshold} 위험",
+                    rhai_script=rhai_script,
+                    version="1.0.0",
+                    is_active=True,
+                )
+                db.add(ruleset)
+                db.commit()
+                db.refresh(ruleset)
+
+                logger.info(f"Created ruleset: {ruleset_id} - {name}")
+
+                return {
+                    "success": True,
+                    "ruleset_id": ruleset_id,
+                    "name": name,
+                    "description": ruleset.description,
+                    "sensor_type": sensor_type,
+                    "warning_threshold": warning_threshold,
+                    "critical_threshold": critical_threshold,
+                    "operator": operator,
+                    "action_type": action_type,
+                    "message": f"룰셋 '{name}'이(가) 성공적으로 생성되었습니다. Rulesets 탭에서 확인하세요.",
+                }
+
+        except Exception as e:
+            logger.error(f"Error creating ruleset: {e}")
+            return {
+                "success": False,
+                "error": str(e),
             }

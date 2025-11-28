@@ -137,6 +137,55 @@ class JudgmentAgent(BaseAgent):
                     "properties": {},
                 },
             },
+            {
+                "name": "create_ruleset",
+                "description": "사용자의 자연어 요청을 Rhai 스크립트로 변환하여 새로운 규칙(Ruleset)을 생성합니다. 예: '온도가 80도 넘으면 알림 보내줘' → Rhai 스크립트 자동 생성",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "규칙 이름 (한글 가능, 예: '온도 경고 규칙')",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "규칙 설명",
+                        },
+                        "condition_type": {
+                            "type": "string",
+                            "enum": ["threshold", "range", "comparison", "complex"],
+                            "description": "조건 유형: threshold(임계값 초과/미만), range(범위), comparison(비교), complex(복합)",
+                        },
+                        "sensor_type": {
+                            "type": "string",
+                            "description": "대상 센서 타입 (temperature, pressure, humidity, vibration, flow_rate)",
+                        },
+                        "operator": {
+                            "type": "string",
+                            "enum": [">", "<", ">=", "<=", "==", "!="],
+                            "description": "비교 연산자",
+                        },
+                        "threshold_value": {
+                            "type": "number",
+                            "description": "임계값 (숫자)",
+                        },
+                        "threshold_value_2": {
+                            "type": "number",
+                            "description": "두 번째 임계값 (범위 조건에서 사용)",
+                        },
+                        "action_type": {
+                            "type": "string",
+                            "enum": ["alert", "warning", "log", "stop_line", "notify"],
+                            "description": "조건 충족 시 동작 유형",
+                        },
+                        "action_message": {
+                            "type": "string",
+                            "description": "알림/로그 메시지",
+                        },
+                    },
+                    "required": ["name", "condition_type", "sensor_type", "operator", "threshold_value", "action_type"],
+                },
+            },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
@@ -170,6 +219,19 @@ class JudgmentAgent(BaseAgent):
 
         elif tool_name == "get_available_lines":
             return self._get_available_lines()
+
+        elif tool_name == "create_ruleset":
+            return self._create_ruleset(
+                name=tool_input["name"],
+                description=tool_input.get("description"),
+                condition_type=tool_input["condition_type"],
+                sensor_type=tool_input["sensor_type"],
+                operator=tool_input["operator"],
+                threshold_value=tool_input["threshold_value"],
+                threshold_value_2=tool_input.get("threshold_value_2"),
+                action_type=tool_input["action_type"],
+                action_message=tool_input.get("action_message"),
+            )
 
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
@@ -440,3 +502,165 @@ class JudgmentAgent(BaseAgent):
             return f"주의 관찰 필요: {'; '.join(issues)}"
         else:
             return "모든 센서가 정상 범위입니다. 특별한 조치가 필요하지 않습니다."
+
+    def _create_ruleset(
+        self,
+        name: str,
+        condition_type: str,
+        sensor_type: str,
+        operator: str,
+        threshold_value: float,
+        action_type: str,
+        description: str = None,
+        threshold_value_2: float = None,
+        action_message: str = None,
+    ) -> Dict[str, Any]:
+        """
+        자연어 요청을 기반으로 Rhai 스크립트를 생성하고 Ruleset을 DB에 저장
+        """
+        try:
+            # Rhai 스크립트 생성
+            rhai_script = self._generate_rhai_script(
+                condition_type=condition_type,
+                sensor_type=sensor_type,
+                operator=operator,
+                threshold_value=threshold_value,
+                threshold_value_2=threshold_value_2,
+                action_type=action_type,
+                action_message=action_message or f"{sensor_type} 이상 감지",
+            )
+
+            # DB에 Ruleset 저장
+            with get_db_context() as db:
+                from uuid import uuid4
+
+                new_ruleset = Ruleset(
+                    ruleset_id=uuid4(),
+                    name=name,
+                    description=description or f"{sensor_type} {operator} {threshold_value} 조건 규칙",
+                    rhai_script=rhai_script,
+                    version="1.0.0",
+                    is_active=False,  # 사용자가 테스트 후 활성화
+                )
+
+                db.add(new_ruleset)
+                db.commit()
+                db.refresh(new_ruleset)
+
+                logger.info(f"Created ruleset: {new_ruleset.ruleset_id} - {name}")
+
+                return {
+                    "success": True,
+                    "ruleset_id": str(new_ruleset.ruleset_id),
+                    "name": name,
+                    "description": new_ruleset.description,
+                    "rhai_script": rhai_script,
+                    "is_active": False,
+                    "message": f"규칙 '{name}'이 생성되었습니다. Rulesets 탭에서 테스트 후 활성화하세요.",
+                }
+
+        except Exception as e:
+            logger.error(f"Error creating ruleset: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def _generate_rhai_script(
+        self,
+        condition_type: str,
+        sensor_type: str,
+        operator: str,
+        threshold_value: float,
+        threshold_value_2: float = None,
+        action_type: str = "alert",
+        action_message: str = "조건 충족",
+    ) -> str:
+        """
+        조건 정보를 기반으로 Rhai 스크립트 생성
+        """
+        # 센서 타입별 한글 이름
+        sensor_names = {
+            "temperature": "온도",
+            "pressure": "압력",
+            "humidity": "습도",
+            "vibration": "진동",
+            "flow_rate": "유량",
+        }
+        sensor_name_kr = sensor_names.get(sensor_type, sensor_type)
+
+        # 액션 타입별 결과
+        action_results = {
+            "alert": f'"alert", message: "{action_message}", severity: "high"',
+            "warning": f'"warning", message: "{action_message}", severity: "medium"',
+            "log": f'"log", message: "{action_message}", severity: "low"',
+            "stop_line": f'"stop_line", message: "{action_message}", severity: "critical"',
+            "notify": f'"notify", message: "{action_message}", severity: "medium"',
+        }
+        action_result = action_results.get(action_type, action_results["alert"])
+
+        # 조건 유형별 스크립트 생성
+        if condition_type == "threshold":
+            # 단순 임계값 조건
+            script = f'''// {sensor_name_kr} 임계값 체크 규칙
+// 자동 생성됨 - AI Chat
+
+let value = input.{sensor_type};
+let threshold = {threshold_value};
+
+if value {operator} threshold {{
+    #{{
+        action: {action_result}
+    }}
+}} else {{
+    #{{
+        action: "none",
+        message: "{sensor_name_kr} 정상 범위",
+        value: value
+    }}
+}}
+'''
+        elif condition_type == "range":
+            # 범위 조건 (threshold_value ~ threshold_value_2)
+            min_val = min(threshold_value, threshold_value_2 or threshold_value)
+            max_val = max(threshold_value, threshold_value_2 or threshold_value)
+            script = f'''// {sensor_name_kr} 범위 체크 규칙
+// 자동 생성됨 - AI Chat
+
+let value = input.{sensor_type};
+let min_threshold = {min_val};
+let max_threshold = {max_val};
+
+if value < min_threshold || value > max_threshold {{
+    #{{
+        action: {action_result}
+    }}
+}} else {{
+    #{{
+        action: "none",
+        message: "{sensor_name_kr} 정상 범위 ({min_val} ~ {max_val})",
+        value: value
+    }}
+}}
+'''
+        else:
+            # 기본: 단순 비교
+            script = f'''// {sensor_name_kr} 체크 규칙
+// 자동 생성됨 - AI Chat
+
+let value = input.{sensor_type};
+
+if value {operator} {threshold_value} {{
+    #{{
+        action: {action_result}
+    }}
+}} else {{
+    #{{
+        action: "none",
+        message: "{sensor_name_kr} 정상",
+        value: value
+    }}
+}}
+'''
+
+        return script

@@ -3,15 +3,13 @@
  * 채팅 UI 메인 컨테이너
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
-import { agentService } from '../services/agentService';
-import type { ChatMessage as ChatMessageType } from '../types/agent';
+import { useChat } from '../contexts/ChatContext';
 
 export function ChatContainer() {
-  const [messages, setMessages] = useState<ChatMessageType[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { messages, loading, sendMessage } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 메시지 목록 자동 스크롤
@@ -22,47 +20,6 @@ export function ChatContainer() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  // 메시지 전송 핸들러
-  const handleSendMessage = async (content: string) => {
-    // 사용자 메시지 추가
-    const userMessage: ChatMessageType = {
-      role: 'user',
-      content,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
-
-    // Agent API 호출
-    setLoading(true);
-    try {
-      const response = await agentService.chat({
-        message: content,
-      });
-
-      // Agent 응답 추가
-      const assistantMessage: ChatMessageType = {
-        role: 'assistant',
-        content: response.response,
-        timestamp: new Date().toISOString(),
-        agent_name: response.agent_name,
-        tool_calls: response.tool_calls,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      // 에러 메시지 추가
-      const errorMessage: ChatMessageType = {
-        role: 'assistant',
-        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
-        timestamp: new Date().toISOString(),
-        agent_name: 'System',
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="flex flex-col h-full">
@@ -101,7 +58,7 @@ export function ChatContainer() {
       </div>
 
       {/* 메시지 입력 */}
-      <ChatInput onSendMessage={handleSendMessage} disabled={loading} />
+      <ChatInput onSendMessage={sendMessage} disabled={loading} />
     </div>
   );
 }

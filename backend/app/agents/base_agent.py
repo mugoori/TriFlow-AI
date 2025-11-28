@@ -75,6 +75,7 @@ class BaseAgent(ABC):
         user_message: str,
         context: Optional[Dict[str, Any]] = None,
         max_iterations: int = 5,
+        tool_choice: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         에이전트 실행 (Tool Calling Loop 포함)
@@ -83,6 +84,10 @@ class BaseAgent(ABC):
             user_message: 사용자 입력 메시지
             context: 추가 컨텍스트 정보
             max_iterations: 최대 반복 횟수 (무한 루프 방지)
+            tool_choice: Tool 선택 강제 옵션
+                - {"type": "auto"}: 자동 선택 (기본)
+                - {"type": "any"}: 반드시 하나의 tool 호출
+                - {"type": "tool", "name": "tool_name"}: 특정 tool 강제 호출
 
         Returns:
             {
@@ -95,6 +100,7 @@ class BaseAgent(ABC):
         messages = [{"role": "user", "content": user_message}]
         tool_calls = []
         iterations = 0
+        force_tool_on_first = tool_choice is not None
 
         logger.info(f"[{self.name}] Starting agent run with message: {user_message[:100]}...")
 
@@ -103,14 +109,22 @@ class BaseAgent(ABC):
             logger.debug(f"[{self.name}] Iteration {iterations}/{max_iterations}")
 
             try:
+                # Claude API 호출 파라미터
+                api_params = {
+                    "model": self.model,
+                    "max_tokens": self.max_tokens,
+                    "system": self.get_system_prompt(),
+                    "tools": self.get_tools(),
+                    "messages": messages,
+                }
+
+                # 첫 번째 호출에만 tool_choice 적용
+                if force_tool_on_first and iterations == 1 and tool_choice:
+                    api_params["tool_choice"] = tool_choice
+                    logger.info(f"[{self.name}] Forcing tool choice: {tool_choice}")
+
                 # Claude API 호출
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=self.max_tokens,
-                    system=self.get_system_prompt(),
-                    tools=self.get_tools(),
-                    messages=messages,
-                )
+                response = self.client.messages.create(**api_params)
 
                 # 응답 처리
                 if response.stop_reason == "end_turn":

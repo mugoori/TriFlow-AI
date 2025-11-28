@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ██████░░░░ 60% | 8/12 |
+| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ██████░░░░ 65% | 9/13 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -142,9 +142,21 @@
 ### 🧠 V1 Sprint 2: Learning Pipeline 강화
 | Task | Status | Progress |
 | :--- | :--- | :--- |
+| **[Learning]** 채팅으로 룰셋 생성 기능 | ✅ 완료 | ██████████ 100% |
 | **[Learning]** 피드백 수집 UI | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **[Learning]** 규칙 자동 제안 개선 | ⏳ Pending | ░░░░░░░░░░ 0% |
 | **[Learning]** A/B 테스트 프레임워크 | ⏳ Pending | ░░░░░░░░░░ 0% |
+
+#### 📋 V1 Sprint 2 완료 작업 내역 (2025-11-28)
+- [x] **[Agent]** LearningAgent에 `create_ruleset` 도구 추가
+  - 자연어 요청을 Rhai 스크립트로 자동 변환
+  - DB 저장 (Ruleset 모델 사용)
+  - 센서 타입: temperature, pressure, humidity, vibration, flow_rate, defect_rate
+  - 액션 타입: notification, stop_line, log, maintenance
+- [x] **[Router]** MetaRouter 프롬프트 업데이트
+  - "룰셋", "규칙 만들어", "판단 규칙", "~면 경고", "~면 위험" 키워드 → learning 라우팅
+- [x] **[API]** agents.py에 tool_choice 조건부 설정
+  - 룰셋 생성 요청 감지 시 `create_ruleset` 도구 강제 호출
 
 ### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅
 | Task | Status | Progress |
