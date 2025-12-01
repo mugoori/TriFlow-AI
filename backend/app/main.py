@@ -95,6 +95,19 @@ if PII_MASKING_ENABLED:
 else:
     logger.info("PII Masking middleware disabled")
 
+# Audit Log 미들웨어 (환경변수로 활성화 제어)
+AUDIT_LOG_ENABLED = os.getenv("AUDIT_LOG_ENABLED", "true").lower() == "true"
+if AUDIT_LOG_ENABLED:
+    try:
+        from app.middleware.audit import AuditMiddleware
+
+        app.add_middleware(AuditMiddleware)
+        logger.info("Audit Log middleware enabled")
+    except Exception as e:
+        logger.warning(f"Failed to enable Audit Log middleware: {e}")
+else:
+    logger.info("Audit Log middleware disabled")
+
 # Prometheus 메트릭 엔드포인트
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
@@ -209,6 +222,14 @@ try:
     logger.info("Experiments router registered")
 except Exception as e:
     logger.error(f"Failed to register experiments router: {e}")
+
+# Audit 라우터 (감사 로그)
+try:
+    from app.routers import audit
+    app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
+    logger.info("Audit router registered")
+except Exception as e:
+    logger.error(f"Failed to register audit router: {e}")
 
 
 if __name__ == "__main__":

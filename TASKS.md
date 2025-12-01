@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | █████████░ 86% | 12/14 |
+| **V1** | Builder UI & Learning Pipeline | ✅ 완료 | ██████████ 100% | 14/14 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -258,6 +258,50 @@
 - [x] **[Config]** 환경변수 업데이트 (`.env.example`)
   - Slack: SLACK_WEBHOOK_URL, SLACK_DEFAULT_CHANNEL
   - Email: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS
+
+### 🔐 V1 Sprint 4: 보안 강화 ✅
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[Security]** RBAC 접근 제어 | ✅ 완료 | ██████████ 100% |
+| **[Security]** 감사 로그 (Audit Log) | ✅ 완료 | ██████████ 100% |
+
+#### 📋 V1 Sprint 4 완료 작업 내역 (2025-12-01)
+- [x] **[DB]** RBAC & Audit Log 마이그레이션 (`backend/migrations/007_rbac_audit.sql`)
+  - `core.permissions` - 권한 정의 테이블
+  - `core.role_permissions` - 역할-권한 매핑 테이블
+  - `audit.audit_logs` - 감사 로그 테이블 (인덱스 포함)
+  - 기본 권한 시드 데이터 (workflows, rulesets, sensors, experiments, users, settings, audit)
+  - 역할별 권한 매핑 (admin: 전체, user: CRUD+실행, viewer: 조회만)
+- [x] **[Service]** RBAC 서비스 구현 (`backend/app/services/rbac_service.py`)
+  - `Role`, `Resource`, `Action` Enum 정의
+  - 인메모리 권한 매핑 (ROLE_PERMISSIONS)
+  - `has_permission()` - 권한 체크 함수
+  - `check_permission()` - FastAPI 의존성 생성자
+  - `require_role()` - 역할 요구 의존성 생성자
+  - `PermissionChecker` - 클래스 기반 권한 체커
+  - 리소스별 권한 체커 인스턴스 (WorkflowsPermission, RulesetsPermission 등)
+- [x] **[Service]** Audit Log 서비스 구현 (`backend/app/services/audit_service.py`)
+  - `mask_sensitive_data()` - 민감 정보 마스킹 (password, token 등)
+  - `extract_resource_from_path()` - API 경로에서 리소스 추출
+  - `method_to_action()` - HTTP 메서드를 액션으로 변환
+  - `create_audit_log()` - 감사 로그 생성
+  - `get_audit_logs()` - 감사 로그 조회 (필터링 지원)
+  - `get_audit_stats()` - 감사 로그 통계
+- [x] **[Middleware]** Audit Log 미들웨어 (`backend/app/middleware/audit.py`)
+  - `AuditMiddleware` - 모든 API 요청 자동 기록
+  - 제외 경로 설정 (/health, /docs, /api/v1/audit)
+  - 클라이언트 IP 추출 (X-Forwarded-For 지원)
+  - JWT 토큰에서 사용자 정보 추출
+  - 비동기 로그 기록 (응답 지연 최소화)
+- [x] **[API]** Audit Log API 라우터 (`backend/app/routers/audit.py`)
+  - `GET /api/v1/audit` - 감사 로그 목록 조회 (관리자 전용)
+  - `GET /api/v1/audit/stats` - 감사 로그 통계
+  - `GET /api/v1/audit/my` - 내 감사 로그 조회 (모든 사용자)
+- [x] **[Schema]** Audit Log 스키마 (`backend/app/schemas/audit.py`)
+  - `AuditLogResponse`, `AuditLogListResponse`, `AuditStatsResponse`, `AuditLogFilter`
+- [x] **[Config]** main.py 업데이트
+  - Audit Log 미들웨어 등록 (AUDIT_LOG_ENABLED 환경변수)
+  - Audit 라우터 등록 (/api/v1/audit)
 
 ---
 
