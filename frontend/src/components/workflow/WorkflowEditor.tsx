@@ -6,7 +6,7 @@
  * - DSL 실시간 미리보기
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   Plus,
@@ -549,6 +549,11 @@ function NodeEditor({
 export function WorkflowEditor({ initialDSL, onSave, onCancel, isOpen }: WorkflowEditorProps) {
   const [dsl, setDSL] = useState<WorkflowDSL>(initialDSL || defaultDSL);
 
+  // initialDSL이 변경되면 상태를 동기화 (편집 모드 전환 시)
+  useEffect(() => {
+    setDSL(initialDSL || defaultDSL);
+  }, [initialDSL]);
+
   if (!isOpen) return null;
 
   // 노드 추가
@@ -596,10 +601,13 @@ export function WorkflowEditor({ initialDSL, onSave, onCancel, isOpen }: Workflo
       next: index < dsl.nodes.length - 1 ? [dsl.nodes[index + 1].id] : [],
     }));
 
-    onSave?.({
+    const finalDSL = {
       ...dsl,
       nodes: nodesWithNext,
-    });
+    };
+
+    console.log('[WorkflowEditor] Saving DSL:', JSON.stringify(finalDSL, null, 2));
+    onSave?.(finalDSL);
   };
 
   return (

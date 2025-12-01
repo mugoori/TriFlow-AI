@@ -50,7 +50,14 @@
 2. **Completion Routine**: 작업 단위 완료 시 **반드시** 다음 순서를 따른다.
    1. `TASKS.md`에 작업 내용을 적고 현황판 업데이트 (진척도 반영).
    2. `git add .` -> `git commit` -> `git push`.
-3. **CI/CD & Error Handling**:
+3. **Verification Protocol (Mandatory)**: 작업 완료 보고(Commit/Push 전) 시, 반드시 **"검증 방법(How to Test)"**을 코멘트로 남겨야 한다.
+   - **Backend**: 새로 작성하거나 수정한 기능을 검증할 수 있는 **구체적인 `pytest` 명령어**를 제시한다.
+     - *예시*: "Judgment 로직을 검증하려면 `pytest tests/unit/test_judgment_agent.py`를 실행하세요."
+   - **Frontend**: 실행 후 확인해야 할 **UI 동작 시나리오**를 단계별로 명시한다.
+     - *예시*: "1. `npm run tauri dev` 실행 -> 2. 채팅창에 '안녕' 입력 -> 3. 응답 카드가 뜨는지 확인."
+   - **Infra/DB**: 정상 구동 확인을 위한 **Health Check 명령어**를 제시한다.
+     - *예시*: "`docker-compose ps`로 컨테이너 상태 확인 후, `curl http://localhost:8000/health` 호출."
+4. **CI/CD & Error Handling**:
    - **Functional Errors**: 기능 동작에 영향을 주는 에러는 **반드시 해결**해야 한다. (타협 불가)
    - **Non-functional Errors**: 린트(Lint), 스타일 등 기능과 무관한 에러는 `# noqa` 등으로 예외 처리하여 **스킵(Skip) 가능**하다.
 

@@ -191,6 +191,69 @@ class LearningAgent(BaseAgent):
                     "required": ["name", "sensor_type", "warning_threshold", "critical_threshold"],
                 },
             },
+            {
+                "name": "analyze_and_suggest_rules",
+                "description": "피드백 데이터를 분석하여 자동으로 새로운 규칙을 제안합니다. 부정적 피드백 패턴을 찾아 개선된 규칙을 생성합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "days": {
+                            "type": "integer",
+                            "description": "분석할 기간 (일 단위, 기본: 7)",
+                            "default": 7,
+                        },
+                        "min_frequency": {
+                            "type": "integer",
+                            "description": "패턴으로 인식할 최소 빈도 (기본: 2)",
+                            "default": 2,
+                        },
+                        "auto_save": {
+                            "type": "boolean",
+                            "description": "제안을 자동으로 DB에 저장할지 여부 (기본: true)",
+                            "default": True,
+                        },
+                    },
+                    "required": [],
+                },
+            },
+            {
+                "name": "list_pending_proposals",
+                "description": "승인 대기 중인 규칙 제안 목록을 조회합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "조회할 최대 개수 (기본: 10)",
+                            "default": 10,
+                        },
+                    },
+                    "required": [],
+                },
+            },
+            {
+                "name": "review_proposal",
+                "description": "제안된 규칙을 승인하거나 거절합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "proposal_id": {
+                            "type": "string",
+                            "description": "제안 ID (UUID)",
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": ["approve", "reject"],
+                            "description": "승인 또는 거절",
+                        },
+                        "comment": {
+                            "type": "string",
+                            "description": "검토 코멘트 (선택)",
+                        },
+                    },
+                    "required": ["proposal_id", "action"],
+                },
+            },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
@@ -235,6 +298,25 @@ class LearningAgent(BaseAgent):
                 description=tool_input.get("description"),
                 operator=tool_input.get("operator", ">"),
                 action_type=tool_input.get("action_type", "notification"),
+            )
+
+        elif tool_name == "analyze_and_suggest_rules":
+            return self._analyze_and_suggest_rules(
+                days=tool_input.get("days", 7),
+                min_frequency=tool_input.get("min_frequency", 2),
+                auto_save=tool_input.get("auto_save", True),
+            )
+
+        elif tool_name == "list_pending_proposals":
+            return self._list_pending_proposals(
+                limit=tool_input.get("limit", 10),
+            )
+
+        elif tool_name == "review_proposal":
+            return self._review_proposal(
+                proposal_id=tool_input["proposal_id"],
+                action=tool_input["action"],
+                comment=tool_input.get("comment"),
             )
 
         else:
@@ -950,6 +1032,181 @@ result
 
         except Exception as e:
             logger.error(f"Error creating ruleset: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def _analyze_and_suggest_rules(
+        self,
+        days: int = 7,
+        min_frequency: int = 2,
+        auto_save: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        피드백을 분석하고 자동으로 규칙을 제안
+        """
+        try:
+            from app.services.feedback_analyzer import FeedbackAnalyzer
+
+            with get_db_context() as db:
+                analyzer = FeedbackAnalyzer(db)
+
+                # 패턴 분석
+                patterns = analyzer.analyze_feedback_patterns(
+                    days=days,
+                    min_frequency=min_frequency,
+                )
+
+                if not patterns:
+                    return {
+                        "success": True,
+                        "message": "분석할 피드백 패턴이 없습니다.",
+                        "patterns_found": 0,
+                        "proposals_created": 0,
+                        "patterns": [],
+                        "proposals": [],
+                    }
+
+                # 테넌트 조회
+                tenant = db.query(Tenant).first()
+                if not tenant:
+                    return {
+                        "success": False,
+                        "error": "테넌트를 찾을 수 없습니다.",
+                    }
+
+                # 규칙 제안 생성
+                proposals = analyzer.generate_rule_proposals(patterns, tenant.tenant_id)
+
+                saved_proposals = []
+                if auto_save and proposals:
+                    saved_proposals = analyzer.save_proposals(proposals)
+
+                return {
+                    "success": True,
+                    "message": f"{len(patterns)}개 패턴 발견, {len(saved_proposals)}개 규칙 제안 생성",
+                    "patterns_found": len(patterns),
+                    "proposals_created": len(saved_proposals),
+                    "patterns": [p.to_dict() for p in patterns],
+                    "proposals": [
+                        {
+                            "proposal_id": str(p.proposal_id),
+                            "rule_name": p.rule_name,
+                            "confidence": p.confidence,
+                            "status": p.status,
+                        }
+                        for p in saved_proposals
+                    ],
+                }
+
+        except Exception as e:
+            logger.error(f"Error in analyze_and_suggest_rules: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def _list_pending_proposals(
+        self,
+        limit: int = 10,
+    ) -> Dict[str, Any]:
+        """
+        승인 대기 중인 제안 목록 조회
+        """
+        try:
+            from sqlalchemy import desc
+
+            with get_db_context() as db:
+                proposals = db.query(ProposedRule).filter(
+                    ProposedRule.status == "pending"
+                ).order_by(desc(ProposedRule.created_at)).limit(limit).all()
+
+                return {
+                    "success": True,
+                    "total": len(proposals),
+                    "proposals": [
+                        {
+                            "proposal_id": str(p.proposal_id),
+                            "rule_name": p.rule_name,
+                            "rule_description": p.rule_description,
+                            "source_type": p.source_type,
+                            "confidence": p.confidence,
+                            "created_at": p.created_at.isoformat() if p.created_at else None,
+                        }
+                        for p in proposals
+                    ],
+                }
+
+        except Exception as e:
+            logger.error(f"Error listing pending proposals: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def _review_proposal(
+        self,
+        proposal_id: str,
+        action: str,
+        comment: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        제안된 규칙 승인/거절
+        """
+        try:
+            from uuid import UUID
+            from app.services.feedback_analyzer import FeedbackAnalyzer
+
+            p_uuid = UUID(proposal_id)
+
+            with get_db_context() as db:
+                analyzer = FeedbackAnalyzer(db)
+
+                if action == "approve":
+                    ruleset = analyzer.approve_proposal(
+                        proposal_id=p_uuid,
+                        comment=comment,
+                    )
+                    if ruleset:
+                        return {
+                            "success": True,
+                            "action": "approved",
+                            "message": f"제안이 승인되어 룰셋 '{ruleset.name}'으로 배포되었습니다.",
+                            "proposal_id": proposal_id,
+                            "ruleset_id": str(ruleset.ruleset_id),
+                            "ruleset_name": ruleset.name,
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": "승인 처리 실패 (제안을 찾을 수 없거나 이미 처리됨)",
+                        }
+                else:
+                    success = analyzer.reject_proposal(
+                        proposal_id=p_uuid,
+                        comment=comment,
+                    )
+                    if success:
+                        return {
+                            "success": True,
+                            "action": "rejected",
+                            "message": "제안이 거절되었습니다.",
+                            "proposal_id": proposal_id,
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": "거절 처리 실패 (제안을 찾을 수 없음)",
+                        }
+
+        except ValueError:
+            return {
+                "success": False,
+                "error": "잘못된 proposal_id 형식",
+            }
+        except Exception as e:
+            logger.error(f"Error reviewing proposal: {e}")
             return {
                 "success": False,
                 "error": str(e),

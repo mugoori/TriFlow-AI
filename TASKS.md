@@ -186,6 +186,11 @@
   - `backend/start_server.bat` - 기존 프로세스 종료 + 서버 시작
   - `scripts/kill_port.bat` - 포트 점유 프로세스 종료 유틸리티
   - 다중 서버 인스턴스 문제 방지
+- [x] **[Docs]** AI_GUIDELINES.md Verification Protocol 추가
+  - Rule 2에 "3. Verification Protocol (Mandatory)" 섹션 추가
+  - Backend: pytest 명령어 제시 필수
+  - Frontend: UI 동작 시나리오 명시 필수
+  - Infra/DB: Health Check 명령어 제시 필수
 
 ### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅
 | Task | Status | Progress |

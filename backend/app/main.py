@@ -194,6 +194,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register feedback router: {e}")
 
+# Proposals 라우터 (제안된 규칙)
+try:
+    from app.routers import proposals
+    app.include_router(proposals.router, prefix="/api/v1/proposals", tags=["proposals"])
+    logger.info("Proposals router registered")
+except Exception as e:
+    logger.error(f"Failed to register proposals router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

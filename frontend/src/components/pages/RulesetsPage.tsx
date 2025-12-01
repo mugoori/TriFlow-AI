@@ -23,17 +23,22 @@ import {
   Clock,
   ToggleLeft,
   ToggleRight,
+  Sparkles,
+  ListChecks,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { rulesetService, type Ruleset, type RulesetExecuteResponse } from '@/services/rulesetService';
 import { RulesetEditorModal } from '@/components/ruleset/RulesetEditorModal';
-import { Sparkles } from 'lucide-react';
+import { ProposalsPanel } from '@/components/ruleset/ProposalsPanel';
 
 interface RulesetsPageProps {
   highlightRulesetId?: string | null;
 }
 
 export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'rulesets' | 'proposals'>('rulesets');
+
   // Data state
   const [rulesets, setRulesets] = useState<Ruleset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +64,12 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
   const [quickTestResult, setQuickTestResult] = useState<RulesetExecuteResponse | null>(null);
   const [quickTestLoading, setQuickTestLoading] = useState(false);
   const [quickTestError, setQuickTestError] = useState<string | null>(null);
+
+  // Handle ruleset created from proposals
+  const handleRulesetCreatedFromProposal = (_rulesetId: string) => {
+    setActiveTab('rulesets');
+    loadRulesets();
+  };
 
   // Load rulesets
   const loadRulesets = useCallback(async () => {
@@ -203,6 +214,34 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
       <div className="w-96 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-white dark:bg-slate-900">
         {/* Header */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+          {/* Tab Buttons */}
+          <div className="flex items-center gap-1 mb-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+            <button
+              onClick={() => setActiveTab('rulesets')}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'rulesets'
+                  ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <ListChecks className="w-4 h-4" />
+              룰셋
+            </button>
+            <button
+              onClick={() => setActiveTab('proposals')}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'proposals'
+                  ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              AI 제안
+            </button>
+          </div>
+
+          {activeTab === 'rulesets' && (
+          <>
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">룰셋</h1>
             <button
@@ -266,9 +305,12 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
               <RefreshCw className="w-4 h-4 text-slate-500" />
             </button>
           </div>
+          </>
+          )}
         </div>
 
-        {/* Ruleset List */}
+        {/* Ruleset List or Proposals Panel */}
+        {activeTab === 'rulesets' ? (
         <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex items-center justify-center h-32">
@@ -406,9 +448,13 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
             </div>
           )}
         </div>
+        ) : (
+          <ProposalsPanel onRulesetCreated={handleRulesetCreatedFromProposal} />
+        )}
       </div>
 
-      {/* Right Panel - Detail View */}
+      {/* Right Panel - Detail View (only for rulesets tab) */}
+      {activeTab === 'rulesets' && (
       <div className="flex-1 flex flex-col overflow-hidden">
         {selectedRuleset ? (
           <>
@@ -547,6 +593,7 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
           </div>
         )}
       </div>
+      )}
 
       {/* Editor Modal */}
       <RulesetEditorModal

@@ -36,6 +36,7 @@ import {
   FlaskConical,
   ScrollText,
   Activity,
+  Edit,
 } from 'lucide-react';
 import {
   workflowService,
@@ -116,6 +117,7 @@ export function WorkflowsPage() {
   // 워크플로우 에디터
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingWorkflowDSL, setEditingWorkflowDSL] = useState<WorkflowDSL | undefined>(undefined);
+  const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
 
   // 시뮬레이션 테스트 패널
   const [showTestPanel, setShowTestPanel] = useState(false);
@@ -272,11 +274,6 @@ export function WorkflowsPage() {
     setSelectedCategory(selectedCategory === category ? null : category);
   };
 
-  // 새 워크플로우 에디터 열기
-  const handleOpenNewWorkflowEditor = () => {
-    setEditingWorkflowDSL(undefined);
-    setIsEditorOpen(true);
-  };
 
   // 시뮬레이션 데이터 생성
   const handleGenerateSimulatedData = async () => {
@@ -366,18 +363,51 @@ export function WorkflowsPage() {
 
   // 워크플로우 저장
   const handleSaveWorkflow = async (dsl: WorkflowDSL) => {
+    console.log('[WorkflowsPage] handleSaveWorkflow called');
+    console.log('[WorkflowsPage] editingWorkflowId:', editingWorkflowId);
+    console.log('[WorkflowsPage] DSL to save:', JSON.stringify(dsl, null, 2));
+
     try {
-      await workflowService.create({
-        name: dsl.name,
-        description: dsl.description,
-        dsl_definition: dsl,
-      });
+      if (editingWorkflowId) {
+        // 편집 모드: DSL 업데이트
+        console.log('[WorkflowsPage] Calling updateDSL...');
+        const result = await workflowService.updateDSL(editingWorkflowId, dsl);
+        console.log('[WorkflowsPage] updateDSL result:', result);
+        alert('워크플로우가 수정되었습니다!');
+      } else {
+        // 생성 모드
+        console.log('[WorkflowsPage] Calling create...');
+        await workflowService.create({
+          name: dsl.name,
+          description: dsl.description,
+          dsl_definition: dsl,
+        });
+        alert('워크플로우가 생성되었습니다!');
+      }
       setIsEditorOpen(false);
+      setEditingWorkflowId(null);
+      setEditingWorkflowDSL(undefined);
       loadWorkflows();
-      alert('워크플로우가 생성되었습니다!');
     } catch (err) {
+      console.error('[WorkflowsPage] Save error:', err);
       alert(`저장 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     }
+  };
+
+  // 워크플로우 편집 열기
+  const handleEditWorkflow = (workflow: Workflow) => {
+    console.log('[WorkflowsPage] handleEditWorkflow called, workflow_id:', workflow.workflow_id);
+    setEditingWorkflowId(workflow.workflow_id);
+    // 깊은 복사로 원본과 분리
+    setEditingWorkflowDSL(JSON.parse(JSON.stringify(workflow.dsl_definition)));
+    setIsEditorOpen(true);
+  };
+
+  // 새 워크플로우 생성 열기
+  const handleNewWorkflow = () => {
+    setEditingWorkflowId(null);
+    setEditingWorkflowDSL(undefined);
+    setIsEditorOpen(true);
   };
 
   return (
@@ -455,7 +485,7 @@ export function WorkflowsPage() {
               새로고침
             </button>
             <button
-              onClick={handleOpenNewWorkflowEditor}
+              onClick={handleNewWorkflow}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -890,6 +920,16 @@ export function WorkflowsPage() {
                                 )}
                               </button>
                               <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditWorkflow(workflow);
+                                }}
+                                className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700"
+                                title="편집"
+                              >
+                                <Edit className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                              </button>
+                              <button
                                 onClick={(e) => handleDeleteWorkflow(workflow, e)}
                                 className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30"
                                 title="삭제"
@@ -1008,7 +1048,11 @@ export function WorkflowsPage() {
           initialDSL={editingWorkflowDSL}
           isOpen={isEditorOpen}
           onSave={handleSaveWorkflow}
-          onCancel={() => setIsEditorOpen(false)}
+          onCancel={() => {
+            setIsEditorOpen(false);
+            setEditingWorkflowId(null);
+            setEditingWorkflowDSL(undefined);
+          }}
         />
       </div>
     </div>

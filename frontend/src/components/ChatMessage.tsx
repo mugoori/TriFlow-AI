@@ -57,9 +57,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
     }
   };
 
-  // 빠른 피드백 전송
+  // 빠른 피드백 전송 (수정 가능)
   const handleQuickFeedback = async (type: 'positive' | 'negative') => {
-    if (isSendingFeedback || feedbackState !== 'none') return;
+    if (isSendingFeedback) return;
+
+    // 같은 타입 클릭 시 취소 (none으로 복원)
+    if (feedbackState === type) {
+      setFeedbackState('none');
+      return;
+    }
 
     setIsSendingFeedback(true);
     try {
@@ -262,53 +268,45 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 {/* 좋아요 버튼 */}
                 <button
                   onClick={() => handleQuickFeedback('positive')}
-                  disabled={isSendingFeedback || feedbackState !== 'none'}
+                  disabled={isSendingFeedback}
                   className={`p-1.5 rounded transition-colors ${
                     feedbackState === 'positive'
                       ? 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400'
-                      : feedbackState !== 'none'
-                      ? 'bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                       : 'hover:bg-green-50 text-slate-400 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400'
                   }`}
-                  title="도움이 되었어요"
+                  title={feedbackState === 'positive' ? '클릭하여 취소' : '도움이 되었어요'}
                 >
-                  <ThumbsUp className="w-4 h-4" />
+                  <ThumbsUp className={`w-4 h-4 ${feedbackState === 'positive' ? 'fill-current' : ''}`} />
                 </button>
 
                 {/* 싫어요 버튼 */}
                 <button
                   onClick={() => handleQuickFeedback('negative')}
-                  disabled={isSendingFeedback || feedbackState !== 'none'}
+                  disabled={isSendingFeedback}
                   className={`p-1.5 rounded transition-colors ${
                     feedbackState === 'negative'
                       ? 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400'
-                      : feedbackState !== 'none'
-                      ? 'bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                       : 'hover:bg-red-50 text-slate-400 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400'
                   }`}
-                  title="도움이 안 되었어요"
+                  title={feedbackState === 'negative' ? '클릭하여 취소' : '도움이 안 되었어요'}
                 >
-                  <ThumbsDown className="w-4 h-4" />
+                  <ThumbsDown className={`w-4 h-4 ${feedbackState === 'negative' ? 'fill-current' : ''}`} />
                 </button>
 
                 {/* 상세 피드백 버튼 */}
                 <button
                   onClick={handleOpenFeedbackModal}
-                  disabled={feedbackState !== 'none'}
-                  className={`p-1.5 rounded transition-colors ${
-                    feedbackState !== 'none'
-                      ? 'bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
-                      : 'hover:bg-blue-50 text-slate-400 hover:text-blue-600 dark:hover:bg-blue-900/30 dark:hover:text-blue-400'
-                  }`}
+                  disabled={isSendingFeedback}
+                  className="p-1.5 rounded transition-colors hover:bg-blue-50 text-slate-400 hover:text-blue-600 dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
                   title="상세 피드백 작성"
                 >
                   <MessageSquare className="w-4 h-4" />
                 </button>
 
-                {/* 피드백 완료 표시 */}
+                {/* 피드백 상태 표시 */}
                 {feedbackState !== 'none' && (
                   <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
-                    피드백 감사합니다!
+                    {feedbackState === 'positive' ? '좋아요' : '개선 필요'} · 클릭하여 변경
                   </span>
                 )}
               </div>

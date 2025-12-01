@@ -40,12 +40,23 @@ function MainLayout() {
     setTimeout(() => setHighlightRulesetId(null), 5000);
   }, []);
 
+  // navigate-to-tab 이벤트 리스너 (ChatMessage에서 탭 링크 클릭 시)
+  const handleNavigateToTab = useCallback((event: CustomEvent<{ tab: string }>) => {
+    const tabName = event.detail.tab as ViewType;
+    const validTabs: ViewType[] = ['chat', 'dashboard', 'workflows', 'rulesets', 'data', 'settings'];
+    if (validTabs.includes(tabName)) {
+      setCurrentView(tabName);
+    }
+  }, []);
+
   useEffect(() => {
     window.addEventListener('navigate-to-rulesets', handleNavigateToRulesets as EventListener);
+    window.addEventListener('navigate-to-tab', handleNavigateToTab as EventListener);
     return () => {
       window.removeEventListener('navigate-to-rulesets', handleNavigateToRulesets as EventListener);
+      window.removeEventListener('navigate-to-tab', handleNavigateToTab as EventListener);
     };
-  }, [handleNavigateToRulesets]);
+  }, [handleNavigateToRulesets, handleNavigateToTab]);
 
   const renderContent = () => {
     switch (currentView) {
