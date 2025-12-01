@@ -234,3 +234,122 @@ class ProposedRule(Base):
 
     def __repr__(self):
         return f"<ProposedRule(id={self.proposal_id}, name='{self.rule_name}', status='{self.status}')>"
+
+
+class Experiment(Base):
+    """A/B 테스트 실험"""
+
+    __tablename__ = "experiments"
+    __table_args__ = {"schema": "core"}
+
+    experiment_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    hypothesis = Column(Text, nullable=True)  # 실험 가설
+
+    status = Column(String(50), default="draft")  # draft, running, paused, completed, cancelled
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+
+    # 트래픽 할당 설정
+    traffic_percentage = Column(Integer, default=100)  # 전체 트래픽 중 실험에 참여할 비율 (%)
+
+    # 통계적 유의성 설정
+    min_sample_size = Column(Integer, default=100)  # 최소 샘플 크기
+    confidence_level = Column(Float, default=0.95)  # 신뢰 수준 (95%)
+
+    created_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    variants = relationship("ExperimentVariant", back_populates="experiment", cascade="all, delete-orphan")
+    assignments = relationship("ExperimentAssignment", back_populates="experiment", cascade="all, delete-orphan")
+    metrics = relationship("ExperimentMetric", back_populates="experiment", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Experiment(id={self.experiment_id}, name='{self.name}', status='{self.status}')>"
+
+
+class ExperimentVariant(Base):
+    """실험 변형 (Control/Treatment 그룹)"""
+
+    __tablename__ = "experiment_variants"
+    __table_args__ = {"schema": "core"}
+
+    variant_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    experiment_id = Column(PGUUID(as_uuid=True), ForeignKey("core.experiments.experiment_id", ondelete="CASCADE"), nullable=False)
+
+    name = Column(String(100), nullable=False)  # control, treatment_a, treatment_b, etc.
+    description = Column(Text, nullable=True)
+    is_control = Column(Boolean, default=False)  # 대조군 여부
+
+    # 룰셋 연결
+    ruleset_id = Column(PGUUID(as_uuid=True), ForeignKey("core.rulesets.ruleset_id", ondelete="SET NULL"), nullable=True)
+
+    # 트래픽 배분 비율 (실험 내 비율, 합계 100%)
+    traffic_weight = Column(Integer, default=50)  # %
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    experiment = relationship("Experiment", back_populates="variants")
+    ruleset = relationship("Ruleset")
+    assignments = relationship("ExperimentAssignment", back_populates="variant")
+    metrics = relationship("ExperimentMetric", back_populates="variant")
+
+    def __repr__(self):
+        return f"<ExperimentVariant(id={self.variant_id}, name='{self.name}', is_control={self.is_control})>"
+
+
+class ExperimentAssignment(Base):
+    """사용자별 실험 그룹 할당"""
+
+    __tablename__ = "experiment_assignments"
+    __table_args__ = {"schema": "core"}
+
+    assignment_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    experiment_id = Column(PGUUID(as_uuid=True), ForeignKey("core.experiments.experiment_id", ondelete="CASCADE"), nullable=False)
+    variant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.experiment_variants.variant_id", ondelete="CASCADE"), nullable=False)
+
+    # 할당 대상 (user_id 또는 session_id)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id", ondelete="SET NULL"), nullable=True)
+    session_id = Column(String(255), nullable=True)  # 비로그인 사용자용
+
+    assigned_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    experiment = relationship("Experiment", back_populates="assignments")
+    variant = relationship("ExperimentVariant", back_populates="assignments")
+
+    def __repr__(self):
+        return f"<ExperimentAssignment(id={self.assignment_id}, variant_id={self.variant_id})>"
+
+
+class ExperimentMetric(Base):
+    """실험 메트릭 기록"""
+
+    __tablename__ = "experiment_metrics"
+    __table_args__ = {"schema": "core"}
+
+    metric_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    experiment_id = Column(PGUUID(as_uuid=True), ForeignKey("core.experiments.experiment_id", ondelete="CASCADE"), nullable=False)
+    variant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.experiment_variants.variant_id", ondelete="CASCADE"), nullable=False)
+
+    metric_name = Column(String(100), nullable=False)  # success_rate, response_time, feedback_score, etc.
+    metric_value = Column(Float, nullable=False)
+
+    # 관련 실행 정보
+    execution_id = Column(PGUUID(as_uuid=True), ForeignKey("core.judgment_executions.execution_id", ondelete="SET NULL"), nullable=True)
+    context_data = Column(JSONB, default={})  # 추가 컨텍스트
+
+    recorded_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    experiment = relationship("Experiment", back_populates="metrics")
+    variant = relationship("ExperimentVariant", back_populates="metrics")
+
+    def __repr__(self):
+        return f"<ExperimentMetric(id={self.metric_id}, name='{self.metric_name}', value={self.metric_value})>"

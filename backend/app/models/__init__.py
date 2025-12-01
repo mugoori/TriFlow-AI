@@ -11,6 +11,10 @@ from app.models.core import (
     SensorData,
     FeedbackLog,
     ProposedRule,
+    Experiment,
+    ExperimentVariant,
+    ExperimentAssignment,
+    ExperimentMetric,
 )
 
 __all__ = [
@@ -23,4 +27,8 @@ __all__ = [
     "SensorData",
     "FeedbackLog",
     "ProposedRule",
+    "Experiment",
+    "ExperimentVariant",
+    "ExperimentAssignment",
+    "ExperimentMetric",
 ]

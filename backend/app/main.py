@@ -202,6 +202,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register proposals router: {e}")
 
+# Experiments 라우터 (A/B 테스트)
+try:
+    from app.routers import experiments
+    app.include_router(experiments.router, prefix="/api/v1/experiments", tags=["experiments"])
+    logger.info("Experiments router registered")
+except Exception as e:
+    logger.error(f"Failed to register experiments router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

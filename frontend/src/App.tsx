@@ -6,6 +6,7 @@ import { DashboardPage } from "./components/pages/DashboardPage";
 import { DataPage } from "./components/pages/DataPage";
 import { WorkflowsPage } from "./components/pages/WorkflowsPage";
 import { RulesetsPage } from "./components/pages/RulesetsPage";
+import ExperimentsPage from "./components/pages/ExperimentsPage";
 import { SettingsPage } from "./components/pages/SettingsPage";
 import { LoginPage } from "./components/pages/LoginPage";
 import { DashboardProvider } from "./contexts/DashboardContext";
@@ -18,6 +19,7 @@ const PAGE_INFO: Record<ViewType, { title: string; description: string }> = {
   dashboard: { title: 'Dashboard', description: '제조 현장 실시간 모니터링' },
   workflows: { title: 'Workflows', description: '자동화 워크플로우 관리' },
   rulesets: { title: 'Rulesets', description: 'Rhai 규칙 스크립트 관리' },
+  experiments: { title: 'A/B Tests', description: '규칙 변형 실험 관리' },
   data: { title: 'Data', description: '센서 및 생산 데이터 조회' },
   settings: { title: 'Settings', description: '앱 설정 관리' },
 };
@@ -43,7 +45,7 @@ function MainLayout() {
   // navigate-to-tab 이벤트 리스너 (ChatMessage에서 탭 링크 클릭 시)
   const handleNavigateToTab = useCallback((event: CustomEvent<{ tab: string }>) => {
     const tabName = event.detail.tab as ViewType;
-    const validTabs: ViewType[] = ['chat', 'dashboard', 'workflows', 'rulesets', 'data', 'settings'];
+    const validTabs: ViewType[] = ['chat', 'dashboard', 'workflows', 'rulesets', 'experiments', 'data', 'settings'];
     if (validTabs.includes(tabName)) {
       setCurrentView(tabName);
     }
@@ -68,6 +70,8 @@ function MainLayout() {
         return <WorkflowsPage />;
       case 'rulesets':
         return <RulesetsPage highlightRulesetId={highlightRulesetId} />;
+      case 'experiments':
+        return <ExperimentsPage />;
       case 'data':
         return <DataPage />;
       case 'settings':

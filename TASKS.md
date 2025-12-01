@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ████████░░ 79% | 11/14 |
+| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | █████████░ 86% | 12/14 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -139,13 +139,13 @@
   - 12개 액션 한글 이름 적용
   - 4개 카테고리 한글 표시
 
-### 🧠 V1 Sprint 2: Learning Pipeline 강화
+### 🧠 V1 Sprint 2: Learning Pipeline 강화 ✅
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[Learning]** 채팅으로 룰셋 생성 기능 | ✅ 완료 | ██████████ 100% |
 | **[Learning]** 피드백 수집 UI | ✅ 완료 | ██████████ 100% |
 | **[Learning]** 규칙 자동 제안 개선 | ✅ 완료 | ██████████ 100% |
-| **[Learning]** A/B 테스트 프레임워크 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[Learning]** A/B 테스트 프레임워크 | ✅ 완료 | ██████████ 100% |
 
 #### 📋 V1 Sprint 2 완료 작업 내역 (2025-12-01)
 - [x] **[UI]** 피드백 수집 UI 구현
@@ -208,6 +208,30 @@
   - Frontend: `frontend/src/components/ruleset/ProposalsPanel.tsx` - AI 제안 탭 UI
   - Frontend: `frontend/src/services/proposalService.ts` - API 클라이언트
   - Frontend: RulesetsPage에 룰셋/AI제안 탭 전환 UI 추가
+- [x] **[Learning]** A/B 테스트 프레임워크 구현
+  - Backend: `backend/app/models/core.py` - 4개 모델 추가
+    - `Experiment` - 실험 설정 (status, traffic_percentage, confidence_level)
+    - `ExperimentVariant` - 변형 (Control/Treatment, traffic_weight)
+    - `ExperimentAssignment` - 사용자 할당 (deterministic hashing)
+    - `ExperimentMetric` - 메트릭 기록
+  - Backend: `backend/app/services/experiment_service.py` - 서비스 구현
+    - 실험 CRUD, 생명주기 관리 (draft→running→paused→completed)
+    - MD5 해싱 기반 결정론적 사용자 할당
+    - Z-test 통계적 유의성 검정 (p-value 계산)
+  - Backend: `backend/app/routers/experiments.py` - REST API
+    - CRUD: GET/POST/PUT/DELETE /experiments
+    - 생명주기: /start, /pause, /resume, /complete, /cancel
+    - 할당: POST /assign (user_id/session_id 기반)
+    - 통계: GET /stats, GET /significance/{metric_name}
+  - Backend: `backend/migrations/006_experiments.sql` - DB 마이그레이션
+  - Frontend: `frontend/src/services/experimentService.ts` - API 클라이언트
+  - Frontend: `frontend/src/components/pages/ExperimentsPage.tsx` - 실험 관리 UI
+    - 실험 목록/상세 뷰
+    - 상태별 필터링 (draft, running, paused, completed, cancelled)
+    - 생명주기 액션 버튼 (시작, 일시정지, 재개, 완료, 취소)
+    - 변형별 통계 표시 (할당 수, 메트릭 평균)
+  - Frontend: Sidebar에 A/B 테스트 메뉴 추가
+  - Frontend: App.tsx에 experiments 라우트 추가
 
 ### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅
 | Task | Status | Progress |
