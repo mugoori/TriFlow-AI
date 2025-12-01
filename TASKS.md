@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ███████░░░ 71% | 10/14 |
+| **V1** | Builder UI & Learning Pipeline | 🚧 개발 중 | ████████░░ 79% | 11/14 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -144,7 +144,7 @@
 | :--- | :--- | :--- |
 | **[Learning]** 채팅으로 룰셋 생성 기능 | ✅ 완료 | ██████████ 100% |
 | **[Learning]** 피드백 수집 UI | ✅ 완료 | ██████████ 100% |
-| **[Learning]** 규칙 자동 제안 개선 | ⏳ Pending | ░░░░░░░░░░ 0% |
+| **[Learning]** 규칙 자동 제안 개선 | ✅ 완료 | ██████████ 100% |
 | **[Learning]** A/B 테스트 프레임워크 | ⏳ Pending | ░░░░░░░░░░ 0% |
 
 #### 📋 V1 Sprint 2 완료 작업 내역 (2025-12-01)
@@ -191,6 +191,23 @@
   - Backend: pytest 명령어 제시 필수
   - Frontend: UI 동작 시나리오 명시 필수
   - Infra/DB: Health Check 명령어 제시 필수
+- [x] **[Learning]** 규칙 자동 제안 시스템 구현
+  - Backend: `backend/app/services/feedback_analyzer.py` - 피드백 분석 서비스
+    - 피드백 패턴 분석 (analyze_feedback_patterns)
+    - 규칙 제안 생성 (generate_rule_proposals)
+    - 제안 승인/거절 처리 (approve_proposal, reject_proposal)
+  - Backend: `backend/app/routers/proposals.py` - Proposals API
+    - GET / - 제안 목록 조회
+    - GET /stats - 제안 통계
+    - POST /analyze - 피드백 분석 실행
+    - POST /{id}/review - 제안 승인/거절
+  - Backend: LearningAgent에 3개 도구 추가
+    - analyze_and_suggest_rules: 피드백 분석 및 규칙 제안
+    - list_pending_proposals: 대기 중인 제안 조회
+    - review_proposal: 제안 승인/거절
+  - Frontend: `frontend/src/components/ruleset/ProposalsPanel.tsx` - AI 제안 탭 UI
+  - Frontend: `frontend/src/services/proposalService.ts` - API 클라이언트
+  - Frontend: RulesetsPage에 룰셋/AI제안 탭 전환 UI 추가
 
 ### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅
 | Task | Status | Progress |
