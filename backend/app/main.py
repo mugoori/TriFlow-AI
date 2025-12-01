@@ -186,6 +186,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register notifications router: {e}")
 
+# Feedback 라우터
+try:
+    from app.routers import feedback
+    app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])
+    logger.info("Feedback router registered")
+except Exception as e:
+    logger.error(f"Failed to register feedback router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

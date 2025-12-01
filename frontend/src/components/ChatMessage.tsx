@@ -4,14 +4,17 @@
  */
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Pin, Check, FileCode, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pin, Check, FileCode, ExternalLink, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
 import type { ChatMessage as ChatMessageType } from '../types/agent';
 import type { ChartConfig } from '../types/chart';
 import { Card, CardContent } from './ui/card';
 import { ChartRenderer } from './charts';
 import { useDashboard } from '../contexts/DashboardContext';
+import { sendQuickFeedback } from '../services/feedbackService';
+import { FeedbackModal } from './FeedbackModal';
 
 // Ruleset 생성 결과 타입
 interface RulesetCreationResult {
@@ -30,6 +33,9 @@ interface ChatMessageProps {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const [showDetails, setShowDetails] = useState(false);
+  const [feedbackState, setFeedbackState] = useState<'none' | 'positive' | 'negative'>('none');
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const { addChart, hasChart } = useDashboard();
 
   // Check if this message contains chart data from BI Agent
@@ -48,6 +54,65 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const handlePinChart = () => {
     if (chartConfig && !isChartPinned) {
       addChart(chartConfig, chartConfig.title);
+    }
+  };
+
+  // 빠른 피드백 전송
+  const handleQuickFeedback = async (type: 'positive' | 'negative') => {
+    if (isSendingFeedback || feedbackState !== 'none') return;
+
+    setIsSendingFeedback(true);
+    try {
+      await sendQuickFeedback(
+        type,
+        message.id || `msg-${message.timestamp}`,
+        message.agent_name,
+        { content: message.content, tool_calls: message.tool_calls }
+      );
+      setFeedbackState(type);
+    } catch (error) {
+      console.error('Failed to send feedback:', error);
+    } finally {
+      setIsSendingFeedback(false);
+    }
+  };
+
+  // 상세 피드백 모달 열기
+  const handleOpenFeedbackModal = () => {
+    setShowFeedbackModal(true);
+  };
+
+  // 상세 피드백 제출 완료
+  const handleFeedbackSubmit = () => {
+    setFeedbackState('negative'); // 상세 피드백은 보통 부정적일 때 사용
+    setShowFeedbackModal(false);
+  };
+
+  // 탭 네비게이션 링크를 처리하는 커스텀 마크다운 컴포넌트
+  const markdownComponents: Components = {
+    a: ({ href, children }) => {
+      // #tab- 으로 시작하는 링크는 탭 네비게이션으로 처리
+      if (href && href.startsWith('#tab-')) {
+        const tabName = href.replace('#tab-', '');
+        return (
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('navigate-to-tab', {
+                detail: { tab: tabName }
+              }));
+            }}
+            className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-medium"
+          >
+            {children}
+          </button>
+        );
+      }
+      // 일반 링크는 새 탭에서 열기
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
+          {children}
+        </a>
+      );
     }
   };
 
@@ -71,7 +136,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
             {/* 메시지 내용 */}
             <div className="text-sm text-slate-900 dark:text-slate-100 prose-chat">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {message.content}
               </ReactMarkdown>
             </div>
@@ -188,8 +253,78 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 )}
               </div>
             )}
+
+            {/* 피드백 버튼 (AI 응답에만 표시) */}
+            {!isUser && (
+              <div className="mt-3 pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                <span className="text-xs text-slate-400 dark:text-slate-500 mr-1">도움이 되었나요?</span>
+
+                {/* 좋아요 버튼 */}
+                <button
+                  onClick={() => handleQuickFeedback('positive')}
+                  disabled={isSendingFeedback || feedbackState !== 'none'}
+                  className={`p-1.5 rounded transition-colors ${
+                    feedbackState === 'positive'
+                      ? 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400'
+                      : feedbackState !== 'none'
+                      ? 'bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                      : 'hover:bg-green-50 text-slate-400 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400'
+                  }`}
+                  title="도움이 되었어요"
+                >
+                  <ThumbsUp className="w-4 h-4" />
+                </button>
+
+                {/* 싫어요 버튼 */}
+                <button
+                  onClick={() => handleQuickFeedback('negative')}
+                  disabled={isSendingFeedback || feedbackState !== 'none'}
+                  className={`p-1.5 rounded transition-colors ${
+                    feedbackState === 'negative'
+                      ? 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400'
+                      : feedbackState !== 'none'
+                      ? 'bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                      : 'hover:bg-red-50 text-slate-400 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400'
+                  }`}
+                  title="도움이 안 되었어요"
+                >
+                  <ThumbsDown className="w-4 h-4" />
+                </button>
+
+                {/* 상세 피드백 버튼 */}
+                <button
+                  onClick={handleOpenFeedbackModal}
+                  disabled={feedbackState !== 'none'}
+                  className={`p-1.5 rounded transition-colors ${
+                    feedbackState !== 'none'
+                      ? 'bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                      : 'hover:bg-blue-50 text-slate-400 hover:text-blue-600 dark:hover:bg-blue-900/30 dark:hover:text-blue-400'
+                  }`}
+                  title="상세 피드백 작성"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                </button>
+
+                {/* 피드백 완료 표시 */}
+                {feedbackState !== 'none' && (
+                  <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
+                    피드백 감사합니다!
+                  </span>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* 피드백 모달 */}
+        <FeedbackModal
+          isOpen={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          onSubmit={handleFeedbackSubmit}
+          messageId={message.id || `msg-${message.timestamp}`}
+          agentType={message.agent_name}
+          originalOutput={{ content: message.content, tool_calls: message.tool_calls }}
+        />
       </div>
     </div>
   );
