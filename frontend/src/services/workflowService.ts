@@ -14,7 +14,7 @@ export interface WorkflowTrigger {
 
 export interface WorkflowNode {
   id: string;
-  type: 'condition' | 'action';
+  type: 'condition' | 'action' | 'if_else' | 'loop' | 'parallel';
   config: Record<string, unknown>;
   next: string[];
 }

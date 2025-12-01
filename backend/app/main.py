@@ -231,6 +231,19 @@ try:
 except Exception as e:
     logger.error(f"Failed to register audit router: {e}")
 
+# Scheduler 라우터 (스케줄러 관리)
+try:
+    from app.routers import scheduler
+    app.include_router(scheduler.router, prefix="/api/v1/scheduler", tags=["scheduler"])
+    logger.info("Scheduler router registered")
+
+    # 기본 스케줄 작업 등록
+    from app.services.scheduler_service import setup_default_jobs
+    setup_default_jobs()
+    logger.info("Default scheduler jobs registered")
+except Exception as e:
+    logger.error(f"Failed to register scheduler router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

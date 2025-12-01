@@ -20,6 +20,9 @@ import {
   CheckCircle2,
   Zap,
   GitBranch,
+  Repeat,
+  Layers,
+  Split,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WorkflowNode, WorkflowDSL } from '@/services/workflowService';
@@ -36,6 +39,27 @@ interface WorkflowEditorProps {
 const nodeTypeColors: Record<string, string> = {
   condition: 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20',
   action: 'border-blue-400 bg-blue-50 dark:bg-blue-900/20',
+  if_else: 'border-purple-400 bg-purple-50 dark:bg-purple-900/20',
+  loop: 'border-green-400 bg-green-50 dark:bg-green-900/20',
+  parallel: 'border-orange-400 bg-orange-50 dark:bg-orange-900/20',
+};
+
+// 노드 타입별 라벨
+const nodeTypeLabels: Record<string, string> = {
+  condition: '조건',
+  action: '액션',
+  if_else: 'If/Else 분기',
+  loop: '반복',
+  parallel: '병렬 실행',
+};
+
+// 노드 타입별 아이콘 색상
+const nodeTypeIconColors: Record<string, string> = {
+  condition: 'bg-yellow-200 dark:bg-yellow-800',
+  action: 'bg-blue-200 dark:bg-blue-800',
+  if_else: 'bg-purple-200 dark:bg-purple-800',
+  loop: 'bg-green-200 dark:bg-green-800',
+  parallel: 'bg-orange-200 dark:bg-orange-800',
 };
 
 // 액션 ID → 한글 이름 매핑
@@ -216,6 +240,52 @@ function buildConditionFromTemplate(
   return result;
 }
 
+// 노드 타입에 따른 아이콘 반환
+function getNodeIcon(type: string) {
+  switch (type) {
+    case 'condition':
+      return AlertTriangle;
+    case 'action':
+      return Zap;
+    case 'if_else':
+      return Split;
+    case 'loop':
+      return Repeat;
+    case 'parallel':
+      return Layers;
+    default:
+      return Zap;
+  }
+}
+
+// 노드 요약 정보 반환
+function getNodeSummary(node: WorkflowNode): string {
+  const config = node.config as Record<string, unknown>;
+  switch (node.type) {
+    case 'condition':
+      return (config.condition as string) || '조건 미설정';
+    case 'action':
+      return actionLabels[(config.action as string) || ''] || '액션 미설정';
+    case 'if_else':
+      return (config.condition as string) || 'If/Else 미설정';
+    case 'loop': {
+      const loopType = config.loop_type as string;
+      if (loopType === 'for') {
+        return `반복 ${config.count || 0}회`;
+      } else if (loopType === 'while') {
+        return `조건 반복: ${config.condition || '조건 미설정'}`;
+      }
+      return '반복 미설정';
+    }
+    case 'parallel': {
+      const branches = config.branches as unknown[][];
+      return `병렬 ${branches?.length || 0}개 브랜치`;
+    }
+    default:
+      return node.id;
+  }
+}
+
 // 노드 에디터 컴포넌트
 function NodeEditor({
   node,
@@ -237,7 +307,7 @@ function NodeEditor({
   isLast: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const NodeIcon = node.type === 'condition' ? AlertTriangle : Zap;
+  const NodeIcon = getNodeIcon(node.type);
 
   // 조건 템플릿 관련 상태
   const nodeConfig = node.config as {
@@ -252,7 +322,7 @@ function NodeEditor({
     nodeConfig.templateValues || {}
   );
 
-  const handleConfigChange = (key: string, value: string) => {
+  const handleConfigChange = (key: string, value: unknown) => {
     onUpdate({
       ...node,
       config: {
@@ -322,21 +392,15 @@ function NodeEditor({
           onClick={() => setExpanded(!expanded)}
         >
           <GripVertical className="w-4 h-4 text-slate-400 cursor-grab" />
-          <div className={`p-1.5 rounded ${
-            node.type === 'condition'
-              ? 'bg-yellow-200 dark:bg-yellow-800'
-              : 'bg-blue-200 dark:bg-blue-800'
-          }`}>
+          <div className={`p-1.5 rounded ${nodeTypeIconColors[node.type] || 'bg-slate-200 dark:bg-slate-700'}`}>
             <NodeIcon className="w-4 h-4" />
           </div>
           <div className="flex-1">
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              {index + 1}. {node.type === 'condition' ? '조건' : '액션'}
+              {index + 1}. {nodeTypeLabels[node.type] || node.type}
             </span>
             <h4 className="text-sm font-medium">
-              {node.type === 'condition'
-                ? (node.config as { condition?: string })?.condition || '조건 미설정'
-                : actionLabels[(node.config as { action?: string })?.action || ''] || '액션 미설정'}
+              {getNodeSummary(node)}
             </h4>
           </div>
           <div className="flex items-center gap-1">
@@ -386,7 +450,8 @@ function NodeEditor({
                 />
               </div>
 
-              {node.type === 'condition' ? (
+              {/* 노드 타입별 설정 UI */}
+              {node.type === 'condition' && (
                 <div className="space-y-3">
                   {/* 템플릿 선택 */}
                   <div>
@@ -398,32 +463,31 @@ function NodeEditor({
                       onChange={(e) => handleTemplateSelect(e.target.value)}
                       className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
                     >
-                      <optgroup label="📊 센서 값 비교">
+                      <optgroup label="센서 값 비교">
                         <option value="sensor_above">센서 값 초과</option>
                         <option value="sensor_below">센서 값 미만</option>
                         <option value="sensor_range">센서 값 범위 이탈</option>
                       </optgroup>
-                      <optgroup label="🔍 품질 관리">
+                      <optgroup label="품질 관리">
                         <option value="defect_rate">불량률 초과</option>
                         <option value="consecutive_defects">연속 불량 발생</option>
                       </optgroup>
-                      <optgroup label="⚙️ 장비 상태">
+                      <optgroup label="장비 상태">
                         <option value="equipment_status">장비 상태 확인</option>
                         <option value="runtime_exceeded">가동 시간 초과</option>
                       </optgroup>
-                      <optgroup label="📦 생산 관리">
+                      <optgroup label="생산 관리">
                         <option value="production_target">생산 목표 달성</option>
                         <option value="production_delay">생산 지연</option>
                       </optgroup>
-                      <optgroup label="🔗 복합 조건">
+                      <optgroup label="복합 조건">
                         <option value="multi_sensor_alert">복합 센서 이상</option>
                         <option value="shift_check">근무 교대 시간</option>
                       </optgroup>
-                      <optgroup label="✏️ 기타">
+                      <optgroup label="기타">
                         <option value="custom">직접 입력</option>
                       </optgroup>
                     </select>
-                    {/* 템플릿 설명 */}
                     {selectedTemplateId !== 'custom' && (
                       <p className="mt-1 text-xs text-slate-500">
                         {conditionTemplates.find(t => t.id === selectedTemplateId)?.description}
@@ -431,7 +495,6 @@ function NodeEditor({
                     )}
                   </div>
 
-                  {/* 템플릿 변수 입력 */}
                   {selectedTemplateId !== 'custom' && (
                     <div className="grid grid-cols-2 gap-2">
                       {conditionTemplates
@@ -453,7 +516,6 @@ function NodeEditor({
                     </div>
                   )}
 
-                  {/* 직접 입력 모드 */}
                   {selectedTemplateId === 'custom' && (
                     <div>
                       <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
@@ -472,7 +534,6 @@ function NodeEditor({
                     </div>
                   )}
 
-                  {/* 생성된 조건식 미리보기 */}
                   {selectedTemplateId !== 'custom' && (
                     <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded">
                       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
@@ -484,7 +545,9 @@ function NodeEditor({
                     </div>
                   )}
                 </div>
-              ) : (
+              )}
+
+              {node.type === 'action' && (
                 <>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
@@ -496,22 +559,22 @@ function NodeEditor({
                       className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
                     >
                       <option value="">액션을 선택하세요...</option>
-                      <optgroup label="📢 알림">
+                      <optgroup label="알림">
                         <option value="send_slack_notification">Slack 알림 전송</option>
                         <option value="send_email">이메일 발송</option>
                         <option value="send_sms">SMS 문자 발송</option>
                       </optgroup>
-                      <optgroup label="💾 데이터">
+                      <optgroup label="데이터">
                         <option value="save_to_database">데이터베이스 저장</option>
                         <option value="export_to_csv">CSV 파일 내보내기</option>
                         <option value="log_event">이벤트 로그 기록</option>
                       </optgroup>
-                      <optgroup label="⚙️ 제어">
+                      <optgroup label="제어">
                         <option value="stop_production_line">생산라인 정지</option>
                         <option value="adjust_sensor_threshold">센서 임계값 조정</option>
                         <option value="trigger_maintenance">유지보수 요청 발생</option>
                       </optgroup>
-                      <optgroup label="📊 분석">
+                      <optgroup label="분석">
                         <option value="calculate_defect_rate">불량률 계산</option>
                         <option value="analyze_sensor_trend">센서 추세 분석</option>
                         <option value="predict_equipment_failure">장비 고장 예측</option>
@@ -538,6 +601,177 @@ function NodeEditor({
                   </div>
                 </>
               )}
+
+              {/* If/Else 노드 설정 */}
+              {node.type === 'if_else' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                      분기 조건
+                    </label>
+                    <input
+                      type="text"
+                      value={(node.config as { condition?: string })?.condition || ''}
+                      onChange={(e) => handleConfigChange('condition', e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm font-mono border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      placeholder="temperature > 80"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      조건이 참이면 then 브랜치, 거짓이면 else 브랜치 실행
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800">
+                      <label className="block text-xs font-medium text-green-700 dark:text-green-400 mb-1">
+                        Then 브랜치 (조건 참)
+                      </label>
+                      <textarea
+                        value={JSON.stringify((node.config as { then?: unknown[] })?.then || [], null, 2)}
+                        onChange={(e) => {
+                          try {
+                            const nodes = JSON.parse(e.target.value);
+                            handleConfigChange('then', nodes);
+                          } catch {
+                            // 파싱 오류 무시
+                          }
+                        }}
+                        className="w-full px-2 py-1 text-xs font-mono border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 h-24"
+                        placeholder="[{노드...}]"
+                      />
+                    </div>
+                    <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+                      <label className="block text-xs font-medium text-red-700 dark:text-red-400 mb-1">
+                        Else 브랜치 (조건 거짓)
+                      </label>
+                      <textarea
+                        value={JSON.stringify((node.config as { else?: unknown[] })?.else || [], null, 2)}
+                        onChange={(e) => {
+                          try {
+                            const nodes = JSON.parse(e.target.value);
+                            handleConfigChange('else', nodes);
+                          } catch {
+                            // 파싱 오류 무시
+                          }
+                        }}
+                        className="w-full px-2 py-1 text-xs font-mono border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 h-24"
+                        placeholder="[{노드...}]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Loop 노드 설정 */}
+              {node.type === 'loop' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                      반복 유형
+                    </label>
+                    <select
+                      value={(node.config as { loop_type?: string })?.loop_type || 'for'}
+                      onChange={(e) => handleConfigChange('loop_type', e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                    >
+                      <option value="for">횟수 반복 (for)</option>
+                      <option value="while">조건 반복 (while)</option>
+                    </select>
+                  </div>
+
+                  {(node.config as { loop_type?: string })?.loop_type === 'while' ? (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        반복 조건 (참인 동안 반복)
+                      </label>
+                      <input
+                        type="text"
+                        value={(node.config as { condition?: string })?.condition || ''}
+                        onChange={(e) => handleConfigChange('condition', e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm font-mono border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                        placeholder="retry_count < 3"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        최대 100회까지 반복 (무한 루프 방지)
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        반복 횟수
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={(node.config as { count?: number })?.count || 1}
+                        onChange={(e) => handleConfigChange('count', parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      />
+                    </div>
+                  )}
+
+                  <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800">
+                    <label className="block text-xs font-medium text-green-700 dark:text-green-400 mb-1">
+                      반복 실행할 노드
+                    </label>
+                    <textarea
+                      value={JSON.stringify((node.config as { nodes?: unknown[] })?.nodes || [], null, 2)}
+                      onChange={(e) => {
+                        try {
+                          const nodes = JSON.parse(e.target.value);
+                          handleConfigChange('nodes', nodes);
+                        } catch {
+                          // 파싱 오류 무시
+                        }
+                      }}
+                      className="w-full px-2 py-1 text-xs font-mono border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 h-24"
+                      placeholder="[{노드...}]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Parallel 노드 설정 */}
+              {node.type === 'parallel' && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id={`fail_fast_${node.id}`}
+                      checked={(node.config as { fail_fast?: boolean })?.fail_fast ?? false}
+                      onChange={(e) => handleConfigChange('fail_fast', e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    <label htmlFor={`fail_fast_${node.id}`} className="text-xs text-slate-600 dark:text-slate-400">
+                      실패 시 즉시 중단 (fail_fast)
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    체크하면 하나의 브랜치가 실패할 경우 나머지 브랜치도 중단됩니다.
+                  </p>
+                  <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded border border-orange-200 dark:border-orange-800">
+                    <label className="block text-xs font-medium text-orange-700 dark:text-orange-400 mb-1">
+                      병렬 브랜치 (각 브랜치는 노드 배열)
+                    </label>
+                    <textarea
+                      value={JSON.stringify((node.config as { branches?: unknown[][] })?.branches || [[]], null, 2)}
+                      onChange={(e) => {
+                        try {
+                          const branches = JSON.parse(e.target.value);
+                          handleConfigChange('branches', branches);
+                        } catch {
+                          // 파싱 오류 무시
+                        }
+                      }}
+                      className="w-full px-2 py-1 text-xs font-mono border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 h-32"
+                      placeholder="[&#10;  [{노드1}, {노드2}],&#10;  [{노드3}, {노드4}]&#10;]"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      각 브랜치는 동시에 실행됩니다. 예: [[branch1_nodes], [branch2_nodes]]
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -557,11 +791,29 @@ export function WorkflowEditor({ initialDSL, onSave, onCancel, isOpen }: Workflo
   if (!isOpen) return null;
 
   // 노드 추가
-  const addNode = (type: 'condition' | 'action') => {
+  const addNode = (type: WorkflowNode['type']) => {
+    let config: Record<string, unknown> = {};
+    switch (type) {
+      case 'condition':
+        config = { condition: '' };
+        break;
+      case 'action':
+        config = { action: '', parameters: {} };
+        break;
+      case 'if_else':
+        config = { condition: '', then: [], else: [] };
+        break;
+      case 'loop':
+        config = { loop_type: 'for', count: 1, nodes: [] };
+        break;
+      case 'parallel':
+        config = { branches: [[]], fail_fast: false };
+        break;
+    }
     const newNode: WorkflowNode = {
       id: `${type}_${Date.now()}`,
       type,
-      config: type === 'condition' ? { condition: '' } : { action: '', parameters: {} },
+      config,
       next: [],
     };
     setDSL({
@@ -680,22 +932,43 @@ export function WorkflowEditor({ initialDSL, onSave, onCancel, isOpen }: Workflo
               {/* 노드 목록 */}
               <Card>
                 <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2">
                     <CardTitle className="text-sm">노드</CardTitle>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-1">
                       <button
                         onClick={() => addNode('condition')}
                         className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400"
                       >
                         <Plus className="w-3 h-3" />
-                        조건 추가
+                        조건
                       </button>
                       <button
                         onClick={() => addNode('action')}
                         className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400"
                       >
                         <Plus className="w-3 h-3" />
-                        액션 추가
+                        액션
+                      </button>
+                      <button
+                        onClick={() => addNode('if_else')}
+                        className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400"
+                      >
+                        <Plus className="w-3 h-3" />
+                        If/Else
+                      </button>
+                      <button
+                        onClick={() => addNode('loop')}
+                        className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+                      >
+                        <Plus className="w-3 h-3" />
+                        반복
+                      </button>
+                      <button
+                        onClick={() => addNode('parallel')}
+                        className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400"
+                      >
+                        <Plus className="w-3 h-3" />
+                        병렬
                       </button>
                     </div>
                   </div>

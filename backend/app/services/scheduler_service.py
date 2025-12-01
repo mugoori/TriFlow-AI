@@ -1,0 +1,294 @@
+"""
+데이터 동기화 스케줄러 서비스
+- 센서 데이터 자동 수집
+- 외부 시스템 연동 (ERP/MES)
+- 주기적 정리 작업
+"""
+import asyncio
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional, Callable
+from dataclasses import dataclass, field
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+
+class JobStatus(str, Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    DISABLED = "disabled"
+
+
+@dataclass
+class ScheduledJob:
+    """스케줄된 작업 정의"""
+    job_id: str
+    name: str
+    description: str
+    interval_seconds: int
+    handler: Callable
+    enabled: bool = True
+    last_run: Optional[datetime] = None
+    next_run: Optional[datetime] = None
+    status: JobStatus = JobStatus.IDLE
+    run_count: int = 0
+    error_count: int = 0
+    last_error: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class SchedulerService:
+    """
+    데이터 동기화 스케줄러
+
+    주요 기능:
+    - 주기적 센서 데이터 시뮬레이션 생성
+    - 오래된 데이터 정리
+    - 외부 시스템 데이터 동기화 (확장 가능)
+    """
+
+    def __init__(self):
+        self._jobs: Dict[str, ScheduledJob] = {}
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._check_interval = 1  # 1초마다 체크
+
+    def register_job(
+        self,
+        job_id: str,
+        name: str,
+        description: str,
+        interval_seconds: int,
+        handler: Callable,
+        enabled: bool = True,
+    ) -> None:
+        """작업 등록"""
+        job = ScheduledJob(
+            job_id=job_id,
+            name=name,
+            description=description,
+            interval_seconds=interval_seconds,
+            handler=handler,
+            enabled=enabled,
+            next_run=datetime.utcnow() if enabled else None,
+        )
+        self._jobs[job_id] = job
+        logger.info(f"Registered job: {job_id} (interval: {interval_seconds}s)")
+
+    def unregister_job(self, job_id: str) -> bool:
+        """작업 해제"""
+        if job_id in self._jobs:
+            del self._jobs[job_id]
+            logger.info(f"Unregistered job: {job_id}")
+            return True
+        return False
+
+    def enable_job(self, job_id: str) -> bool:
+        """작업 활성화"""
+        if job_id in self._jobs:
+            self._jobs[job_id].enabled = True
+            self._jobs[job_id].status = JobStatus.IDLE
+            self._jobs[job_id].next_run = datetime.utcnow()
+            return True
+        return False
+
+    def disable_job(self, job_id: str) -> bool:
+        """작업 비활성화"""
+        if job_id in self._jobs:
+            self._jobs[job_id].enabled = False
+            self._jobs[job_id].status = JobStatus.DISABLED
+            self._jobs[job_id].next_run = None
+            return True
+        return False
+
+    def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """작업 상태 조회"""
+        if job_id not in self._jobs:
+            return None
+        job = self._jobs[job_id]
+        return {
+            "job_id": job.job_id,
+            "name": job.name,
+            "description": job.description,
+            "interval_seconds": job.interval_seconds,
+            "enabled": job.enabled,
+            "status": job.status.value,
+            "last_run": job.last_run.isoformat() if job.last_run else None,
+            "next_run": job.next_run.isoformat() if job.next_run else None,
+            "run_count": job.run_count,
+            "error_count": job.error_count,
+            "last_error": job.last_error,
+        }
+
+    def get_all_jobs(self) -> List[Dict[str, Any]]:
+        """모든 작업 상태 조회"""
+        return [self.get_job_status(job_id) for job_id in self._jobs]
+
+    async def start(self) -> None:
+        """스케줄러 시작"""
+        if self._running:
+            logger.warning("Scheduler is already running")
+            return
+
+        self._running = True
+        self._task = asyncio.create_task(self._run_loop())
+        logger.info("Scheduler started")
+
+    async def stop(self) -> None:
+        """스케줄러 중지"""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Scheduler stopped")
+
+    async def _run_loop(self) -> None:
+        """메인 스케줄러 루프"""
+        while self._running:
+            try:
+                now = datetime.utcnow()
+
+                for job in self._jobs.values():
+                    if not job.enabled:
+                        continue
+                    if job.status == JobStatus.RUNNING:
+                        continue
+                    if job.next_run and job.next_run <= now:
+                        # 작업 실행
+                        asyncio.create_task(self._execute_job(job))
+
+                await asyncio.sleep(self._check_interval)
+
+            except Exception as e:
+                logger.error(f"Scheduler loop error: {e}")
+                await asyncio.sleep(self._check_interval)
+
+    async def _execute_job(self, job: ScheduledJob) -> None:
+        """개별 작업 실행"""
+        job.status = JobStatus.RUNNING
+        job.last_run = datetime.utcnow()
+
+        try:
+            # 핸들러가 async인지 확인
+            if asyncio.iscoroutinefunction(job.handler):
+                await job.handler()
+            else:
+                job.handler()
+
+            job.status = JobStatus.COMPLETED
+            job.run_count += 1
+            logger.debug(f"Job {job.job_id} completed successfully")
+
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error_count += 1
+            job.last_error = str(e)
+            logger.error(f"Job {job.job_id} failed: {e}")
+
+        finally:
+            # 다음 실행 시간 설정
+            job.next_run = datetime.utcnow() + timedelta(seconds=job.interval_seconds)
+            job.status = JobStatus.IDLE
+
+    async def run_job_now(self, job_id: str) -> bool:
+        """작업 즉시 실행"""
+        if job_id not in self._jobs:
+            return False
+        job = self._jobs[job_id]
+        if job.status == JobStatus.RUNNING:
+            return False
+        asyncio.create_task(self._execute_job(job))
+        return True
+
+
+# 기본 작업 핸들러들
+
+async def cleanup_old_sensor_data():
+    """
+    오래된 센서 데이터 정리 (30일 이상)
+    """
+    from app.database import SessionLocal
+    from app.models import SensorData
+
+    try:
+        db = SessionLocal()
+        cutoff = datetime.utcnow() - timedelta(days=30)
+        deleted = db.query(SensorData).filter(SensorData.recorded_at < cutoff).delete()
+        db.commit()
+        logger.info(f"Cleaned up {deleted} old sensor records")
+    except Exception as e:
+        logger.error(f"Failed to cleanup old sensor data: {e}")
+    finally:
+        db.close()
+
+
+async def generate_sample_sensor_data():
+    """
+    샘플 센서 데이터 생성 (시뮬레이션용)
+    """
+    import random
+    from app.database import SessionLocal
+    from app.models import SensorData
+
+    lines = ["LINE_A", "LINE_B", "LINE_C", "LINE_D"]
+    sensor_types = {
+        "temperature": {"min": 20, "max": 100, "unit": "C"},
+        "pressure": {"min": 0.8, "max": 2.5, "unit": "bar"},
+        "humidity": {"min": 30, "max": 80, "unit": "%"},
+    }
+
+    try:
+        db = SessionLocal()
+        now = datetime.utcnow()
+
+        for line in lines:
+            for sensor_type, config in sensor_types.items():
+                value = random.uniform(config["min"], config["max"])
+                sensor_data = SensorData(
+                    line_code=line,
+                    sensor_type=sensor_type,
+                    value=round(value, 2),
+                    unit=config["unit"],
+                    recorded_at=now,
+                )
+                db.add(sensor_data)
+
+        db.commit()
+        logger.debug(f"Generated {len(lines) * len(sensor_types)} sample sensor records")
+    except Exception as e:
+        logger.error(f"Failed to generate sample sensor data: {e}")
+    finally:
+        db.close()
+
+
+# 싱글톤 인스턴스
+scheduler = SchedulerService()
+
+
+def setup_default_jobs():
+    """기본 스케줄 작업 등록"""
+    # 데이터 정리 (매일 자정)
+    scheduler.register_job(
+        job_id="cleanup_old_data",
+        name="센서 데이터 정리",
+        description="30일 이상 된 센서 데이터 삭제",
+        interval_seconds=86400,  # 24시간
+        handler=cleanup_old_sensor_data,
+        enabled=True,
+    )
+
+    # 샘플 데이터 생성 (5분마다) - 개발/데모용
+    scheduler.register_job(
+        job_id="generate_sample_data",
+        name="샘플 데이터 생성",
+        description="시뮬레이션용 센서 데이터 생성",
+        interval_seconds=300,  # 5분
+        handler=generate_sample_sensor_data,
+        enabled=False,  # 기본 비활성화
+    )

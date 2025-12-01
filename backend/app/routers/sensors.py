@@ -1,11 +1,16 @@
 """
 Sensor Data Router
-센서 데이터 조회 API - PostgreSQL DB 연동
+센서 데이터 조회 API - PostgreSQL DB 연동 + WebSocket 실시간 스트리밍 + CSV/Excel Import
 """
+import asyncio
+import io
+import json
+import random
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Set
 
-from fastapi import APIRouter, Query, Depends
+import pandas as pd
+from fastapi import APIRouter, Query, Depends, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, distinct
 from sqlalchemy.orm import Session
@@ -14,6 +19,32 @@ from app.database import get_db
 from app.models import SensorData
 
 router = APIRouter()
+
+# 연결된 WebSocket 클라이언트 관리
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Set[WebSocket] = set()
+        self._streaming_task: Optional[asyncio.Task] = None
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.add(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.discard(websocket)
+
+    async def broadcast(self, message: dict):
+        """모든 연결된 클라이언트에 메시지 전송"""
+        disconnected = set()
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                disconnected.add(connection)
+        # 끊어진 연결 정리
+        self.active_connections -= disconnected
+
+manager = ConnectionManager()
 
 
 # Response Models
@@ -233,3 +264,319 @@ async def get_sensor_summary(
     except Exception:
         # DB 연결 실패 시 빈 배열 반환
         return SensorSummaryResponse(summary=[])
+
+
+# ==================== WebSocket 실시간 스트리밍 ====================
+
+def generate_simulated_sensor_data() -> dict:
+    """
+    시뮬레이션용 센서 데이터 생성
+
+    실제 환경에서는 DB에서 최신 데이터를 조회하거나
+    MQTT/Kafka 등의 메시지 브로커에서 데이터를 수신
+    """
+    lines = DEFAULT_LINES
+    sensor_types = {
+        "temperature": {"min": 20, "max": 100, "unit": "C"},
+        "pressure": {"min": 0.8, "max": 2.5, "unit": "bar"},
+        "humidity": {"min": 30, "max": 80, "unit": "%"},
+        "vibration": {"min": 0, "max": 100, "unit": "Hz"},
+        "flow_rate": {"min": 50, "max": 200, "unit": "L/min"},
+    }
+
+    data = []
+    timestamp = datetime.utcnow().isoformat()
+
+    for line in lines:
+        for sensor_type, config in sensor_types.items():
+            # 랜덤 값 생성 (정규 분포 근사)
+            mid = (config["max"] + config["min"]) / 2
+            spread = (config["max"] - config["min"]) / 4
+            value = random.gauss(mid, spread)
+            value = max(config["min"], min(config["max"], value))  # 범위 제한
+
+            # 가끔 이상치 발생 (5% 확률)
+            if random.random() < 0.05:
+                if random.random() < 0.5:
+                    value = config["max"] * 1.1  # 상한 초과
+                else:
+                    value = config["min"] * 0.9  # 하한 미달
+
+            data.append({
+                "sensor_id": f"{line}_{sensor_type}",
+                "line_code": line,
+                "sensor_type": sensor_type,
+                "value": round(value, 2),
+                "unit": config["unit"],
+                "recorded_at": timestamp,
+            })
+
+    return {
+        "type": "sensor_update",
+        "timestamp": timestamp,
+        "data": data,
+    }
+
+
+@router.websocket("/stream")
+async def websocket_sensor_stream(websocket: WebSocket):
+    """
+    실시간 센서 데이터 WebSocket 스트리밍
+
+    연결 후 1초 간격으로 센서 데이터 전송
+    클라이언트는 'subscribe' 메시지로 특정 라인/센서만 구독 가능
+
+    사용 예시:
+    ```javascript
+    const ws = new WebSocket('ws://localhost:8000/api/v1/sensors/stream');
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log('Sensor data:', data);
+    };
+
+    // 특정 라인만 구독
+    ws.send(JSON.stringify({
+        type: 'subscribe',
+        filters: { lines: ['LINE_A', 'LINE_B'] }
+    }));
+    ```
+    """
+    await manager.connect(websocket)
+
+    # 클라이언트별 필터 설정
+    filters = {
+        "lines": None,  # None = 전체
+        "sensor_types": None,
+    }
+
+    try:
+        # 연결 확인 메시지
+        await websocket.send_json({
+            "type": "connected",
+            "message": "WebSocket connected to sensor stream",
+            "available_lines": DEFAULT_LINES,
+            "available_sensor_types": DEFAULT_SENSOR_TYPES,
+        })
+
+        while True:
+            # 1. 클라이언트 메시지 확인 (non-blocking)
+            try:
+                # 짧은 타임아웃으로 메시지 확인
+                raw_data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=0.1
+                )
+                message = json.loads(raw_data)
+
+                # 구독 필터 업데이트
+                if message.get("type") == "subscribe":
+                    msg_filters = message.get("filters", {})
+                    if "lines" in msg_filters:
+                        filters["lines"] = msg_filters["lines"]
+                    if "sensor_types" in msg_filters:
+                        filters["sensor_types"] = msg_filters["sensor_types"]
+
+                    await websocket.send_json({
+                        "type": "subscribed",
+                        "filters": filters,
+                    })
+
+            except asyncio.TimeoutError:
+                pass  # 타임아웃 - 메시지 없음
+            except json.JSONDecodeError:
+                pass  # 잘못된 JSON 무시
+
+            # 2. 센서 데이터 전송
+            sensor_data = generate_simulated_sensor_data()
+
+            # 필터 적용
+            if filters["lines"]:
+                sensor_data["data"] = [
+                    d for d in sensor_data["data"]
+                    if d["line_code"] in filters["lines"]
+                ]
+            if filters["sensor_types"]:
+                sensor_data["data"] = [
+                    d for d in sensor_data["data"]
+                    if d["sensor_type"] in filters["sensor_types"]
+                ]
+
+            await websocket.send_json(sensor_data)
+
+            # 1초 대기
+            await asyncio.sleep(1)
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception:
+        manager.disconnect(websocket)
+
+
+@router.get("/stream/status")
+async def get_stream_status():
+    """
+    WebSocket 스트림 상태 조회
+    """
+    return {
+        "active_connections": len(manager.active_connections),
+        "websocket_url": "/api/v1/sensors/stream",
+    }
+
+
+# ==================== CSV/Excel Import ====================
+
+class ImportResult(BaseModel):
+    success: bool
+    message: str
+    total_rows: int
+    imported_rows: int
+    failed_rows: int
+    errors: List[str] = []
+
+
+@router.post("/import", response_model=ImportResult)
+async def import_sensor_data(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    CSV/Excel 파일에서 센서 데이터 Import
+
+    지원 파일 형식:
+    - CSV (.csv)
+    - Excel (.xlsx, .xls)
+
+    필수 컬럼:
+    - line_code: 생산 라인 코드 (예: LINE_A)
+    - sensor_type: 센서 타입 (예: temperature)
+    - value: 센서 값 (숫자)
+
+    선택 컬럼:
+    - recorded_at: 기록 시간 (ISO 형식, 없으면 현재 시간)
+    - unit: 단위 (예: C, %, bar)
+
+    예시 CSV:
+    ```
+    line_code,sensor_type,value,unit,recorded_at
+    LINE_A,temperature,75.5,C,2024-01-15T10:30:00
+    LINE_B,pressure,1.2,bar,
+    ```
+    """
+    errors = []
+    imported_rows = 0
+    failed_rows = 0
+
+    # 파일 확장자 확인
+    filename = file.filename or ""
+    if not filename.lower().endswith(('.csv', '.xlsx', '.xls')):
+        raise HTTPException(
+            status_code=400,
+            detail="지원하지 않는 파일 형식입니다. CSV 또는 Excel 파일을 업로드하세요."
+        )
+
+    try:
+        # 파일 읽기
+        content = await file.read()
+
+        # 파일 형식에 따라 DataFrame 로드
+        if filename.lower().endswith('.csv'):
+            df = pd.read_csv(io.BytesIO(content))
+        else:
+            df = pd.read_excel(io.BytesIO(content))
+
+        total_rows = len(df)
+
+        # 필수 컬럼 확인
+        required_columns = ['line_code', 'sensor_type', 'value']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise HTTPException(
+                status_code=400,
+                detail=f"필수 컬럼이 누락되었습니다: {', '.join(missing_columns)}"
+            )
+
+        # 데이터 정제 및 삽입
+        for idx, row in df.iterrows():
+            try:
+                # 값 추출
+                line_code = str(row['line_code']).strip()
+                sensor_type = str(row['sensor_type']).strip()
+                value = float(row['value'])
+
+                # 선택 값
+                unit = str(row.get('unit', '')).strip() if pd.notna(row.get('unit')) else None
+                recorded_at = None
+                if 'recorded_at' in df.columns and pd.notna(row.get('recorded_at')):
+                    try:
+                        recorded_at = pd.to_datetime(row['recorded_at']).to_pydatetime()
+                    except Exception:
+                        recorded_at = datetime.utcnow()
+                else:
+                    recorded_at = datetime.utcnow()
+
+                # 유효성 검사
+                if not line_code or not sensor_type:
+                    raise ValueError("line_code와 sensor_type은 필수입니다")
+
+                # DB 삽입
+                sensor_data = SensorData(
+                    line_code=line_code,
+                    sensor_type=sensor_type,
+                    value=value,
+                    unit=unit,
+                    recorded_at=recorded_at,
+                )
+                db.add(sensor_data)
+                imported_rows += 1
+
+            except Exception as e:
+                failed_rows += 1
+                if len(errors) < 10:  # 최대 10개 에러만 기록
+                    errors.append(f"Row {idx + 2}: {str(e)}")
+
+        # 커밋
+        if imported_rows > 0:
+            db.commit()
+
+        return ImportResult(
+            success=failed_rows == 0,
+            message=f"{imported_rows}개 행 import 완료" + (f", {failed_rows}개 실패" if failed_rows > 0 else ""),
+            total_rows=total_rows,
+            imported_rows=imported_rows,
+            failed_rows=failed_rows,
+            errors=errors,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"파일 처리 중 오류 발생: {str(e)}"
+        )
+
+
+@router.get("/import/template")
+async def get_import_template():
+    """
+    Import용 템플릿 CSV 다운로드
+
+    Returns:
+        CSV 템플릿 파일 내용
+    """
+    template = """line_code,sensor_type,value,unit,recorded_at
+LINE_A,temperature,75.5,C,2024-01-15T10:30:00
+LINE_A,pressure,1.2,bar,2024-01-15T10:30:00
+LINE_A,humidity,45.0,%,2024-01-15T10:30:00
+LINE_B,temperature,72.3,C,2024-01-15T10:30:00
+LINE_B,vibration,23.5,Hz,2024-01-15T10:30:00
+"""
+    from fastapi.responses import Response
+    return Response(
+        content=template,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=sensor_import_template.csv"
+        }
+    )

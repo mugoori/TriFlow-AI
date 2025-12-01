@@ -1,7 +1,15 @@
 """
 워크플로우 실행 엔진
 조건 평가 및 액션 실행
+
+지원 노드 타입:
+- condition: 조건 평가 (순차 진행)
+- action: 액션 실행
+- if_else: 조건 분기 (then/else 브랜치)
+- loop: 반복 실행 (조건 기반 또는 횟수 기반)
+- parallel: 병렬 실행
 """
+import asyncio
 import logging
 import time
 from datetime import datetime
@@ -588,7 +596,17 @@ class WorkflowEngine:
     """
     워크플로우 실행 엔진
     조건 평가 + 액션 실행 통합
+
+    지원 노드 타입:
+    - condition: 조건 평가 (순차 진행, 실패 시 워크플로우 중단)
+    - action: 액션 실행
+    - if_else: 조건 분기 (then/else 브랜치)
+    - loop: 반복 실행 (조건 기반 while 또는 횟수 기반 for)
+    - parallel: 병렬 실행
     """
+
+    # Loop 최대 반복 횟수 (무한 루프 방지)
+    MAX_LOOP_ITERATIONS = 100
 
     def __init__(self):
         self.condition_evaluator = condition_evaluator
@@ -627,6 +645,43 @@ class WorkflowEngine:
         }
 
         nodes = dsl.get("nodes", [])
+
+        # 노드 실행
+        exec_result = await self._execute_nodes(nodes, context)
+
+        execution_time_ms = int((time.time() - start_time) * 1000)
+
+        return {
+            "workflow_id": workflow_id,
+            "status": "failed" if exec_result["failed"] else "completed",
+            "input_data": input_data,
+            "nodes_total": exec_result["total"],
+            "nodes_executed": exec_result["executed"],
+            "nodes_skipped": exec_result["skipped"],
+            "results": exec_result["results"],
+            "error_message": exec_result["error_message"],
+            "execution_time_ms": execution_time_ms,
+            "executed_at": datetime.utcnow().isoformat(),
+        }
+
+    async def _execute_nodes(
+        self,
+        nodes: List[Dict[str, Any]],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        노드 리스트 실행 (재귀 호출 가능)
+
+        Returns:
+            {
+                "results": [...],
+                "executed": int,
+                "skipped": int,
+                "total": int,
+                "failed": bool,
+                "error_message": str | None
+            }
+        """
         results = []
         executed_count = 0
         skipped_count = 0
@@ -634,78 +689,423 @@ class WorkflowEngine:
         error_message = None
 
         for node in nodes:
-            node_id = node.get("id", "unknown")
+            if failed:
+                skipped_count += 1
+                continue
+
+            node_id = node.get("id", f"node_{uuid4().hex[:8]}")
             node_type = node.get("type")
             config = node.get("config", {})
 
             context["node_id"] = node_id
 
-            if node_type == "condition":
-                # 조건 평가
-                condition = config.get("condition", "")
-                result, msg = self.condition_evaluator.evaluate(condition, context)
+            try:
+                if node_type == "condition":
+                    result = await self._execute_condition_node(node_id, config, context)
+                    results.append(result)
 
-                results.append({
-                    "node_id": node_id,
-                    "type": "condition",
-                    "condition": condition,
-                    "result": result,
-                    "message": msg,
-                })
-
-                if not result:
-                    # 조건 불충족 시 이후 노드 실행 안 함
-                    skipped_count += len(nodes) - len(results)
-                    break
-
-                executed_count += 1
-
-            elif node_type == "action":
-                # 액션 실행
-                action_name = config.get("action", "")
-                parameters = config.get("parameters", {})
-
-                # 알림 액션은 별도 처리 (notifications.py에서 처리)
-                if action_name in ["send_slack_notification", "send_email", "send_sms"]:
-                    results.append({
-                        "node_id": node_id,
-                        "type": "action",
-                        "action": action_name,
-                        "status": "delegated",
-                        "message": "알림 액션은 notification_manager에서 처리",
-                    })
-                else:
-                    # 기타 액션 직접 실행
-                    action_result = await self.action_executor.execute(
-                        action_name, parameters, context
-                    )
-
-                    results.append({
-                        "node_id": node_id,
-                        "type": "action",
-                        **action_result,
-                    })
-
-                    if not action_result.get("success", False):
-                        failed = True
-                        error_message = action_result.get("message")
+                    if not result.get("result", False):
+                        # 조건 불충족 시 이후 노드 실행 안 함
+                        skipped_count += len(nodes) - len(results)
                         break
 
-                executed_count += 1
+                    executed_count += 1
 
-        execution_time_ms = int((time.time() - start_time) * 1000)
+                elif node_type == "action":
+                    result = await self._execute_action_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    executed_count += 1
+
+                elif node_type == "if_else":
+                    result = await self._execute_if_else_node(node_id, config, context)
+                    results.append(result)
+
+                    if result.get("failed", False):
+                        failed = True
+                        error_message = result.get("error_message")
+                        break
+
+                    executed_count += 1
+
+                elif node_type == "loop":
+                    result = await self._execute_loop_node(node_id, config, context)
+                    results.append(result)
+
+                    if result.get("failed", False):
+                        failed = True
+                        error_message = result.get("error_message")
+                        break
+
+                    executed_count += 1
+
+                elif node_type == "parallel":
+                    result = await self._execute_parallel_node(node_id, config, context)
+                    results.append(result)
+
+                    if result.get("failed", False):
+                        failed = True
+                        error_message = result.get("error_message")
+                        break
+
+                    executed_count += 1
+
+                else:
+                    results.append({
+                        "node_id": node_id,
+                        "type": node_type,
+                        "success": False,
+                        "message": f"알 수 없는 노드 타입: {node_type}",
+                    })
+                    skipped_count += 1
+
+            except Exception as e:
+                logger.error(f"노드 실행 오류: {node_id} - {e}")
+                failed = True
+                error_message = f"노드 {node_id} 실행 오류: {str(e)}"
+                results.append({
+                    "node_id": node_id,
+                    "type": node_type,
+                    "success": False,
+                    "message": error_message,
+                })
+                break
 
         return {
-            "workflow_id": workflow_id,
-            "status": "failed" if failed else "completed",
-            "input_data": input_data,
-            "nodes_total": len(nodes),
-            "nodes_executed": executed_count,
-            "nodes_skipped": skipped_count,
             "results": results,
+            "executed": executed_count,
+            "skipped": skipped_count,
+            "total": len(nodes),
+            "failed": failed,
             "error_message": error_message,
-            "execution_time_ms": execution_time_ms,
-            "executed_at": datetime.utcnow().isoformat(),
+        }
+
+    async def _execute_condition_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """조건 노드 실행"""
+        condition = config.get("condition", "")
+        result, msg = self.condition_evaluator.evaluate(condition, context)
+
+        return {
+            "node_id": node_id,
+            "type": "condition",
+            "condition": condition,
+            "result": result,
+            "message": msg,
+        }
+
+    async def _execute_action_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """액션 노드 실행"""
+        action_name = config.get("action", "")
+        parameters = config.get("parameters", {})
+
+        # 알림 액션은 별도 처리 (notifications.py에서 처리)
+        if action_name in ["send_slack_notification", "send_email", "send_sms"]:
+            return {
+                "node_id": node_id,
+                "type": "action",
+                "action": action_name,
+                "success": True,
+                "status": "delegated",
+                "message": "알림 액션은 notification_manager에서 처리",
+            }
+
+        # 기타 액션 직접 실행
+        action_result = await self.action_executor.execute(
+            action_name, parameters, context
+        )
+
+        return {
+            "node_id": node_id,
+            "type": "action",
+            **action_result,
+        }
+
+    async def _execute_if_else_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        If/Else 분기 노드 실행
+
+        config 형식:
+        {
+            "condition": "temperature > 80",
+            "then": [노드 리스트],  # 조건 참일 때 실행
+            "else": [노드 리스트]   # 조건 거짓일 때 실행 (선택)
+        }
+        """
+        condition = config.get("condition", "")
+        then_nodes = config.get("then", [])
+        else_nodes = config.get("else", [])
+
+        # 조건 평가
+        cond_result, cond_msg = self.condition_evaluator.evaluate(condition, context)
+
+        if cond_result:
+            # then 브랜치 실행
+            branch = "then"
+            branch_result = await self._execute_nodes(then_nodes, context)
+        else:
+            # else 브랜치 실행
+            branch = "else"
+            if else_nodes:
+                branch_result = await self._execute_nodes(else_nodes, context)
+            else:
+                branch_result = {
+                    "results": [],
+                    "executed": 0,
+                    "skipped": 0,
+                    "total": 0,
+                    "failed": False,
+                    "error_message": None,
+                }
+
+        return {
+            "node_id": node_id,
+            "type": "if_else",
+            "condition": condition,
+            "condition_result": cond_result,
+            "condition_message": cond_msg,
+            "branch_executed": branch,
+            "branch_results": branch_result["results"],
+            "branch_executed_count": branch_result["executed"],
+            "failed": branch_result["failed"],
+            "error_message": branch_result["error_message"],
+            "success": not branch_result["failed"],
+        }
+
+    async def _execute_loop_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Loop 노드 실행
+
+        config 형식 (while 루프):
+        {
+            "loop_type": "while",
+            "condition": "counter < 5",
+            "nodes": [노드 리스트],
+            "max_iterations": 100  # 선택, 기본값 100
+        }
+
+        config 형식 (for 루프):
+        {
+            "loop_type": "for",
+            "count": 3,
+            "nodes": [노드 리스트]
+        }
+        """
+        loop_type = config.get("loop_type", "while")
+        loop_nodes = config.get("nodes", [])
+        max_iterations = config.get("max_iterations", self.MAX_LOOP_ITERATIONS)
+
+        iterations = 0
+        all_results = []
+        failed = False
+        error_message = None
+
+        if loop_type == "for":
+            # For 루프 (횟수 기반)
+            count = config.get("count", 1)
+            count = min(count, max_iterations)  # 최대 반복 제한
+
+            for i in range(count):
+                context["loop_index"] = i
+                context["loop_iteration"] = i + 1
+
+                iter_result = await self._execute_nodes(loop_nodes, context)
+                all_results.append({
+                    "iteration": i + 1,
+                    "results": iter_result["results"],
+                })
+
+                iterations += 1
+
+                if iter_result["failed"]:
+                    failed = True
+                    error_message = iter_result["error_message"]
+                    break
+
+        else:
+            # While 루프 (조건 기반)
+            condition = config.get("condition", "")
+
+            while iterations < max_iterations:
+                # 조건 평가
+                cond_result, cond_msg = self.condition_evaluator.evaluate(condition, context)
+
+                if not cond_result:
+                    break
+
+                context["loop_index"] = iterations
+                context["loop_iteration"] = iterations + 1
+
+                iter_result = await self._execute_nodes(loop_nodes, context)
+                all_results.append({
+                    "iteration": iterations + 1,
+                    "results": iter_result["results"],
+                })
+
+                iterations += 1
+
+                if iter_result["failed"]:
+                    failed = True
+                    error_message = iter_result["error_message"]
+                    break
+
+            if iterations >= max_iterations:
+                logger.warning(f"Loop {node_id} reached max iterations: {max_iterations}")
+
+        # 루프 변수 정리
+        context.pop("loop_index", None)
+        context.pop("loop_iteration", None)
+
+        return {
+            "node_id": node_id,
+            "type": "loop",
+            "loop_type": loop_type,
+            "iterations": iterations,
+            "max_iterations": max_iterations,
+            "iteration_results": all_results,
+            "failed": failed,
+            "error_message": error_message,
+            "success": not failed,
+        }
+
+    async def _execute_parallel_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Parallel 노드 실행 (병렬 실행)
+
+        config 형식:
+        {
+            "branches": [
+                [노드 리스트1],
+                [노드 리스트2],
+                ...
+            ],
+            "fail_fast": false  # true면 하나라도 실패 시 전체 중단
+        }
+        """
+        branches = config.get("branches", [])
+        fail_fast = config.get("fail_fast", False)
+
+        if not branches:
+            return {
+                "node_id": node_id,
+                "type": "parallel",
+                "branches_count": 0,
+                "branch_results": [],
+                "failed": False,
+                "error_message": None,
+                "success": True,
+            }
+
+        # 각 브랜치를 비동기 태스크로 생성
+        async def execute_branch(branch_index: int, branch_nodes: List[Dict]) -> Dict:
+            # 브랜치별 컨텍스트 복사 (격리)
+            branch_context = context.copy()
+            branch_context["parallel_branch_index"] = branch_index
+
+            result = await self._execute_nodes(branch_nodes, branch_context)
+            return {
+                "branch_index": branch_index,
+                **result,
+            }
+
+        # 모든 브랜치 병렬 실행
+        tasks = [
+            execute_branch(i, branch)
+            for i, branch in enumerate(branches)
+        ]
+
+        if fail_fast:
+            # fail_fast: 하나라도 실패하면 나머지 취소
+            branch_results = []
+            failed = False
+            error_message = None
+
+            for coro in asyncio.as_completed(tasks):
+                result = await coro
+                branch_results.append(result)
+
+                if result["failed"]:
+                    failed = True
+                    error_message = f"Branch {result['branch_index']} failed: {result['error_message']}"
+                    # 나머지 태스크 취소 (실제로는 이미 시작된 것들은 완료됨)
+                    break
+
+            # 나머지 완료 대기
+            for task in tasks:
+                if not task.done():
+                    try:
+                        result = await task
+                        branch_results.append(result)
+                    except Exception:
+                        pass
+        else:
+            # 모든 브랜치 완료 대기
+            branch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 예외 처리
+            processed_results = []
+            failed = False
+            error_messages = []
+
+            for i, result in enumerate(branch_results):
+                if isinstance(result, Exception):
+                    processed_results.append({
+                        "branch_index": i,
+                        "results": [],
+                        "executed": 0,
+                        "skipped": 0,
+                        "total": 0,
+                        "failed": True,
+                        "error_message": str(result),
+                    })
+                    failed = True
+                    error_messages.append(f"Branch {i}: {str(result)}")
+                else:
+                    processed_results.append(result)
+                    if result.get("failed"):
+                        failed = True
+                        error_messages.append(f"Branch {result['branch_index']}: {result['error_message']}")
+
+            branch_results = processed_results
+            error_message = "; ".join(error_messages) if error_messages else None
+
+        return {
+            "node_id": node_id,
+            "type": "parallel",
+            "branches_count": len(branches),
+            "branch_results": branch_results,
+            "failed": failed,
+            "error_message": error_message,
+            "success": not failed,
         }
 
 

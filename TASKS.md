@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | ██████░░░░ 65% | 13/20 |
+| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | ████████░░ 85% | 17/20 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -70,7 +70,7 @@
 
 ## 📋 V1 개발 작업 목록
 
-### 🔧 V1 Sprint 1: Builder UI & Workflow Execution 🔄 (60%)
+### 🔧 V1 Sprint 1: Builder UI & Workflow Execution ✅ (90%)
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[UI]** Workflow Visual Editor (노드 추가/삭제/이동) | ✅ 완료 | ██████████ 100% |
@@ -79,8 +79,8 @@
 | **[UI]** Action Catalog 관리 UI | ✅ 완료 | ██████████ 100% |
 | **[i18n]** Action Catalog 한글화 | ✅ 완료 | ██████████ 100% |
 | **[Engine]** Workflow Execution Pipeline (순차 실행) | ✅ 완료 | ██████████ 100% |
-| **[Engine]** Workflow Execution (If/Else 분기) | ⏳ 미구현 | ░░░░░░░░░░ 0% |
-| **[Engine]** Workflow Execution (Loop/Parallel) | ⏳ 미구현 | ░░░░░░░░░░ 0% |
+| **[Engine]** Workflow Execution (If/Else 분기) | ✅ 완료 | ██████████ 100% |
+| **[Engine]** Workflow Execution (Loop/Parallel) | ✅ 완료 | ██████████ 100% |
 | **[Engine]** Sensor Data Simulator | ✅ 완료 | ██████████ 100% |
 | **[UI]** Simulation Test Panel | ✅ 완료 | ██████████ 100% |
 | **[UI]** Execution Log Panel | ✅ 완료 | ██████████ 100% |
@@ -238,15 +238,15 @@
   - Frontend: Sidebar에 A/B 테스트 메뉴 추가
   - Frontend: App.tsx에 experiments 라우트 추가
 
-### 🔌 V1 Sprint 3: 외부 시스템 연동 🔄 (25%)
+### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅ (85%)
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[Integration]** Slack 알림 실제 연동 | ✅ 완료 | ██████████ 100% |
 | **[Integration]** Email 알림 연동 (SMTP) | ✅ 완료 | ██████████ 100% |
 | **[Integration]** ERP/MES API 연결 | ⏳ 미구현 | ░░░░░░░░░░ 0% |
-| **[Integration]** 실시간 센서 스트리밍 (WebSocket) | ⏳ 미구현 | ░░░░░░░░░░ 0% |
-| **[Integration]** CSV/Excel Import | ⏳ 미구현 | ░░░░░░░░░░ 0% |
-| **[Integration]** 데이터 동기화 스케줄러 | ⏳ 미구현 | ░░░░░░░░░░ 0% |
+| **[Integration]** 실시간 센서 스트리밍 (WebSocket) | ✅ 완료 | ██████████ 100% |
+| **[Integration]** CSV/Excel Import | ✅ 완료 | ██████████ 100% |
+| **[Integration]** 데이터 동기화 스케줄러 | ✅ 완료 | ██████████ 100% |
 
 #### 📋 V1 Sprint 3 완료 작업 내역 (2025-11-28)
 - [x] **[Service]** Notification Service 구현 (`backend/app/services/notifications.py`)
@@ -267,6 +267,32 @@
 - [x] **[Config]** 환경변수 업데이트 (`.env.example`)
   - Slack: SLACK_WEBHOOK_URL, SLACK_DEFAULT_CHANNEL
   - Email: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS
+
+#### 📋 V1 Sprint 3 추가 완료 작업 내역 (2025-12-01)
+- [x] **[Engine]** Workflow If/Else 분기 로직 구현 (`backend/app/services/workflow_engine.py`)
+  - `_execute_if_else_node()` - 조건 평가 후 true_branch/false_branch 분기 실행
+  - 중첩 분기 지원
+- [x] **[Engine]** Workflow Loop/Parallel 실행 구현
+  - `_execute_loop_node()` - 반복 실행 (max_iterations, condition 지원)
+  - `_execute_parallel_node()` - asyncio.gather() 기반 병렬 실행
+- [x] **[UI]** WorkflowEditor UI 업데이트 (`frontend/src/components/workflow/WorkflowEditor.tsx`)
+  - if_else, loop, parallel 노드 타입 추가
+  - 노드별 아이콘/색상/레이블 설정
+  - 노드 설정 UI (조건, 반복 횟수, 병렬 브랜치)
+- [x] **[WebSocket]** 실시간 센서 스트리밍 구현
+  - Backend: `sensors.py` WebSocket 엔드포인트 `/stream`
+  - Backend: `ConnectionManager` 연결 관리
+  - Frontend: `sensorStreamService.ts` WebSocket 클라이언트
+  - Frontend: `useSensorStream.ts` React Hook
+- [x] **[Import]** CSV/Excel Import 구현 (`backend/app/routers/sensors.py`)
+  - `POST /import` - 파일 업로드 (CSV, XLSX)
+  - `GET /import/template` - 템플릿 다운로드
+  - pandas + openpyxl 의존성 추가
+- [x] **[Scheduler]** 데이터 동기화 스케줄러 구현
+  - `backend/app/services/scheduler_service.py` - SchedulerService 클래스
+  - `backend/app/routers/scheduler.py` - 스케줄러 관리 API
+  - 기본 작업: 오래된 데이터 정리, 샘플 데이터 생성
+  - 작업 활성화/비활성화/즉시 실행 지원
 
 ### 🔐 V1 Sprint 4: 보안 강화 🔄 (75%)
 | Task | Status | Progress |
@@ -318,15 +344,15 @@
 
 ## 🚨 V1 미완료 항목 요약 (우선순위별)
 
-### 높은 우선순위 (V1 완료 필수)
-| # | 항목 | Sprint | 설명 |
+### 높은 우선순위 (V1 완료 필수) - ✅ 모두 완료!
+| # | 항목 | Sprint | 상태 |
 | :--- | :--- | :--- | :--- |
-| 1 | **If/Else 분기 로직** | Sprint 1 | 워크플로우 조건별 다중 경로 실행 |
-| 2 | **Loop/Parallel 실행** | Sprint 1 | 반복 실행 및 병렬 처리 지원 |
-| 3 | **실시간 센서 스트리밍** | Sprint 3 | WebSocket 기반 실시간 데이터 |
-| 4 | **ERP/MES API 연결** | Sprint 3 | 외부 시스템 API 통합 |
-| 5 | **CSV/Excel Import** | Sprint 3 | 파일 업로드 및 데이터 로딩 |
-| 6 | **데이터 동기화 스케줄러** | Sprint 3 | 정기적 데이터 동기화 작업 |
+| 1 | ~~If/Else 분기 로직~~ | Sprint 1 | ✅ 완료 |
+| 2 | ~~Loop/Parallel 실행~~ | Sprint 1 | ✅ 완료 |
+| 3 | ~~실시간 센서 스트리밍~~ | Sprint 3 | ✅ 완료 |
+| 4 | **ERP/MES API 연결** | Sprint 3 | ⏳ 미구현 |
+| 5 | ~~CSV/Excel Import~~ | Sprint 3 | ✅ 완료 |
+| 6 | ~~데이터 동기화 스케줄러~~ | Sprint 3 | ✅ 완료 |
 
 ### 중간 우선순위 (V1 마무리)
 | # | 항목 | Sprint | 설명 |
