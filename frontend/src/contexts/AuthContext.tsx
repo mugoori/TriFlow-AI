@@ -44,7 +44,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const tryAutoLogin = useCallback(async () => {
     const storedAccessToken = authService.getAccessToken();
     const storedRefreshToken = authService.getRefreshToken();
-    const storedUser = authService.getSavedUser();
 
     if (!storedAccessToken || !storedRefreshToken) {
       setIsLoading(false);

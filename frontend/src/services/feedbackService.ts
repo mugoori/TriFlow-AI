@@ -44,8 +44,7 @@ export interface FeedbackStats {
  * 피드백 생성
  */
 export async function createFeedback(data: FeedbackCreate): Promise<FeedbackResponse> {
-  const response = await apiClient.post('/api/v1/feedback', data);
-  return response.data;
+  return apiClient.post<FeedbackResponse>('/api/v1/feedback', data);
 }
 
 /**
@@ -57,31 +56,36 @@ export async function listFeedback(params?: {
   limit?: number;
   offset?: number;
 }): Promise<FeedbackResponse[]> {
-  const response = await apiClient.get('/api/v1/feedback', { params });
-  return response.data;
+  const searchParams = new URLSearchParams();
+  if (params?.feedback_type) searchParams.set('feedback_type', params.feedback_type);
+  if (params?.is_processed !== undefined) searchParams.set('is_processed', String(params.is_processed));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.offset) searchParams.set('offset', String(params.offset));
+
+  const queryString = searchParams.toString();
+  const url = queryString ? `/api/v1/feedback?${queryString}` : '/api/v1/feedback';
+  return apiClient.get<FeedbackResponse[]>(url);
 }
 
 /**
  * 피드백 통계 조회
  */
 export async function getFeedbackStats(): Promise<FeedbackStats> {
-  const response = await apiClient.get('/api/v1/feedback/stats');
-  return response.data;
+  return apiClient.get<FeedbackStats>('/api/v1/feedback/stats');
 }
 
 /**
  * 피드백 상세 조회
  */
 export async function getFeedback(feedbackId: string): Promise<FeedbackResponse> {
-  const response = await apiClient.get(`/api/v1/feedback/${feedbackId}`);
-  return response.data;
+  return apiClient.get<FeedbackResponse>(`/api/v1/feedback/${feedbackId}`);
 }
 
 /**
  * 피드백 처리됨 마킹
  */
 export async function markFeedbackAsProcessed(feedbackId: string): Promise<void> {
-  await apiClient.patch(`/api/v1/feedback/${feedbackId}/process`);
+  await apiClient.patch<void>(`/api/v1/feedback/${feedbackId}/process`, {});
 }
 
 /**

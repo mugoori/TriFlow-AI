@@ -18,7 +18,7 @@ import {
   CardTitle,
 } from '../ui/card';
 import { Alert, AlertDescription } from '../ui/alert';
-import { Loader2, AlertCircle, Wifi, WifiOff } from 'lucide-react';
+import { Loader2, AlertCircle, WifiOff } from 'lucide-react';
 
 export function LoginPage() {
   const navigate = useNavigate();
