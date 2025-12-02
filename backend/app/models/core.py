@@ -379,3 +379,123 @@ class ExperimentMetric(Base):
 
     def __repr__(self):
         return f"<ExperimentMetric(id={self.metric_id}, name='{self.metric_name}', value={self.metric_value})>"
+
+
+# ========== ERP/MES 통합 모델 ==========
+
+
+class ErpMesData(Base):
+    """ERP/MES 데이터 (JSONB 기반 유연한 스키마)
+
+    문서 참조: A-2-4 DATA-REQ-020
+    - 확장 가능한 메타데이터는 JSONB 컬럼으로 저장
+    - 스키마 변경 없이 다양한 기업의 데이터 수용 가능
+    """
+
+    __tablename__ = "erp_mes_data"
+    __table_args__ = {"schema": "core"}
+
+    data_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+
+    # 소스 시스템 정보
+    source_type = Column(String(20), nullable=False)  # 'erp' | 'mes'
+    source_system = Column(String(100), nullable=False)  # 'sap', 'oracle', 'custom_erp', etc.
+
+    # 레코드 분류
+    record_type = Column(String(100), nullable=False)  # 'production_order', 'inventory', 'bom', 'work_order', etc.
+    external_id = Column(String(255), nullable=True)  # 원본 시스템의 ID
+
+    # 원본 데이터 (JSONB) - 기업마다 다른 스키마 수용
+    raw_data = Column(JSONB, nullable=False, default={})
+
+    # 정규화된 공통 필드 (BI 쿼리 최적화용)
+    # - 자주 조회되는 필드만 별도 컬럼으로 추출
+    normalized_quantity = Column(Float, nullable=True)  # 수량 (공통 필드)
+    normalized_status = Column(String(50), nullable=True)  # 상태 (공통 필드)
+    normalized_timestamp = Column(DateTime, nullable=True)  # 기준 시간 (공통 필드)
+
+    # 메타데이터
+    sync_status = Column(String(50), default="synced")  # synced, pending, error
+    sync_error = Column(Text, nullable=True)
+    synced_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ErpMesData(id={self.data_id}, source={self.source_type}/{self.source_system}, type='{self.record_type}')>"
+
+
+class FieldMapping(Base):
+    """필드 매핑 설정 (테넌트별 ERP/MES 필드 → 정규화 필드 매핑)
+
+    기업마다 다른 ERP/MES 필드명을 정규화된 공통 필드로 매핑
+    예: SAP의 'MENGE' → normalized_quantity
+        Oracle의 'QTY' → normalized_quantity
+    """
+
+    __tablename__ = "field_mappings"
+    __table_args__ = {"schema": "core"}
+
+    mapping_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+
+    # 소스 정보
+    source_type = Column(String(20), nullable=False)  # 'erp' | 'mes'
+    source_system = Column(String(100), nullable=False)  # 'sap', 'oracle', etc.
+    record_type = Column(String(100), nullable=False)  # 'production_order', 'inventory', etc.
+
+    # 매핑 정보
+    source_field = Column(String(255), nullable=False)  # 원본 필드명 (예: 'MENGE', 'material.quantity')
+    target_field = Column(String(255), nullable=False)  # 대상 필드명 (예: 'normalized_quantity', 'custom.qty')
+
+    # 변환 규칙 (선택적)
+    transform_type = Column(String(50), nullable=True)  # 'direct', 'multiply', 'date_format', 'lookup', etc.
+    transform_config = Column(JSONB, default={})  # 변환 설정 (예: {"multiplier": 1000})
+
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<FieldMapping(id={self.mapping_id}, {self.source_field} → {self.target_field})>"
+
+
+class DataSource(Base):
+    """데이터 소스 연결 설정 (테넌트별 ERP/MES 연결 정보)
+
+    문서 참조: B-1-3 Native DB Connector Integration
+    - REST API, SOAP, DB Direct 연결 지원
+    """
+
+    __tablename__ = "data_sources"
+    __table_args__ = {"schema": "core"}
+
+    source_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # 소스 정보
+    source_type = Column(String(20), nullable=False)  # 'erp' | 'mes'
+    source_system = Column(String(100), nullable=False)  # 'sap', 'oracle', 'custom', etc.
+
+    # 연결 방식
+    connection_type = Column(String(50), nullable=False)  # 'rest_api', 'soap', 'db_direct', 'file'
+    connection_config = Column(JSONB, default={})  # 연결 설정 (암호화 필요)
+    # 예: {"base_url": "https://...", "auth_type": "oauth2", "client_id": "..."}
+
+    # 동기화 설정
+    sync_enabled = Column(Boolean, default=True)
+    sync_interval_minutes = Column(Integer, default=60)  # 동기화 주기 (분)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String(50), nullable=True)  # success, error
+    last_sync_error = Column(Text, nullable=True)
+
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<DataSource(id={self.source_id}, name='{self.name}', type={self.source_type}/{self.source_system})>"

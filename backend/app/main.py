@@ -244,6 +244,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register scheduler router: {e}")
 
+# ERP/MES 라우터 (Mock API)
+try:
+    from app.routers import erp_mes
+    app.include_router(erp_mes.router, prefix="/api/v1/erp-mes", tags=["erp-mes"])
+    logger.info("ERP/MES router registered")
+except Exception as e:
+    logger.error(f"Failed to register erp-mes router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn
