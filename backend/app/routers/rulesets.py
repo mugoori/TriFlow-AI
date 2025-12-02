@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Ruleset, Tenant
+from app.models import Ruleset, RulesetVersion, Tenant
 
 router = APIRouter()
 
@@ -68,6 +68,25 @@ class RulesetExecuteResponse(BaseModel):
 
 class ExecutionHistoryResponse(BaseModel):
     executions: List[RulesetExecuteResponse]
+    total: int
+
+
+class RulesetVersionResponse(BaseModel):
+    version_id: str
+    ruleset_id: str
+    version_number: int
+    version_label: str
+    rhai_script: str
+    description: Optional[str]
+    change_summary: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RulesetVersionListResponse(BaseModel):
+    versions: List[RulesetVersionResponse]
     total: int
 
 
@@ -436,3 +455,242 @@ async def list_ruleset_executions(
         executions=[],
         total=0,
     )
+
+
+# ============ Version Management Endpoints ============
+
+def _version_to_response(version: RulesetVersion) -> RulesetVersionResponse:
+    """RulesetVersion ORM 객체를 Response 모델로 변환"""
+    return RulesetVersionResponse(
+        version_id=str(version.version_id),
+        ruleset_id=str(version.ruleset_id),
+        version_number=version.version_number,
+        version_label=version.version_label,
+        rhai_script=version.rhai_script,
+        description=version.description,
+        change_summary=version.change_summary,
+        created_at=version.created_at,
+    )
+
+
+def _create_version_snapshot(
+    db: Session,
+    ruleset: Ruleset,
+    change_summary: Optional[str] = None,
+) -> RulesetVersion:
+    """현재 룰셋 상태를 버전으로 저장"""
+    # 최신 버전 번호 조회
+    latest_version = (
+        db.query(RulesetVersion)
+        .filter(RulesetVersion.ruleset_id == ruleset.ruleset_id)
+        .order_by(RulesetVersion.version_number.desc())
+        .first()
+    )
+
+    next_version_number = (latest_version.version_number + 1) if latest_version else 1
+
+    new_version = RulesetVersion(
+        ruleset_id=ruleset.ruleset_id,
+        version_number=next_version_number,
+        version_label=ruleset.version,
+        rhai_script=ruleset.rhai_script,
+        description=ruleset.description,
+        change_summary=change_summary,
+        created_by=ruleset.created_by,
+    )
+
+    db.add(new_version)
+    db.commit()
+    db.refresh(new_version)
+
+    return new_version
+
+
+@router.get("/{ruleset_id}/versions", response_model=RulesetVersionListResponse)
+async def list_ruleset_versions(
+    ruleset_id: str,
+    db: Session = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100, description="조회 개수"),
+    offset: int = Query(0, ge=0, description="오프셋"),
+):
+    """
+    룰셋 버전 히스토리 조회
+    """
+    try:
+        rs_uuid = UUID(ruleset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
+
+    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
+    if not ruleset:
+        raise HTTPException(status_code=404, detail="Ruleset not found")
+
+    # 버전 목록 조회
+    query = (
+        db.query(RulesetVersion)
+        .filter(RulesetVersion.ruleset_id == rs_uuid)
+        .order_by(RulesetVersion.version_number.desc())
+    )
+
+    total = query.count()
+    versions = query.offset(offset).limit(limit).all()
+
+    return RulesetVersionListResponse(
+        versions=[_version_to_response(v) for v in versions],
+        total=total,
+    )
+
+
+@router.get("/{ruleset_id}/versions/{version_id}", response_model=RulesetVersionResponse)
+async def get_ruleset_version(
+    ruleset_id: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    특정 버전 상세 조회
+    """
+    try:
+        rs_uuid = UUID(ruleset_id)
+        v_uuid = UUID(version_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    version = (
+        db.query(RulesetVersion)
+        .filter(
+            RulesetVersion.ruleset_id == rs_uuid,
+            RulesetVersion.version_id == v_uuid,
+        )
+        .first()
+    )
+
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    return _version_to_response(version)
+
+
+@router.post("/{ruleset_id}/versions", response_model=RulesetVersionResponse, status_code=201)
+async def create_ruleset_version(
+    ruleset_id: str,
+    db: Session = Depends(get_db),
+    change_summary: Optional[str] = Query(None, description="변경 사항 요약"),
+):
+    """
+    현재 룰셋 상태를 새 버전으로 저장 (스냅샷)
+    """
+    try:
+        rs_uuid = UUID(ruleset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
+
+    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
+    if not ruleset:
+        raise HTTPException(status_code=404, detail="Ruleset not found")
+
+    new_version = _create_version_snapshot(db, ruleset, change_summary)
+
+    return _version_to_response(new_version)
+
+
+@router.post("/{ruleset_id}/versions/{version_id}/rollback", response_model=RulesetResponse)
+async def rollback_to_version(
+    ruleset_id: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    특정 버전으로 롤백
+    현재 상태를 버전으로 저장한 후, 선택한 버전의 스크립트로 복원
+    """
+    try:
+        rs_uuid = UUID(ruleset_id)
+        v_uuid = UUID(version_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
+    if not ruleset:
+        raise HTTPException(status_code=404, detail="Ruleset not found")
+
+    target_version = (
+        db.query(RulesetVersion)
+        .filter(
+            RulesetVersion.ruleset_id == rs_uuid,
+            RulesetVersion.version_id == v_uuid,
+        )
+        .first()
+    )
+
+    if not target_version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    # 현재 상태를 버전으로 먼저 저장
+    _create_version_snapshot(db, ruleset, f"Auto-saved before rollback to v{target_version.version_label}")
+
+    # 선택한 버전으로 복원
+    ruleset.rhai_script = target_version.rhai_script
+    ruleset.description = target_version.description
+
+    # 버전 번호 증가
+    current_version = ruleset.version.split('.')
+    current_version[-1] = str(int(current_version[-1]) + 1)
+    ruleset.version = '.'.join(current_version)
+
+    ruleset.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(ruleset)
+
+    # 롤백 후 새 버전 스냅샷 저장
+    _create_version_snapshot(db, ruleset, f"Rolled back to v{target_version.version_label}")
+
+    return _ruleset_to_response(ruleset)
+
+
+@router.delete("/{ruleset_id}/versions/{version_id}", status_code=204)
+async def delete_ruleset_version(
+    ruleset_id: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    특정 버전 삭제 (가장 최근 버전만 삭제 가능)
+    """
+    try:
+        rs_uuid = UUID(ruleset_id)
+        v_uuid = UUID(version_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    version = (
+        db.query(RulesetVersion)
+        .filter(
+            RulesetVersion.ruleset_id == rs_uuid,
+            RulesetVersion.version_id == v_uuid,
+        )
+        .first()
+    )
+
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    # 가장 최근 버전인지 확인
+    latest_version = (
+        db.query(RulesetVersion)
+        .filter(RulesetVersion.ruleset_id == rs_uuid)
+        .order_by(RulesetVersion.version_number.desc())
+        .first()
+    )
+
+    if version.version_id != latest_version.version_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Only the latest version can be deleted",
+        )
+
+    db.delete(version)
+    db.commit()
+
+    return None

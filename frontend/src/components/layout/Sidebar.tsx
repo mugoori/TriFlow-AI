@@ -1,8 +1,8 @@
-import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical } from 'lucide-react';
+import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
 
-export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'experiments' | 'data' | 'settings';
+export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings';
 
 interface SidebarProps {
   currentView: ViewType;
@@ -14,6 +14,7 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   description: string;
+  adminOnly?: boolean;  // admin 전용 메뉴 여부
 }
 
 const navItems: NavItem[] = [
@@ -40,12 +41,21 @@ const navItems: NavItem[] = [
     label: 'Rulesets',
     icon: FileCode,
     description: 'Rhai 규칙 관리',
+    adminOnly: true,
   },
   {
     id: 'experiments',
     label: 'A/B Tests',
     icon: FlaskConical,
     description: '규칙 변형 실험',
+    adminOnly: true,
+  },
+  {
+    id: 'learning',
+    label: 'Learning',
+    icon: GraduationCap,
+    description: '학습 대시보드',
+    adminOnly: true,
   },
   {
     id: 'data',
@@ -81,7 +91,9 @@ export function Sidebar({ currentView, onViewChange }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1">
-        {navItems.map((item) => {
+        {navItems
+          .filter((item) => !item.adminOnly || user?.role === 'admin')
+          .map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
 

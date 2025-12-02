@@ -1,6 +1,6 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-01
+> **최종 업데이트**: 2025-12-02
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 진행 중
 > **현재 브랜치**: `develop` (V1 개발용)
 
@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | ████████░░ 85% | 17/20 |
+| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | █████████░ 90% | 20/23 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -142,15 +142,16 @@
   - 12개 액션 한글 이름 적용
   - 4개 카테고리 한글 표시
 
-### 🧠 V1 Sprint 2: Learning Pipeline 강화 🔄 (70%)
+### 🧠 V1 Sprint 2: Learning Pipeline 강화 ✅ (100%)
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[Learning]** 채팅으로 룰셋 생성 기능 | ✅ 완료 | ██████████ 100% |
 | **[Learning]** 피드백 수집 UI | ✅ 완료 | ██████████ 100% |
 | **[Learning]** 규칙 자동 제안 개선 | ✅ 완료 | ██████████ 100% |
 | **[Learning]** A/B 테스트 프레임워크 | ✅ 완료 | ██████████ 100% |
-| **[Learning]** Rhai 규칙 버전 관리 | ⏳ 미구현 | ░░░░░░░░░░ 0% |
-| **[UI]** Frontend 학습 대시보드 | ⏳ 미구현 | ░░░░░░░░░░ 0% |
+| **[Learning]** Rhai 규칙 버전 관리 | ✅ 완료 | ██████████ 100% |
+| **[UI]** Frontend 학습 대시보드 | ✅ 완료 | ██████████ 100% |
+| **[UI]** 역할 기반 메뉴 필터링 (RBAC) | ✅ 완료 | ██████████ 100% |
 
 #### 📋 V1 Sprint 2 완료 작업 내역 (2025-12-01)
 - [x] **[UI]** 피드백 수집 UI 구현
@@ -237,6 +238,36 @@
     - 변형별 통계 표시 (할당 수, 메트릭 평균)
   - Frontend: Sidebar에 A/B 테스트 메뉴 추가
   - Frontend: App.tsx에 experiments 라우트 추가
+
+#### 📋 V1 Sprint 2 추가 완료 작업 내역 (2025-12-02)
+- [x] **[Learning]** Rhai 규칙 버전 관리 구현
+  - Backend: `backend/app/models/core.py` - RulesetVersion 모델 추가
+    - version_id, ruleset_id, version_number, version_label
+    - rhai_script, description, change_summary, created_at
+    - Ruleset과 1:N 관계 (cascade delete)
+  - Backend: `backend/app/routers/rulesets.py` - 버전 관리 API
+    - GET /{ruleset_id}/versions - 버전 히스토리 조회
+    - GET /{ruleset_id}/versions/{version_id} - 특정 버전 상세
+    - POST /{ruleset_id}/versions - 현재 상태 스냅샷 저장
+    - POST /{ruleset_id}/versions/{version_id}/rollback - 버전 롤백
+    - DELETE /{ruleset_id}/versions/{version_id} - 최근 버전 삭제
+  - Frontend: `frontend/src/services/rulesetVersionService.ts` - API 클라이언트
+  - Frontend: `frontend/src/components/ruleset/VersionHistoryPanel.tsx` - 버전 히스토리 UI
+    - 접이식 패널 (버전 목록 표시)
+    - 스냅샷 저장, 미리보기, 롤백, 삭제 기능
+  - Frontend: RulesetsPage에 VersionHistoryPanel 통합
+- [x] **[UI]** Frontend 학습 대시보드 구현
+  - Frontend: `frontend/src/components/pages/LearningPage.tsx`
+    - 피드백 통계 섹션 (positive/negative/correction 비율)
+    - AI 제안 목록 (pending 제안 표시)
+    - A/B 테스트 요약 (running 실험 목록)
+  - Frontend: Sidebar에 Learning 메뉴 추가
+  - Frontend: App.tsx에 learning 라우트 추가
+- [x] **[UI]** 역할 기반 메뉴 필터링 (RBAC)
+  - Frontend: `frontend/src/components/layout/Sidebar.tsx`
+    - NavItem에 adminOnly 속성 추가
+    - Rulesets, A/B Tests, Learning 탭 admin 전용 설정
+    - user.role 기반 메뉴 필터링 로직
 
 ### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅ (85%)
 | Task | Status | Progress |
@@ -357,8 +388,8 @@
 ### 중간 우선순위 (V1 마무리)
 | # | 항목 | Sprint | 설명 |
 | :--- | :--- | :--- | :--- |
-| 7 | **Frontend 학습 대시보드** | Sprint 2 | 피드백/제안/A/B테스트 통합 UI |
-| 8 | **Rhai 규칙 버전 관리** | Sprint 2 | 버전 히스토리 및 롤백 기능 |
+| 7 | ~~Frontend 학습 대시보드~~ | Sprint 2 | ✅ 완료 |
+| 8 | ~~Rhai 규칙 버전 관리~~ | Sprint 2 | ✅ 완료 |
 | 9 | **API Key 관리** | Sprint 4 | API Key 발급/관리/회전 |
 | 10 | **OAuth2 Provider 연동** | Sprint 4 | Google/GitHub 로그인 지원 |
 

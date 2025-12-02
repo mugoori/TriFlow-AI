@@ -94,7 +94,9 @@
       "Bash(cmd /c \"taskkill /F /PID 17516 & taskkill /F /PID 9588 & taskkill /F /PID 12172\")",
       "Bash(c:devtriflow-aiscriptskill_port.bat 8000)",
       "Bash(docker-compose:*)",
-      "Bash(cmd /c \"taskkill /F /PID 20496\")"
+      "Bash(cmd /c \"taskkill /F /PID 20496\")",
+      "Bash(del \"c:\\dev\\triflow-ai\\chat_test_result.json\")",
+      "Bash(/c/dev/triflow-ai/scripts/kill_port.bat 8000)"
     ],
     "deny": [],
     "ask": []

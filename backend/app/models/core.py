@@ -85,9 +85,35 @@ class Ruleset(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="rulesets")
+    versions = relationship("RulesetVersion", back_populates="ruleset", cascade="all, delete-orphan", order_by="desc(RulesetVersion.version_number)")
 
     def __repr__(self):
         return f"<Ruleset(id={self.ruleset_id}, name='{self.name}')>"
+
+
+class RulesetVersion(Base):
+    """룰셋 버전 히스토리"""
+
+    __tablename__ = "ruleset_versions"
+    __table_args__ = {"schema": "core"}
+
+    version_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    ruleset_id = Column(PGUUID(as_uuid=True), ForeignKey("core.rulesets.ruleset_id", ondelete="CASCADE"), nullable=False)
+
+    version_number = Column(Integer, nullable=False)  # 순차 증가 (1, 2, 3, ...)
+    version_label = Column(String(50), nullable=False)  # 1.0.0, 1.0.1, ...
+    rhai_script = Column(Text, nullable=False)  # 해당 버전의 스크립트
+    description = Column(Text, nullable=True)  # 해당 버전의 설명
+    change_summary = Column(String(500), nullable=True)  # 변경 사항 요약
+
+    created_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    ruleset = relationship("Ruleset", back_populates="versions")
+
+    def __repr__(self):
+        return f"<RulesetVersion(ruleset_id={self.ruleset_id}, version={self.version_label})>"
 
 
 class Workflow(Base):

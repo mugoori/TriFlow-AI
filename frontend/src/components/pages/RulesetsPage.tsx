@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { rulesetService, type Ruleset, type RulesetExecuteResponse } from '@/services/rulesetService';
 import { RulesetEditorModal } from '@/components/ruleset/RulesetEditorModal';
 import { ProposalsPanel } from '@/components/ruleset/ProposalsPanel';
+import { VersionHistoryPanel } from '@/components/ruleset/VersionHistoryPanel';
 
 interface RulesetsPageProps {
   highlightRulesetId?: string | null;
@@ -512,6 +513,26 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Version History Panel */}
+                <div className="mt-4">
+                  <VersionHistoryPanel
+                    rulesetId={selectedRuleset.ruleset_id}
+                    currentVersion={selectedRuleset.version}
+                    onRollback={async () => {
+                      // 롤백 후 룰셋 다시 로드
+                      try {
+                        const updated = await rulesetService.get(selectedRuleset.ruleset_id);
+                        setSelectedRuleset(updated);
+                        setRulesets((prev) =>
+                          prev.map((r) => (r.ruleset_id === updated.ruleset_id ? updated : r))
+                        );
+                      } catch (err) {
+                        console.error('Failed to refresh ruleset:', err);
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Quick Test Panel */}
