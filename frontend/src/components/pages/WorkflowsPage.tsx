@@ -172,9 +172,14 @@ export function WorkflowsPage() {
     }
   }, [search, filterActive]);
 
-  // 초기 로드
+  // 초기 로드 (워크플로우 + 액션 카탈로그)
   useEffect(() => {
     loadWorkflows();
+    // 액션 카탈로그도 함께 로드 (워크플로우 구조 한글화에 필요)
+    workflowService.getActionCatalog().then((response) => {
+      setActions(response.actions);
+      setCategories(response.categories);
+    }).catch(console.error);
   }, [loadWorkflows]);
 
   // 워크플로우 선택 시 실행 이력 로드
