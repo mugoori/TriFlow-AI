@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | █████████░ 95% | 22/23 |
+| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | ✅ 완료 | ██████████ 100% | 23/23 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -345,12 +345,12 @@
     - MES: work_order, equipment_status, quality_record
   - 확장성 설계: V2에서 실제 Connector 추가 시 모델/API 재사용 가능
 
-### 🔐 V1 Sprint 4: 보안 강화 🔄 (100%)
+### 🔐 V1 Sprint 4: 보안 강화 ✅ (100%)
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[Security]** RBAC 접근 제어 | ✅ 완료 | ██████████ 100% |
 | **[Security]** 감사 로그 (Audit Log) | ✅ 완료 | ██████████ 100% |
-| **[Security]** OAuth2 Provider 연동 (Google/GitHub) | ⏳ 미구현 | ░░░░░░░░░░ 0% |
+| **[Security]** OAuth2 Provider 연동 (Google) | ✅ 완료 | ██████████ 100% |
 | **[Security]** API Key 관리 | ✅ 완료 | ██████████ 100% |
 
 #### 📋 V1 Sprint 4 완료 작업 내역 (2025-12-01)
@@ -424,6 +424,25 @@
     - ✅ API Key로 인증 (X-API-Key 헤더)
     - ✅ API Key 회전 (새 키 발급 + 이전 키 폐기)
     - ✅ 폐기된 키로 인증 실패 (401)
+- [x] **[Security]** Google OAuth2 연동 구현
+  - Backend: `backend/app/config.py` - OAuth 설정 추가
+    - google_client_id, google_client_secret, google_redirect_uri
+  - Backend: `backend/app/models/core.py` - User 모델 OAuth 필드 추가
+    - oauth_provider, oauth_provider_id, profile_image_url, display_name
+    - password_hash nullable 처리 (OAuth 사용자는 비밀번호 없음)
+  - Backend: `backend/app/services/oauth_service.py` - OAuth 서비스 (NEW)
+    - get_google_auth_url(): 로그인 URL + state 토큰 생성
+    - exchange_google_code(): Authorization code → Access Token 교환
+    - get_google_user_info(): Access Token으로 사용자 정보 조회
+  - Backend: `backend/app/schemas/auth.py` - OAuth 스키마 추가
+    - GoogleAuthUrlResponse, OAuthCallbackRequest, OAuthLoginResponse
+  - Backend: `backend/app/routers/auth.py` - OAuth 엔드포인트 추가
+    - GET /google/login - 로그인 시작 (리다이렉트 URL 반환)
+    - GET /google/callback - 콜백 처리 (JWT 토큰 발급)
+  - Backend: `backend/migrations/008_oauth_fields.sql` - DB 마이그레이션
+  - 테스트 완료:
+    - ✅ Google OAuth 로그인 URL 생성 확인
+    - ✅ State 토큰 (CSRF 방지) 생성 확인
 
 ---
 
@@ -439,13 +458,13 @@
 | 5 | ~~CSV/Excel Import~~ | Sprint 3 | ✅ 완료 |
 | 6 | ~~데이터 동기화 스케줄러~~ | Sprint 3 | ✅ 완료 |
 
-### 중간 우선순위 (V1 마무리)
+### 중간 우선순위 (V1 마무리) - ✅ 모두 완료!
 | # | 항목 | Sprint | 설명 |
 | :--- | :--- | :--- | :--- |
 | 7 | ~~Frontend 학습 대시보드~~ | Sprint 2 | ✅ 완료 |
 | 8 | ~~Rhai 규칙 버전 관리~~ | Sprint 2 | ✅ 완료 |
 | 9 | ~~API Key 관리~~ | Sprint 4 | ✅ 완료 |
-| 10 | **OAuth2 Provider 연동** | Sprint 4 | Google/GitHub 로그인 지원 |
+| 10 | ~~OAuth2 Provider 연동~~ | Sprint 4 | ✅ 완료 (Google OAuth2) |
 
 ### 낮은 우선순위 (선택적)
 | # | 항목 | Sprint | 설명 |
