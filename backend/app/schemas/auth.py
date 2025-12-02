@@ -54,6 +54,8 @@ class UserResponse(BaseModel):
     tenant_id: UUID = Field(..., description="테넌트 ID")
     is_active: bool = Field(..., description="활성 상태")
     created_at: datetime = Field(..., description="생성 일시")
+    oauth_provider: Optional[str] = Field(None, description="OAuth 제공자 (google, github 등)")
+    profile_image_url: Optional[str] = Field(None, description="프로필 이미지 URL")
 
     class Config:
         from_attributes = True
@@ -69,3 +71,24 @@ class AuthStatusResponse(BaseModel):
     """인증 상태 응답"""
     authenticated: bool = Field(..., description="인증 여부")
     user: Optional[UserResponse] = Field(None, description="사용자 정보")
+
+
+# ========== OAuth2 스키마 ==========
+
+class GoogleAuthUrlResponse(BaseModel):
+    """Google OAuth 로그인 URL 응답"""
+    url: str = Field(..., description="Google OAuth 로그인 URL")
+    state: str = Field(..., description="CSRF 방지용 state 토큰")
+
+
+class OAuthCallbackRequest(BaseModel):
+    """OAuth 콜백 요청"""
+    code: str = Field(..., description="Authorization code")
+    state: Optional[str] = Field(None, description="CSRF 방지용 state")
+
+
+class OAuthLoginResponse(BaseModel):
+    """OAuth 로그인 응답"""
+    user: UserResponse = Field(..., description="사용자 정보")
+    tokens: TokenResponse = Field(..., description="인증 토큰")
+    is_new_user: bool = Field(..., description="신규 가입 여부")

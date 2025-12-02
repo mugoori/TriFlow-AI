@@ -53,11 +53,17 @@ class User(Base):
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     username = Column(String(100), nullable=False)
     email = Column(String(255), nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=True)  # OAuth 사용자는 비밀번호 없음
     role = Column(String(50), default="user")  # admin, user, viewer
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
+
+    # OAuth 관련 필드
+    oauth_provider = Column(String(50), nullable=True)  # 'google', 'github', 'microsoft' 등
+    oauth_provider_id = Column(String(255), nullable=True)  # Provider별 고유 ID
+    profile_image_url = Column(String(500), nullable=True)  # 프로필 이미지 URL
+    display_name = Column(String(255), nullable=True)  # 표시 이름
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")

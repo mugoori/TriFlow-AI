@@ -27,6 +27,8 @@ from app.schemas.auth import (
     UserResponse,
     LoginResponse,
     AuthStatusResponse,
+    GoogleAuthUrlResponse,
+    OAuthLoginResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -262,4 +264,158 @@ async def auth_status(
     return AuthStatusResponse(
         authenticated=False,
         user=None,
+    )
+
+
+# ========== Google OAuth2 ==========
+
+
+@router.get("/google/login", response_model=GoogleAuthUrlResponse)
+async def google_login():
+    """
+    Google OAuth 로그인 시작
+
+    Google 로그인 페이지 URL과 CSRF 방지용 state 토큰을 반환합니다.
+    Frontend에서 이 URL로 리다이렉트하세요.
+    """
+    from app.services import oauth_service
+    from app.config import settings
+
+    if not settings.google_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth is not configured",
+        )
+
+    try:
+        result = oauth_service.get_google_auth_url()
+        return GoogleAuthUrlResponse(
+            url=result["url"],
+            state=result["state"],
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate Google auth URL: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate Google auth URL",
+        )
+
+
+@router.get("/google/callback", response_model=OAuthLoginResponse)
+async def google_callback(
+    code: str,
+    state: str = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Google OAuth 콜백 처리
+
+    Google에서 리다이렉트된 후 authorization code를 처리하여
+    사용자 인증 및 JWT 토큰을 발급합니다.
+    """
+    from app.services import oauth_service
+
+    # 1. Authorization code를 access token으로 교환
+    token_data = await oauth_service.exchange_google_code(code)
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to exchange authorization code",
+        )
+
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No access token received from Google",
+        )
+
+    # 2. Access token으로 사용자 정보 조회
+    google_user = await oauth_service.get_google_user_info(access_token)
+    if not google_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to get user info from Google",
+        )
+
+    google_id = google_user.get("id")
+    email = google_user.get("email")
+    name = google_user.get("name", email.split("@")[0] if email else "User")
+    picture = google_user.get("picture")
+
+    if not google_id or not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user info from Google",
+        )
+
+    # 3. 기존 사용자 조회 (OAuth provider_id 또는 이메일로)
+    existing_user = db.query(User).filter(
+        (User.oauth_provider == "google") & (User.oauth_provider_id == google_id)
+    ).first()
+
+    is_new_user = False
+
+    if not existing_user:
+        # 이메일로 기존 계정 조회 (이메일 연동 케이스)
+        existing_user = db.query(User).filter(User.email == email).first()
+
+        if existing_user:
+            # 기존 계정에 Google OAuth 연동
+            existing_user.oauth_provider = "google"
+            existing_user.oauth_provider_id = google_id
+            existing_user.profile_image_url = picture
+            if not existing_user.display_name:
+                existing_user.display_name = name
+            db.commit()
+            db.refresh(existing_user)
+            logger.info(f"Linked Google account to existing user: {email}")
+        else:
+            # 새 사용자 생성
+            is_new_user = True
+
+            # 기본 테넌트 조회 또는 생성
+            default_tenant = db.query(Tenant).filter(Tenant.name == "Default").first()
+            if not default_tenant:
+                default_tenant = Tenant(
+                    tenant_id=uuid4(),
+                    name="Default",
+                    slug="default",
+                    description="Default tenant for OAuth users",
+                )
+                db.add(default_tenant)
+                db.commit()
+                db.refresh(default_tenant)
+
+            # 새 사용자 생성
+            new_user = User(
+                user_id=uuid4(),
+                tenant_id=default_tenant.tenant_id,
+                username=email.split("@")[0],
+                email=email,
+                password_hash=None,  # OAuth 사용자는 비밀번호 없음
+                display_name=name,
+                role="user",
+                is_active=True,
+                oauth_provider="google",
+                oauth_provider_id=google_id,
+                profile_image_url=picture,
+            )
+
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
+            existing_user = new_user
+
+            logger.info(f"Created new user via Google OAuth: {email}")
+
+    user = existing_user
+
+    # 4. JWT 토큰 발급
+    tokens = _create_tokens(user)
+
+    return OAuthLoginResponse(
+        user=UserResponse.model_validate(user),
+        tokens=tokens,
+        is_new_user=is_new_user,
     )

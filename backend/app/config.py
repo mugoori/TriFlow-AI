@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # Monitoring
     prometheus_port: int = 9090
 
+    # OAuth2 - Google
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
+
     @property
     def cors_origins_list(self) -> List[str]:
         """CORS origins를 리스트로 변환"""
