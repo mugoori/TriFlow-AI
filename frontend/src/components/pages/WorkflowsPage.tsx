@@ -89,6 +89,27 @@ const categoryColors: Record<string, string> = {
   analysis: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800',
 };
 
+// 조건식 한글화 헬퍼 (temperature >= 80 → 온도 >= 80)
+const conditionLabels: Record<string, string> = {
+  temperature: '온도',
+  pressure: '압력',
+  humidity: '습도',
+  vibration: '진동',
+  flow_rate: '유량',
+  defect_rate: '불량률',
+  rpm: 'RPM',
+  power: '전력',
+  speed: '속도',
+};
+
+const translateCondition = (condition: string): string => {
+  let result = condition;
+  for (const [eng, kor] of Object.entries(conditionLabels)) {
+    result = result.replace(new RegExp(`\\b${eng}\\b`, 'gi'), kor);
+  }
+  return result;
+};
+
 
 export function WorkflowsPage() {
   // 상태
@@ -262,6 +283,12 @@ export function WorkflowsPage() {
   const filteredActions = selectedCategory
     ? actions.filter((a) => a.category === selectedCategory)
     : actions;
+
+  // 액션명을 한글로 변환하는 헬퍼 함수
+  const getActionDisplayName = useCallback((actionName: string): string => {
+    const action = actions.find((a) => a.name === actionName);
+    return action?.display_name || actionName;
+  }, [actions]);
 
   // 액션 클릭 핸들러
   const handleActionClick = (action: ActionCatalogItem) => {
@@ -979,10 +1006,10 @@ export function WorkflowsPage() {
                                           <div className="text-xs text-slate-500">
                                             {idx + 1}. {node.type === 'condition' ? '조건' : '액션'}
                                           </div>
-                                          <div className="text-sm font-mono">
+                                          <div className="text-sm">
                                             {node.type === 'condition'
-                                              ? (node.config as { condition?: string })?.condition || node.id
-                                              : (node.config as { action?: string })?.action || node.id}
+                                              ? translateCondition((node.config as { condition?: string })?.condition || node.id)
+                                              : getActionDisplayName((node.config as { action?: string })?.action || node.id)}
                                           </div>
                                         </div>
                                       ))
