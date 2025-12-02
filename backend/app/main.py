@@ -252,6 +252,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register erp-mes router: {e}")
 
+# API Key 라우터
+try:
+    from app.routers import api_keys
+    app.include_router(api_keys.router, prefix="/api/v1/api-keys", tags=["api-keys"])
+    logger.info("API Keys router registered")
+except Exception as e:
+    logger.error(f"Failed to register api-keys router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

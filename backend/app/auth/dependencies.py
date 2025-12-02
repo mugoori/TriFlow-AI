@@ -1,11 +1,12 @@
 """
 FastAPI 인증 의존성
 Depends(get_current_user) 형태로 사용
+JWT Bearer 토큰 또는 API Key 인증 지원
 """
 from typing import Optional
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -16,16 +17,27 @@ from .jwt import decode_token
 # Bearer 토큰 스키마
 security = HTTPBearer(auto_error=False)
 
+# API Key 접두사
+API_KEY_PREFIX = "tfk_"
+
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    request: Request = None,
     db: Session = Depends(get_db),
 ) -> User:
     """
     현재 인증된 사용자 조회
 
+    지원하는 인증 방식:
+    1. Bearer 토큰 (JWT) - Authorization: Bearer <token>
+    2. API Key - X-API-Key: tfk_xxxxx
+
     Args:
         credentials: Bearer 토큰
+        x_api_key: API Key 헤더
+        request: FastAPI Request (클라이언트 IP 추출용)
         db: 데이터베이스 세션
 
     Returns:
@@ -34,16 +46,29 @@ async def get_current_user(
     Raises:
         HTTPException 401: 인증 실패
     """
-    # 토큰 없음
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # API Key 인증 시도
+    if x_api_key and x_api_key.startswith(API_KEY_PREFIX):
+        return await _authenticate_with_api_key(x_api_key, request, db)
 
-    token = credentials.credentials
+    # Bearer 토큰 인증 시도
+    if credentials:
+        token = credentials.credentials
+        # API Key가 Bearer로 전달된 경우
+        if token.startswith(API_KEY_PREFIX):
+            return await _authenticate_with_api_key(token, request, db)
+        # JWT 토큰 인증
+        return await _authenticate_with_jwt(token, db)
 
+    # 인증 정보 없음
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def _authenticate_with_jwt(token: str, db: Session) -> User:
+    """JWT 토큰으로 인증"""
     # 토큰 디코딩
     payload = decode_token(token)
     if not payload:
@@ -84,6 +109,40 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
+
+
+async def _authenticate_with_api_key(api_key: str, request: Request, db: Session) -> User:
+    """API Key로 인증"""
+    from app.services.api_key_service import validate_api_key
+
+    # 클라이언트 IP 추출
+    client_ip = None
+    if request:
+        client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        if not client_ip:
+            client_ip = request.client.host if request.client else None
+
+    # API Key 검증
+    api_key_obj = validate_api_key(db=db, api_key=api_key, client_ip=client_ip)
+
+    if not api_key_obj:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired API Key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # API Key 소유자 조회
+    user = db.query(User).filter(User.user_id == api_key_obj.user_id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API Key owner not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | █████████░ 91% | 21/23 |
+| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | █████████░ 95% | 22/23 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -345,13 +345,13 @@
     - MES: work_order, equipment_status, quality_record
   - 확장성 설계: V2에서 실제 Connector 추가 시 모델/API 재사용 가능
 
-### 🔐 V1 Sprint 4: 보안 강화 🔄 (75%)
+### 🔐 V1 Sprint 4: 보안 강화 🔄 (100%)
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[Security]** RBAC 접근 제어 | ✅ 완료 | ██████████ 100% |
 | **[Security]** 감사 로그 (Audit Log) | ✅ 완료 | ██████████ 100% |
 | **[Security]** OAuth2 Provider 연동 (Google/GitHub) | ⏳ 미구현 | ░░░░░░░░░░ 0% |
-| **[Security]** API Key 관리 | ⏳ 미구현 | ░░░░░░░░░░ 0% |
+| **[Security]** API Key 관리 | ✅ 완료 | ██████████ 100% |
 
 #### 📋 V1 Sprint 4 완료 작업 내역 (2025-12-01)
 - [x] **[DB]** RBAC & Audit Log 마이그레이션 (`backend/migrations/007_rbac_audit.sql`)
@@ -391,6 +391,40 @@
   - Audit Log 미들웨어 등록 (AUDIT_LOG_ENABLED 환경변수)
   - Audit 라우터 등록 (/api/v1/audit)
 
+#### 📋 V1 Sprint 4 추가 완료 작업 내역 (2025-12-02)
+- [x] **[Security]** API Key 관리 시스템 구현
+  - Backend: `backend/app/models/core.py` - ApiKey ORM 모델 추가
+    - key_id, tenant_id, user_id, name, description
+    - key_prefix (tfk_XXXXXXXX), key_hash (SHA-256)
+    - scopes (JSONB): read, write, delete, admin, sensors, workflows, rulesets, erp_mes, notifications
+    - expires_at, last_used_at, last_used_ip, usage_count
+    - is_active, revoked_at, revoked_reason
+  - Backend: `backend/app/services/api_key_service.py` - API Key 서비스
+    - generate_api_key(): tfk_ 접두사 + 32자 랜덤 키 생성
+    - create_api_key(): 키 생성 (해시만 저장, 평문 키는 최초 1회만 반환)
+    - validate_api_key(): 키 검증 + 사용 기록 업데이트
+    - rotate_api_key(): 키 회전 (기존 폐기 + 새 키 발급)
+    - revoke_api_key(): 키 폐기
+    - list_api_keys(), get_api_key_stats(): 조회/통계
+  - Backend: `backend/app/routers/api_keys.py` - API Key REST API
+    - GET /scopes - 사용 가능한 스코프 목록
+    - GET / - API Key 목록 조회
+    - GET /stats - API Key 통계
+    - POST / - API Key 생성 (전체 키 1회 반환)
+    - GET /{key_id} - API Key 상세
+    - POST /{key_id}/rotate - API Key 회전
+    - POST /{key_id}/revoke - API Key 폐기
+    - DELETE /{key_id} - API Key 삭제
+  - Backend: `backend/app/auth/dependencies.py` - 이중 인증 지원
+    - JWT Bearer Token + X-API-Key 헤더 동시 지원
+    - API Key 접두사(tfk_) 감지 시 API Key 인증으로 전환
+    - 사용 기록 자동 업데이트 (last_used_at, last_used_ip, usage_count)
+  - 테스트 완료:
+    - ✅ API Key 생성 (tfk_1DkPC8i7...)
+    - ✅ API Key로 인증 (X-API-Key 헤더)
+    - ✅ API Key 회전 (새 키 발급 + 이전 키 폐기)
+    - ✅ 폐기된 키로 인증 실패 (401)
+
 ---
 
 ## 🚨 V1 미완료 항목 요약 (우선순위별)
@@ -410,7 +444,7 @@
 | :--- | :--- | :--- | :--- |
 | 7 | ~~Frontend 학습 대시보드~~ | Sprint 2 | ✅ 완료 |
 | 8 | ~~Rhai 규칙 버전 관리~~ | Sprint 2 | ✅ 완료 |
-| 9 | **API Key 관리** | Sprint 4 | API Key 발급/관리/회전 |
+| 9 | ~~API Key 관리~~ | Sprint 4 | ✅ 완료 |
 | 10 | **OAuth2 Provider 연동** | Sprint 4 | Google/GitHub 로그인 지원 |
 
 ### 낮은 우선순위 (선택적)

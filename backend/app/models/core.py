@@ -499,3 +499,51 @@ class DataSource(Base):
 
     def __repr__(self):
         return f"<DataSource(id={self.source_id}, name='{self.name}', type={self.source_type}/{self.source_system})>"
+
+
+# ========== API Key 관리 모델 ==========
+
+
+class ApiKey(Base):
+    """API Key 관리 (외부 시스템 연동용)
+
+    - 테넌트별 API Key 발급/관리
+    - Key 해시 저장 (보안)
+    - 만료일 및 권한 스코프 지원
+    """
+
+    __tablename__ = "api_keys"
+    __table_args__ = {"schema": "core"}
+
+    key_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id", ondelete="CASCADE"), nullable=False)
+
+    # Key 정보
+    name = Column(String(255), nullable=False)  # Key 이름 (예: "Production API", "Dev Testing")
+    description = Column(Text, nullable=True)
+    key_prefix = Column(String(10), nullable=False)  # Key 앞 8자 (식별용, 예: "tfk_abc1")
+    key_hash = Column(String(255), nullable=False)  # SHA-256 해시 (전체 Key는 발급 시에만 표시)
+
+    # 권한 스코프
+    scopes = Column(JSONB, default=["read"])  # ["read", "write", "admin", "sensors", "workflows", ...]
+
+    # 만료 및 상태
+    expires_at = Column(DateTime, nullable=True)  # null = 만료 없음
+    last_used_at = Column(DateTime, nullable=True)
+    last_used_ip = Column(String(45), nullable=True)  # IPv6 지원
+    usage_count = Column(Integer, default=0)
+
+    is_active = Column(Boolean, default=True)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_reason = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    tenant = relationship("Tenant")
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<ApiKey(id={self.key_id}, name='{self.name}', prefix='{self.key_prefix}')>"
