@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | █████████░ 90% | 20/23 |
+| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | 🔄 진행 중 | █████████░ 91% | 21/23 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -269,12 +269,12 @@
     - Rulesets, A/B Tests, Learning 탭 admin 전용 설정
     - user.role 기반 메뉴 필터링 로직
 
-### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅ (85%)
+### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅ (100%)
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[Integration]** Slack 알림 실제 연동 | ✅ 완료 | ██████████ 100% |
 | **[Integration]** Email 알림 연동 (SMTP) | ✅ 완료 | ██████████ 100% |
-| **[Integration]** ERP/MES API 연결 | ⏳ 미구현 | ░░░░░░░░░░ 0% |
+| **[Integration]** ERP/MES Mock API | ✅ 완료 | ██████████ 100% |
 | **[Integration]** 실시간 센서 스트리밍 (WebSocket) | ✅ 완료 | ██████████ 100% |
 | **[Integration]** CSV/Excel Import | ✅ 완료 | ██████████ 100% |
 | **[Integration]** 데이터 동기화 스케줄러 | ✅ 완료 | ██████████ 100% |
@@ -324,6 +324,26 @@
   - `backend/app/routers/scheduler.py` - 스케줄러 관리 API
   - 기본 작업: 오래된 데이터 정리, 샘플 데이터 생성
   - 작업 활성화/비활성화/즉시 실행 지원
+
+#### 📋 V1 Sprint 3 추가 완료 작업 내역 (2025-12-02)
+- [x] **[Integration]** ERP/MES Mock API 구현
+  - Backend: `backend/app/models/core.py` - 3개 ORM 모델 추가
+    - `ErpMesData` - JSONB 기반 유연한 ERP/MES 데이터 저장
+    - `FieldMapping` - 소스 필드 → 정규화 필드 매핑 설정
+    - `DataSource` - ERP/MES 연결 설정 (REST/SOAP/DB Direct)
+  - Backend: `backend/app/routers/erp_mes.py` - Mock API 라우터 (700+ lines)
+    - `GET /mock/types` - 지원 데이터 유형 조회
+    - `POST /mock/generate` - Mock 데이터 생성 (SAP/Oracle/MES 포맷)
+    - `GET /data` - ERP/MES 데이터 목록 조회
+    - `POST /data` - 데이터 수동 생성
+    - `GET /stats` - 데이터 통계
+    - `CRUD /mappings` - 필드 매핑 관리
+    - `CRUD /sources` - 데이터 소스 관리
+    - `POST /sources/{id}/test` - 연결 테스트 (MVP: Mock 응답)
+  - Mock 데이터 유형:
+    - ERP: production_order, inventory, bom (SAP/Oracle 필드명 형식)
+    - MES: work_order, equipment_status, quality_record
+  - 확장성 설계: V2에서 실제 Connector 추가 시 모델/API 재사용 가능
 
 ### 🔐 V1 Sprint 4: 보안 강화 🔄 (75%)
 | Task | Status | Progress |
@@ -381,7 +401,7 @@
 | 1 | ~~If/Else 분기 로직~~ | Sprint 1 | ✅ 완료 |
 | 2 | ~~Loop/Parallel 실행~~ | Sprint 1 | ✅ 완료 |
 | 3 | ~~실시간 센서 스트리밍~~ | Sprint 3 | ✅ 완료 |
-| 4 | **ERP/MES API 연결** | Sprint 3 | ⏳ 미구현 |
+| 4 | ~~ERP/MES Mock API~~ | Sprint 3 | ✅ 완료 |
 | 5 | ~~CSV/Excel Import~~ | Sprint 3 | ✅ 완료 |
 | 6 | ~~데이터 동기화 스케줄러~~ | Sprint 3 | ✅ 완료 |
 
