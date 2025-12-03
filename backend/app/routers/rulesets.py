@@ -198,7 +198,134 @@ let severity = if defect_rate > 10.0 {
 }
 
 
+# ============ Rhai Script Validation ============
+
+class RhaiValidateRequest(BaseModel):
+    """Rhai 스크립트 검증 요청"""
+    script: str = Field(..., description="검증할 Rhai 스크립트")
+
+
+class RhaiValidateResponse(BaseModel):
+    """Rhai 스크립트 검증 응답"""
+    valid: bool
+    script_preview: str
+    line_count: int
+    errors: List[Dict[str, Any]]
+    warnings: List[Dict[str, Any]]
+
+
+def validate_rhai_script(script: str) -> RhaiValidateResponse:
+    """
+    Rhai 스크립트 문법 검증 (간단한 정적 분석)
+
+    실제 Rhai 엔진 연동 전까지는 기본적인 문법 검사만 수행합니다.
+    """
+    errors = []
+    warnings = []
+    lines = script.strip().split('\n')
+    line_count = len(lines)
+
+    # 기본 문법 검사
+    brace_count = 0
+    paren_count = 0
+    bracket_count = 0
+
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+
+        # 빈 줄이나 주석은 건너뜀
+        if not stripped or stripped.startswith('//'):
+            continue
+
+        # 괄호 카운팅
+        brace_count += stripped.count('{') - stripped.count('}')
+        paren_count += stripped.count('(') - stripped.count(')')
+        bracket_count += stripped.count('[') - stripped.count(']')
+
+        # 일반적인 오류 패턴 검사
+        if '==' in stripped and '===' not in stripped:
+            # Rhai는 == 사용 (정상)
+            pass
+
+        if stripped.endswith(',}') or stripped.endswith(',]'):
+            warnings.append({
+                "line": i,
+                "column": len(stripped),
+                "message": "Trailing comma before closing bracket",
+                "severity": "warning",
+            })
+
+        # let 변수 선언 검사
+        if stripped.startswith('let ') and '=' not in stripped and ';' in stripped:
+            errors.append({
+                "line": i,
+                "column": 1,
+                "message": "Variable declaration without initialization",
+                "severity": "error",
+            })
+
+        # 함수 정의 검사 (fn keyword)
+        if stripped.startswith('fn ') and '(' not in stripped:
+            errors.append({
+                "line": i,
+                "column": 1,
+                "message": "Function definition missing parameter list",
+                "severity": "error",
+            })
+
+    # 최종 괄호 균형 검사
+    if brace_count != 0:
+        errors.append({
+            "line": line_count,
+            "column": 1,
+            "message": f"Unbalanced curly braces: {'+' if brace_count > 0 else ''}{brace_count}",
+            "severity": "error",
+        })
+
+    if paren_count != 0:
+        errors.append({
+            "line": line_count,
+            "column": 1,
+            "message": f"Unbalanced parentheses: {'+' if paren_count > 0 else ''}{paren_count}",
+            "severity": "error",
+        })
+
+    if bracket_count != 0:
+        errors.append({
+            "line": line_count,
+            "column": 1,
+            "message": f"Unbalanced square brackets: {'+' if bracket_count > 0 else ''}{bracket_count}",
+            "severity": "error",
+        })
+
+    # 스크립트 미리보기 (첫 100자)
+    preview = script[:100] + ('...' if len(script) > 100 else '')
+
+    return RhaiValidateResponse(
+        valid=len(errors) == 0,
+        script_preview=preview,
+        line_count=line_count,
+        errors=errors,
+        warnings=warnings,
+    )
+
+
 # ============ API Endpoints ============
+
+@router.post("/validate", response_model=RhaiValidateResponse)
+async def validate_ruleset_script(request: RhaiValidateRequest):
+    """
+    Rhai 스크립트 문법 검증
+
+    저장 전에 스크립트의 문법 오류를 검사합니다.
+
+    Returns:
+        valid: 검증 통과 여부
+        errors: 오류 목록 (line, column, message)
+        warnings: 경고 목록
+    """
+    return validate_rhai_script(request.script)
+
 
 @router.get("", response_model=RulesetListResponse)
 async def list_rulesets(

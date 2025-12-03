@@ -30,6 +30,7 @@ EXCLUDED_PATHS = [
     "/redoc",
     "/favicon.ico",
     "/api/v1/audit",  # 무한 루프 방지
+    "/api/v1/auth/",  # 인증 경로는 별도 로깅 (본문 읽기 충돌 방지)
 ]
 
 # 로그 기록할 경로 패턴

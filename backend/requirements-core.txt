@@ -1,6 +1,6 @@
 # ===================================================
 # TriFlow AI Backend - Core Dependencies
-# MVP에서 필수로 사용되는 가벼운 패키지들
+# Essential packages for MVP
 # ===================================================
 
 # Core Framework
@@ -20,7 +20,7 @@ redis==5.0.1
 hiredis==2.2.3
 
 # AI - Anthropic Only (MVP Rule 8)
-anthropic==0.7.8
+anthropic>=0.40.0
 
 # HTTP Client
 httpx==0.25.2

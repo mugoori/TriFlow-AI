@@ -1,7 +1,7 @@
 """
 TriFlow AI - Sensor Tests
 ==========================
-Tests for sensor data endpoints
+Tests for sensor data endpoints (via /api/v1/sensors/*)
 """
 
 import pytest
@@ -12,83 +12,79 @@ class TestSensorEndpoints:
     """Test sensor data endpoints."""
 
     @pytest.mark.asyncio
-    async def test_list_sensors(self, authenticated_client: AsyncClient):
-        """Test listing sensors."""
-        response = await authenticated_client.get("/api/v1/sensors")
+    async def test_get_sensor_data(self, client: AsyncClient):
+        """Test getting sensor data."""
+        response = await client.get("/api/v1/sensors/data")
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, (list, dict))
+        assert "data" in data
+        assert "total" in data
+        assert "page" in data
+        assert "page_size" in data
 
     @pytest.mark.asyncio
-    async def test_create_sensor_reading(
-        self,
-        authenticated_client: AsyncClient,
-        sample_sensor_data
-    ):
-        """Test creating a sensor reading."""
-        response = await authenticated_client.post(
-            "/api/v1/sensors/readings",
-            json=sample_sensor_data
-        )
-        # 200, 201, or 404 if endpoint doesn't exist
-        assert response.status_code in [200, 201, 404]
+    async def test_get_sensor_filters(self, client: AsyncClient):
+        """Test getting sensor filter options."""
+        response = await client.get("/api/v1/sensors/filters")
+        assert response.status_code == 200
+        data = response.json()
+        assert "lines" in data
+        assert "sensor_types" in data
+        assert isinstance(data["lines"], list)
+        assert isinstance(data["sensor_types"], list)
 
     @pytest.mark.asyncio
-    async def test_get_sensor_history(self, authenticated_client: AsyncClient):
-        """Test getting sensor history."""
-        response = await authenticated_client.get(
-            "/api/v1/sensors/TEMP-001/history",
-            params={"limit": 100}
-        )
-        # May return empty list or 404 if sensor doesn't exist
-        assert response.status_code in [200, 404]
+    async def test_get_sensor_summary(self, client: AsyncClient):
+        """Test getting sensor summary."""
+        response = await client.get("/api/v1/sensors/summary")
+        assert response.status_code == 200
+        data = response.json()
+        assert "summary" in data
+        assert isinstance(data["summary"], list)
 
     @pytest.mark.asyncio
-    async def test_get_sensor_statistics(self, authenticated_client: AsyncClient):
-        """Test getting sensor statistics."""
-        response = await authenticated_client.get(
-            "/api/v1/sensors/statistics",
-            params={"sensor_type": "temperature"}
-        )
-        assert response.status_code in [200, 404]
-
-    @pytest.mark.asyncio
-    async def test_sensor_streaming_endpoint(self, authenticated_client: AsyncClient):
-        """Test WebSocket sensor streaming exists."""
-        # This is a basic check - WebSocket testing requires special handling
-        response = await authenticated_client.get("/api/v1/sensors/stream/info")
-        # Endpoint might not exist, that's okay
-        assert response.status_code in [200, 404, 405]
-
-
-class TestSensorValidation:
-    """Test sensor data validation."""
-
-    @pytest.mark.asyncio
-    async def test_invalid_sensor_type(self, authenticated_client: AsyncClient):
-        """Test creating sensor with invalid type."""
-        response = await authenticated_client.post(
-            "/api/v1/sensors/readings",
-            json={
-                "sensor_id": "INVALID-001",
-                "sensor_type": "",  # Invalid empty type
-                "value": 100
-            }
-        )
-        # Should fail validation or be rejected
-        assert response.status_code in [400, 422, 404]
-
-    @pytest.mark.asyncio
-    async def test_sensor_value_range(self, authenticated_client: AsyncClient):
-        """Test sensor value edge cases."""
-        # Very large value
-        response = await authenticated_client.post(
-            "/api/v1/sensors/readings",
-            json={
-                "sensor_id": "TEST-001",
+    async def test_sensor_data_with_filters(self, client: AsyncClient):
+        """Test getting sensor data with filters."""
+        response = await client.get(
+            "/api/v1/sensors/data",
+            params={
+                "line_code": "LINE_A",
                 "sensor_type": "temperature",
-                "value": 1e10  # Very large value
+                "page": 1,
+                "page_size": 10,
             }
         )
-        # Should either accept or reject based on business rules
-        assert response.status_code in [200, 201, 400, 422, 404]
+        assert response.status_code == 200
+        data = response.json()
+        assert "data" in data
+
+    @pytest.mark.asyncio
+    async def test_sensor_stream_status(self, client: AsyncClient):
+        """Test WebSocket stream status endpoint."""
+        response = await client.get("/api/v1/sensors/stream/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert "active_connections" in data
+        assert "websocket_url" in data
+
+
+class TestSensorImport:
+    """Test sensor data import."""
+
+    @pytest.mark.asyncio
+    async def test_get_import_template(self, client: AsyncClient):
+        """Test getting import template."""
+        response = await client.get("/api/v1/sensors/import/template")
+        assert response.status_code == 200
+        assert "text/csv" in response.headers.get("content-type", "")
+
+    @pytest.mark.asyncio
+    async def test_import_invalid_file_type(self, authenticated_client: AsyncClient):
+        """Test importing with invalid file type."""
+        # Create a fake txt file
+        response = await authenticated_client.post(
+            "/api/v1/sensors/import",
+            files={"file": ("test.txt", b"invalid content", "text/plain")}
+        )
+        # Should reject non-CSV/Excel files
+        assert response.status_code == 400

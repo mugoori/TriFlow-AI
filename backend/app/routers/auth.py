@@ -130,7 +130,7 @@ async def register(
             default_tenant = Tenant(
                 tenant_id=uuid4(),
                 name="Default",
-                description="Default tenant for MVP",
+                slug="default",
             )
             db.add(default_tenant)
             db.commit()
@@ -141,6 +141,7 @@ async def register(
     new_user = User(
         user_id=uuid4(),
         tenant_id=tenant_id,
+        username=request.email.split("@")[0],
         email=request.email,
         password_hash=get_password_hash(request.password),
         display_name=request.display_name or request.email.split("@")[0],
@@ -381,7 +382,6 @@ async def google_callback(
                     tenant_id=uuid4(),
                     name="Default",
                     slug="default",
-                    description="Default tenant for OAuth users",
                 )
                 db.add(default_tenant)
                 db.commit()

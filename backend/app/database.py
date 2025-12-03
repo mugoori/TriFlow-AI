@@ -31,7 +31,13 @@ def set_search_path(dbapi_conn, connection_record):
     """
     연결 시 search_path를 설정하여 스키마 우선순위 지정
     core, bi, rag, audit 스키마를 public보다 우선
+    SQLite 테스트 환경에서는 건너뜀
     """
+    # SQLite doesn't support SET search_path (PostgreSQL only)
+    connection_type = type(dbapi_conn).__module__
+    if "sqlite" in connection_type.lower():
+        return
+
     cursor = dbapi_conn.cursor()
     cursor.execute("SET search_path TO core, bi, rag, audit, public")
     cursor.close()

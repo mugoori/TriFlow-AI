@@ -2,8 +2,13 @@
 Agent API Router
 에이전트 실행 엔드포인트
 """
+import asyncio
+import json
 import logging
+from typing import AsyncGenerator
+
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from app.agents import MetaRouterAgent, JudgmentAgent, WorkflowPlannerAgent, BIPlannerAgent, LearningAgent
 from app.schemas.agent import AgentRequest, AgentResponse, JudgmentRequest
@@ -276,3 +281,121 @@ async def agent_status():
             },
         },
     }
+
+
+# ============ Streaming Chat Endpoint ============
+
+async def stream_chat_response(
+    message: str,
+    context: dict,
+) -> AsyncGenerator[str, None]:
+    """
+    채팅 응답을 스트리밍으로 생성
+
+    SSE (Server-Sent Events) 형식으로 응답을 스트리밍합니다.
+    각 이벤트는 JSON 형식으로 전송됩니다.
+    """
+    try:
+        # Step 1: 시작 이벤트
+        yield f"data: {json.dumps({'type': 'start', 'message': 'Processing request...'})}\n\n"
+        await asyncio.sleep(0.1)
+
+        # Step 2: Meta Router로 Intent 분류
+        yield f"data: {json.dumps({'type': 'routing', 'message': 'Classifying intent...'})}\n\n"
+
+        routing_result = meta_router.run(
+            user_message=message,
+            context=context,
+        )
+
+        routing_info = meta_router.parse_routing_result(routing_result)
+        target_agent_name = routing_info.get("target_agent", "general")
+
+        yield f"data: {json.dumps({'type': 'routed', 'agent': target_agent_name, 'message': f'Routed to {target_agent_name} agent'})}\n\n"
+        await asyncio.sleep(0.1)
+
+        # Step 3: 대상 에이전트 실행
+        yield f"data: {json.dumps({'type': 'processing', 'message': f'Executing {target_agent_name} agent...'})}\n\n"
+
+        if target_agent_name == "judgment":
+            agent_result = judgment_agent.run(
+                user_message=routing_info.get("processed_request", message),
+                context={**(context or {}), **routing_info.get("context", {})},
+            )
+        elif target_agent_name == "workflow":
+            agent_result = workflow_planner.run(
+                user_message=routing_info.get("processed_request", message),
+                context={**(context or {}), **routing_info.get("context", {})},
+                max_iterations=5,
+                tool_choice={"type": "tool", "name": "create_workflow"},
+            )
+        elif target_agent_name == "bi":
+            agent_result = bi_planner.run(
+                user_message=routing_info.get("processed_request", message),
+                context={**(context or {}), **routing_info.get("context", {})},
+            )
+        elif target_agent_name == "learning":
+            agent_result = learning_agent.run(
+                user_message=routing_info.get("processed_request", message),
+                context={**(context or {}), **routing_info.get("context", {})},
+            )
+        else:
+            agent_result = routing_result
+
+        # Step 4: 응답 텍스트를 청크로 스트리밍
+        response_text = agent_result.get("response", "")
+        chunk_size = 20  # 글자 수
+
+        for i in range(0, len(response_text), chunk_size):
+            chunk = response_text[i:i + chunk_size]
+            yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+            await asyncio.sleep(0.05)  # 스트리밍 효과
+
+        # Step 5: 도구 호출 정보
+        tool_calls = agent_result.get("tool_calls", [])
+        if tool_calls:
+            yield f"data: {json.dumps({'type': 'tools', 'tool_calls': [{'tool': tc['tool'], 'input': tc['input']} for tc in tool_calls]})}\n\n"
+
+        # Step 6: 완료 이벤트
+        yield f"data: {json.dumps({'type': 'done', 'agent_name': target_agent_name, 'iterations': agent_result.get('iterations', 1)})}\n\n"
+
+    except Exception as e:
+        logger.error(f"Streaming error: {e}", exc_info=True)
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+
+@router.post("/chat/stream")
+async def chat_stream(request: AgentRequest):
+    """
+    스트리밍 채팅 엔드포인트 (SSE)
+
+    Server-Sent Events를 사용하여 AI 응답을 실시간으로 스트리밍합니다.
+
+    Event Types:
+        - start: 처리 시작
+        - routing: 의도 분류 중
+        - routed: 에이전트 라우팅 완료
+        - processing: 에이전트 실행 중
+        - content: 응답 텍스트 청크
+        - tools: 도구 호출 정보
+        - done: 처리 완료
+        - error: 오류 발생
+
+    Usage (JavaScript):
+        const eventSource = new EventSource('/api/v1/agents/chat/stream');
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'content') {
+                console.log(data.content);
+            }
+        };
+    """
+    return StreamingResponse(
+        stream_chat_response(request.message, request.context or {}),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Nginx 버퍼링 비활성화
+        },
+    )

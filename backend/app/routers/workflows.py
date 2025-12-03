@@ -505,6 +505,156 @@ async def delete_workflow(
     return None
 
 
+class WorkflowToggleResponse(BaseModel):
+    """워크플로우 토글 응답"""
+    workflow_id: str
+    name: str
+    is_active: bool
+    message: str
+
+
+@router.post("/{workflow_id}/toggle", response_model=WorkflowToggleResponse)
+async def toggle_workflow(
+    workflow_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 활성/비활성 토글
+
+    현재 is_active 상태를 반전시킵니다.
+    - true → false (비활성화)
+    - false → true (활성화)
+    """
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    # 상태 토글
+    workflow.is_active = not workflow.is_active
+    workflow.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(workflow)
+
+    status_msg = "활성화" if workflow.is_active else "비활성화"
+
+    return WorkflowToggleResponse(
+        workflow_id=str(workflow.workflow_id),
+        name=workflow.name,
+        is_active=workflow.is_active,
+        message=f"워크플로우 '{workflow.name}'이(가) {status_msg}되었습니다.",
+    )
+
+
+class ExecuteWorkflowRequest(BaseModel):
+    """워크플로우 실행 요청 (테스트 데이터 포함)"""
+    context: Dict[str, Any] = Field(default_factory=dict, description="실행 컨텍스트 데이터")
+
+
+@router.post("/{workflow_id}/execute", response_model=WorkflowInstanceResponse)
+async def execute_workflow(
+    workflow_id: str,
+    request: ExecuteWorkflowRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 수동 실행 (테스트용)
+
+    트리거 조건과 관계없이 워크플로우를 즉시 실행합니다.
+    테스트 데이터를 context로 전달하여 실행 결과를 확인할 수 있습니다.
+
+    Example:
+        POST /workflows/{id}/execute
+        {"context": {"temperature": 85, "pressure": 5.5}}
+    """
+    from app.services.workflow_engine import workflow_engine
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if not workflow.is_active:
+        raise HTTPException(status_code=400, detail="Workflow is not active. Toggle it on first.")
+
+    now = datetime.utcnow()
+    dsl = workflow.dsl_definition or {}
+    input_data = request.context
+
+    # 워크플로우 엔진으로 실행
+    engine_result = await workflow_engine.execute_workflow(
+        workflow_id=str(workflow.workflow_id),
+        dsl=dsl,
+        input_data=input_data,
+        use_simulated_data=False,
+    )
+
+    status = engine_result.get("status", "completed")
+    error_message = engine_result.get("error_message")
+
+    # 실행 인스턴스 저장
+    # workflow_id를 명시적으로 저장 (relationship으로 인한 None 방지)
+    wf_id = workflow.workflow_id
+    wf_name = workflow.name
+    wf_tenant_id = workflow.tenant_id
+
+    instance = WorkflowInstance(
+        workflow_id=wf_id,
+        tenant_id=wf_tenant_id,
+        status=status,
+        input_data=input_data or {},
+        output_data={
+            "message": "Workflow executed via manual trigger",
+            "nodes_total": engine_result.get("nodes_total", 0),
+            "nodes_executed": engine_result.get("nodes_executed", 0),
+            "nodes_skipped": engine_result.get("nodes_skipped", 0),
+            "results": engine_result.get("results", []),
+            "execution_time_ms": engine_result.get("execution_time_ms", 0),
+        },
+        error_message=error_message,
+        started_at=now,
+        completed_at=datetime.utcnow(),
+    )
+
+    db.add(instance)
+    db.commit()
+
+    # 응답 데이터를 먼저 추출한 후 세션에서 분리
+    # (이후 workflow 삭제 시 CASCADE로 인한 문제 방지)
+    instance_id = str(instance.instance_id)
+    instance_output = instance.output_data
+    instance_completed_at = instance.completed_at
+    db.expunge(instance)
+
+    logger.info(f"Workflow executed manually: {wf_name} ({workflow_id})")
+
+    return WorkflowInstanceResponse(
+        instance_id=instance_id,
+        workflow_id=str(wf_id),
+        workflow_name=wf_name,
+        status=status,
+        input_data=input_data or {},
+        output_data=instance_output or {},
+        error_message=error_message,
+        started_at=now,
+        completed_at=instance_completed_at,
+    )
+
+
 class WorkflowRunRequest(BaseModel):
     """워크플로우 실행 요청"""
     input_data: Optional[Dict[str, Any]] = Field(default=None, description="입력 데이터 (센서 값 등)")

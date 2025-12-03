@@ -69,9 +69,9 @@ class TestWorkflowEndpoints:
         )
         workflow_id = create_response.json().get("id") or create_response.json().get("workflow_id")
 
-        # Update
-        updated_data = {**sample_workflow_data, "name": "Updated Workflow Name"}
-        response = await authenticated_client.put(
+        # Update (PATCH, not PUT)
+        updated_data = {"name": "Updated Workflow Name"}
+        response = await authenticated_client.patch(
             f"/api/v1/workflows/{workflow_id}",
             json=updated_data
         )
@@ -115,16 +115,23 @@ class TestWorkflowEndpoints:
         )
         workflow_id = create_response.json().get("id") or create_response.json().get("workflow_id")
 
-        # Toggle
-        response = await authenticated_client.patch(
+        # Toggle (POST method)
+        response = await authenticated_client.post(
             f"/api/v1/workflows/{workflow_id}/toggle"
         )
-        # Might be PATCH or POST
-        if response.status_code == 405:
-            response = await authenticated_client.post(
-                f"/api/v1/workflows/{workflow_id}/toggle"
-            )
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200
+        data = response.json()
+        assert "is_active" in data
+        assert "message" in data
+        # 최초 생성 시 is_active=True이므로 토글 후 False
+        assert data["is_active"] is False
+
+        # 다시 토글하면 True
+        response2 = await authenticated_client.post(
+            f"/api/v1/workflows/{workflow_id}/toggle"
+        )
+        assert response2.status_code == 200
+        assert response2.json()["is_active"] is True
 
 
 class TestWorkflowExecution:
@@ -149,7 +156,11 @@ class TestWorkflowExecution:
             f"/api/v1/workflows/{workflow_id}/execute",
             json={"context": {"temperature": 85}}
         )
-        assert response.status_code in [200, 202, 404]
+        assert response.status_code == 200
+        data = response.json()
+        assert "instance_id" in data
+        assert "status" in data
+        assert data["workflow_id"] == workflow_id
 
     @pytest.mark.asyncio
     async def test_get_workflow_history(

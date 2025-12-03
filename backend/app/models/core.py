@@ -141,7 +141,8 @@ class Workflow(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="workflows")
-    instances = relationship("WorkflowInstance", back_populates="workflow")
+    # passive_deletes=True: DB의 ON DELETE CASCADE에 위임 (SQLAlchemy가 직접 처리하지 않음)
+    instances = relationship("WorkflowInstance", back_populates="workflow", passive_deletes=True)
 
     def __repr__(self):
         return f"<Workflow(id={self.workflow_id}, name='{self.name}')>"

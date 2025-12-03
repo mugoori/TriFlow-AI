@@ -30,3 +30,22 @@ export interface AgentRequest {
   context?: Record<string, any>;
   tenant_id?: string;
 }
+
+// SSE Streaming Event Types
+export type SSEEventType = 'start' | 'routing' | 'routed' | 'processing' | 'content' | 'tools' | 'done' | 'error';
+
+export interface SSEEvent {
+  type: SSEEventType;
+  message?: string;
+  agent?: string;
+  content?: string;
+  tool_calls?: Array<{ tool: string; input: Record<string, any> }>;
+  agent_name?: string;
+  iterations?: number;
+}
+
+export interface StreamingState {
+  isStreaming: boolean;
+  currentAgent?: string;
+  status?: string;
+}
