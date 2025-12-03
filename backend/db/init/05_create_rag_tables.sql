@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
     tenant_id UUID NOT NULL,
     chunk_text TEXT NOT NULL,
     chunk_index INTEGER NOT NULL,
-    embedding vector(1536) NOT NULL,  -- OpenAI text-embedding-3-small (1536 차원)
+    embedding vector(384) NOT NULL,  -- all-MiniLM-L6-v2 (384 차원) - 로컬 임베딩
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

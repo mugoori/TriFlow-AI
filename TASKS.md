@@ -505,6 +505,63 @@ curl http://localhost:3000/api/health  # Grafana
 
 ---
 
+## 🧠 V1+ 에이전트 고도화 (Agent Enhancement)
+
+### RAG (Retrieval-Augmented Generation) 시스템 ✅ (2025-12-03)
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[DB]** RAG 스키마 생성 (rag.documents, rag.embeddings) | ✅ 완료 | ██████████ 100% |
+| **[Service]** RAG Service 구현 (문서 추가/검색/삭제) | ✅ 완료 | ██████████ 100% |
+| **[API]** RAG API 엔드포인트 구현 | ✅ 완료 | ██████████ 100% |
+| **[Fix]** pgvector 검색 SQL 구문 오류 수정 | ✅ 완료 | ██████████ 100% |
+
+#### 📋 RAG 시스템 완료 작업 내역
+- [x] **[DB]** RAG 데이터베이스 스키마 (`backend/migrations/002_init_schemas.sql`)
+  - `rag.documents` - 문서 메타데이터 (document_id, tenant_id, title, document_type 등)
+  - `rag.embeddings` - 벡터 임베딩 (embedding_id, document_id, chunk_text, embedding vector(384))
+  - pgvector 확장 활성화 (`CREATE EXTENSION IF NOT EXISTS vector`)
+- [x] **[Service]** RAG 서비스 구현 (`backend/app/services/rag_service.py`)
+  - `add_document()` - 문서 추가 (자동 청킹 + 임베딩 생성)
+  - `search()` - 벡터 유사도 검색 (코사인 유사도)
+  - `list_documents()` - 문서 목록 조회
+  - `delete_document()` - 문서 삭제 (CASCADE 임베딩 삭제)
+  - `get_context()` - 에이전트용 컨텍스트 생성
+  - 임베딩 프로바이더: sentence-transformers (로컬) / Voyage AI (API) / Mock (개발용)
+- [x] **[API]** RAG API 엔드포인트 (`backend/app/routers/rag.py`)
+  - `POST /api/v1/rag/documents` - 문서 추가
+  - `POST /api/v1/rag/documents/upload` - 파일 업로드 (txt, md, pdf)
+  - `POST /api/v1/rag/search` - 벡터 검색
+  - `GET /api/v1/rag/documents` - 문서 목록
+  - `DELETE /api/v1/rag/documents/{id}` - 문서 삭제
+  - `GET /api/v1/rag/context` - 컨텍스트 생성
+- [x] **[Fix]** pgvector 검색 SQL 구문 오류 수정 (`backend/app/services/rag_service.py:282-297`)
+  - 문제: SQLAlchemy `:param` 바인딩과 PostgreSQL `::type` 캐스팅 충돌
+  - 해결: `::vector` → `CAST(:query_embedding AS vector)` 변경
+  - 세 곳 수정: similarity 계산, WHERE 조건, ORDER BY
+
+#### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. 서버 시작
+cd c:/dev/triflow-ai/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 2. 로그인 (토큰 획득)
+curl -s -X POST "http://localhost:8000/api/v1/auth/login" -H "Content-Type: application/json" -d '{"email":"admin@triflow.ai","password":"admin1234"}' | jq -r '.access_token'
+
+# 3. 문서 추가
+curl -s -X POST "http://localhost:8000/api/v1/rag/documents" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"title":"테스트 문서","content":"테스트 내용입니다.","document_type":"MANUAL"}'
+
+# 4. 검색 테스트
+curl -s -X POST "http://localhost:8000/api/v1/rag/search" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"query":"테스트","top_k":5}'
+
+# 5. 문서 목록
+curl -s "http://localhost:8000/api/v1/rag/documents" -H "Authorization: Bearer $TOKEN"
+
+# 6. 컨텍스트 생성
+curl -s "http://localhost:8000/api/v1/rag/context?query=테스트" -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
 ## 🚨 V1 미완료 항목 요약 (우선순위별)
 
 ### 높은 우선순위 (V1 완료 필수) - ✅ 모두 완료!

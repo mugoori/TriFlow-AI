@@ -4,12 +4,16 @@ TriFlow AI Backend - FastAPI Main Application
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from prometheus_client import make_asgi_app
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
 
 from app.config import settings
+from app.utils.errors import classify_error, format_error_response, ErrorCategory
 from app.database import check_db_connection, SessionLocal
 
 # 로깅 설정
@@ -113,6 +117,82 @@ metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
 
+# ========== 전역 예외 핸들러 ==========
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """HTTP 예외 핸들러 - 사용자 친화적 메시지로 변환"""
+    # Accept-Language 헤더에서 언어 추출
+    lang = request.headers.get("Accept-Language", "ko")
+    lang = "ko" if "ko" in lang else "en"
+
+    # HTTPException의 detail이 이미 dict인 경우 그대로 반환
+    if isinstance(exc.detail, dict):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.detail,
+        )
+
+    # 에러 분류 및 포맷팅
+    user_error = classify_error(exc)
+    error_response = format_error_response(user_error, lang=lang)
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Pydantic 유효성 검사 에러 핸들러"""
+    lang = request.headers.get("Accept-Language", "ko")
+    lang = "ko" if "ko" in lang else "en"
+
+    # 에러 상세 정보 추출
+    errors = exc.errors()
+    error_details = []
+    for error in errors:
+        loc = " -> ".join(str(l) for l in error["loc"])
+        error_details.append(f"{loc}: {error['msg']}")
+
+    if lang == "ko":
+        message = "입력 데이터가 올바르지 않습니다."
+        suggestion = "요청 데이터를 확인해 주세요."
+    else:
+        message = "Invalid input data."
+        suggestion = "Please check your request data."
+
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": True,
+            "category": ErrorCategory.VALIDATION,
+            "message": message,
+            "suggestion": suggestion,
+            "details": error_details,
+            "retryable": False,
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """일반 예외 핸들러 - 예상치 못한 에러 처리"""
+    lang = request.headers.get("Accept-Language", "ko")
+    lang = "ko" if "ko" in lang else "en"
+
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+
+    user_error = classify_error(exc)
+    error_response = format_error_response(user_error, lang=lang)
+
+    return JSONResponse(
+        status_code=user_error.http_status,
+        content=error_response,
+    )
+
+
 @app.get("/")
 async def root():
     """루트 엔드포인트"""
@@ -127,13 +207,22 @@ async def root():
 @app.get("/health")
 async def health_check():
     """헬스 체크 엔드포인트"""
+    from app.services.cache_service import CacheService
+
     db_status = "ok" if check_db_connection() else "error"
+    redis_status = "ok" if CacheService.is_available() else "unavailable"
+
+    overall = "healthy"
+    if db_status != "ok":
+        overall = "unhealthy"
+    elif redis_status != "ok":
+        overall = "degraded"
 
     return {
-        "status": "healthy" if db_status == "ok" else "degraded",
+        "status": overall,
         "checks": {
             "database": db_status,
-            "redis": "ok",  # TODO: 실제 Redis 연결 체크
+            "redis": redis_status,
         }
     }
 
@@ -259,6 +348,14 @@ try:
     logger.info("API Keys router registered")
 except Exception as e:
     logger.error(f"Failed to register api-keys router: {e}")
+
+# RAG 라우터 (문서/지식베이스)
+try:
+    from app.routers import rag
+    app.include_router(rag.router, prefix="/api/v1", tags=["rag"])
+    logger.info("RAG router registered")
+except Exception as e:
+    logger.error(f"Failed to register rag router: {e}")
 
 
 if __name__ == "__main__":
