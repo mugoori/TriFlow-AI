@@ -175,6 +175,8 @@ async def get_current_active_user(
 
 async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    request: Request = None,
     db: Session = Depends(get_db),
 ) -> Optional[User]:
     """
@@ -182,15 +184,17 @@ async def get_optional_user(
 
     Args:
         credentials: Bearer 토큰 (선택)
+        x_api_key: API Key 헤더 (선택)
+        request: FastAPI Request
         db: 데이터베이스 세션
 
     Returns:
         User 객체 또는 None
     """
-    if not credentials:
+    if not credentials and not x_api_key:
         return None
 
     try:
-        return await get_current_user(credentials, db)
+        return await get_current_user(credentials, x_api_key, request, db)
     except HTTPException:
         return None

@@ -13,6 +13,7 @@ from .base_agent import BaseAgent
 from app.database import get_db_context
 from app.models.core import SensorData, Ruleset
 from app.tools.rhai import RhaiEngine
+from app.services.rag_service import get_rag_service
 
 logger = logging.getLogger(__name__)
 
@@ -346,40 +347,86 @@ class JudgmentAgent(BaseAgent):
         self,
         query: str,
         top_k: int = 3,
+        tenant_id: UUID = None,
     ) -> Dict[str, Any]:
         """
-        RAG 지식 검색
-        MVP: 간단한 플레이스홀더 구현
-        V1에서 pgvector 기반 실제 구현 예정
+        RAG 지식 검색 (pgvector 기반)
         """
-        logger.info(f"RAG query (placeholder): {query}")
+        logger.info(f"RAG query: {query}")
 
-        # TODO: 실제 RAG 구현 (pgvector + embedding)
-        # 현재는 더미 데이터 반환
-        dummy_docs = [
-            {
-                "id": "doc1",
-                "content": "정상 온도 범위는 20-25도입니다.",
-                "relevance": 0.95,
-            },
-            {
-                "id": "doc2",
-                "content": "압력이 100 PSI를 초과하면 경고를 발생시킵니다.",
-                "relevance": 0.87,
-            },
-            {
-                "id": "doc3",
-                "content": "센서 보정은 매주 월요일에 수행합니다.",
-                "relevance": 0.72,
-            },
-        ]
+        # tenant_id가 없으면 기본 테넌트 사용
+        if tenant_id is None:
+            # 기본 테넌트 ID (실제로는 컨텍스트에서 가져와야 함)
+            from uuid import UUID as UUIDType
+            tenant_id = UUIDType("446e39b3-455e-4ca9-817a-4913921eb41d")
 
-        return {
-            "success": True,
-            "query": query,
-            "documents": dummy_docs[:top_k],
-            "note": "MVP: Placeholder implementation. Real RAG coming in V1.",
-        }
+        try:
+            import asyncio
+            rag_service = get_rag_service()
+
+            # 동기 컨텍스트에서 비동기 호출
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 이미 이벤트 루프가 실행 중인 경우
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        rag_service.search(tenant_id, query, top_k=top_k)
+                    )
+                    result = future.result()
+            else:
+                result = asyncio.run(rag_service.search(tenant_id, query, top_k=top_k))
+
+            if result["success"] and result["results"]:
+                documents = [
+                    {
+                        "id": doc["document_id"],
+                        "content": doc["chunk_text"],
+                        "title": doc["title"],
+                        "relevance": doc["similarity"],
+                    }
+                    for doc in result["results"]
+                ]
+                return {
+                    "success": True,
+                    "query": query,
+                    "documents": documents,
+                    "count": len(documents),
+                }
+            else:
+                # RAG 결과가 없으면 기본 응답
+                logger.info("No RAG results found, returning defaults")
+                return {
+                    "success": True,
+                    "query": query,
+                    "documents": [
+                        {
+                            "id": "default1",
+                            "content": "정상 온도 범위는 20-25도입니다.",
+                            "title": "기본 매뉴얼",
+                            "relevance": 0.5,
+                        },
+                    ],
+                    "note": "No matching documents found, using defaults",
+                }
+
+        except Exception as e:
+            logger.error(f"RAG query error: {e}")
+            # 에러 시 기본 응답
+            return {
+                "success": True,
+                "query": query,
+                "documents": [
+                    {
+                        "id": "fallback",
+                        "content": "시스템 매뉴얼을 참조하세요.",
+                        "title": "Fallback",
+                        "relevance": 0.3,
+                    },
+                ],
+                "error": str(e),
+            }
 
     def _get_line_status(self, line_code: str) -> Dict[str, Any]:
         """

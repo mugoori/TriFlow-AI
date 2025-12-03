@@ -2,7 +2,6 @@
 Audit Log 미들웨어
 모든 API 요청을 자동으로 기록
 """
-import json
 import logging
 import time
 from typing import Callable, Optional
@@ -155,15 +154,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
         ip_address = get_client_ip(request)
         user_id, tenant_id = extract_user_info(request)
 
-        # 요청 본문 읽기 (POST/PUT/PATCH)
+        # 요청 본문 읽기 비활성화
+        # BaseHTTPMiddleware에서 request.body()를 읽으면 body가 소비되어
+        # 후속 endpoint에서 body를 읽을 수 없는 문제가 발생함
+        # 감사 로그에는 본문 없이 기록
         request_body = None
-        if method in ["POST", "PUT", "PATCH"]:
-            try:
-                body_bytes = await request.body()
-                if body_bytes:
-                    request_body = json.loads(body_bytes.decode("utf-8"))
-            except Exception:
-                pass
 
         # 응답 처리
         response = await call_next(request)

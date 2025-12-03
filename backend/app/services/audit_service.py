@@ -154,11 +154,11 @@ async def create_audit_log(
 
         query = text("""
             INSERT INTO audit.audit_logs (
-                log_id, user_id, tenant_id, action, resource, resource_id,
+                log_id, user_id, tenant_id, action, resource, resource_type, resource_id,
                 method, path, status_code, ip_address, user_agent,
                 request_body, response_summary, duration_ms, created_at
             ) VALUES (
-                :log_id, :user_id, :tenant_id, :action, :resource, :resource_id,
+                :log_id, :user_id, :tenant_id, :action, :resource, :resource_type, :resource_id,
                 :method, :path, :status_code, :ip_address, :user_agent,
                 :request_body, :response_summary, :duration_ms, :created_at
             )
@@ -170,6 +170,7 @@ async def create_audit_log(
             "tenant_id": tenant_id,
             "action": action,
             "resource": resource,
+            "resource_type": resource,  # resource_type에도 동일한 값 사용
             "resource_id": resource_id,
             "method": method,
             "path": path[:500],  # 경로 길이 제한

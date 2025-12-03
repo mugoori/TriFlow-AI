@@ -7,11 +7,12 @@ import json
 import logging
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, status, Request, Header
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from app.agents import MetaRouterAgent, JudgmentAgent, WorkflowPlannerAgent, BIPlannerAgent, LearningAgent
 from app.schemas.agent import AgentRequest, AgentResponse, JudgmentRequest
+from app.utils.errors import classify_error, format_error_response
 
 logger = logging.getLogger(__name__)
 
@@ -185,9 +186,14 @@ async def chat_with_agent(request: AgentRequest):
 
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Agent execution failed: {str(e)}",
+
+        # 사용자 친화적 에러 응답 생성
+        user_error = classify_error(e)
+        error_response = format_error_response(user_error, lang="ko")
+
+        return JSONResponse(
+            status_code=user_error.http_status,
+            content=error_response,
         )
 
 
@@ -237,9 +243,14 @@ async def run_judgment_agent(request: JudgmentRequest):
 
     except Exception as e:
         logger.error(f"Judgment error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Judgment Agent failed: {str(e)}",
+
+        # 사용자 친화적 에러 응답 생성
+        user_error = classify_error(e)
+        error_response = format_error_response(user_error, lang="ko")
+
+        return JSONResponse(
+            status_code=user_error.http_status,
+            content=error_response,
         )
 
 
@@ -361,7 +372,12 @@ async def stream_chat_response(
 
     except Exception as e:
         logger.error(f"Streaming error: {e}", exc_info=True)
-        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+        # 사용자 친화적 에러 메시지 생성
+        user_error = classify_error(e)
+        error_response = format_error_response(user_error, lang="ko")
+
+        yield f"data: {json.dumps({'type': 'error', 'message': error_response['message'], 'suggestion': error_response.get('suggestion'), 'retryable': user_error.retryable})}\n\n"
 
 
 @router.post("/chat/stream")

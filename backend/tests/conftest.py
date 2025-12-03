@@ -88,14 +88,16 @@ def create_audit_tables():
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""))
 
         # Audit logs table (simplified non-partitioned version for tests)
+        # resource_type 컬럼 포함 (production DB와 동일)
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS audit.audit_logs (
                 log_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 tenant_id UUID,
                 user_id UUID,
                 action VARCHAR(100) NOT NULL,
-                resource VARCHAR(100) NOT NULL,
-                resource_id VARCHAR(100),
+                resource VARCHAR(100),
+                resource_type VARCHAR(100) NOT NULL,
+                resource_id VARCHAR(255),
                 method VARCHAR(10),
                 path VARCHAR(500),
                 status_code INTEGER,

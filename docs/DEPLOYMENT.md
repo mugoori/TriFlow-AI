@@ -219,6 +219,70 @@ docker stats
 
 Adjust limits in `docker-compose.prod.yml`.
 
+## SSL/TLS Setup (Let's Encrypt)
+
+### Initial Setup
+
+```bash
+chmod +x scripts/init-letsencrypt.sh scripts/renew-certs.sh
+
+# Get SSL certificate
+./scripts/init-letsencrypt.sh your-domain.com your@email.com
+
+# Start with Nginx (includes SSL)
+docker-compose -f docker-compose.prod.yml --profile with-nginx up -d
+```
+
+### Auto-Renewal
+
+Add to crontab (`crontab -e`):
+```bash
+0 0 1 * * cd /opt/triflow-ai && ./scripts/renew-certs.sh >> /var/log/cert-renewal.log 2>&1
+```
+
+---
+
+## GitHub Actions CI/CD
+
+### Required Secrets
+
+Configure in GitHub Repository > Settings > Secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `STAGING_HOST` | Staging server IP |
+| `STAGING_USER` | SSH username |
+| `STAGING_SSH_KEY` | SSH private key |
+| `PRODUCTION_HOST` | Production server IP |
+| `PRODUCTION_USER` | SSH username |
+| `PRODUCTION_SSH_KEY` | SSH private key |
+| `SLACK_WEBHOOK_URL` | Notifications |
+
+### Deployment Workflows
+
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| `backend-ci.yml` | Push to `main`/`develop` | Lint, test, coverage |
+| `docker-build.yml` | Push to `main` | Build Docker images |
+| `deploy.yml` | Tag `v*.*.*` or manual | Deploy to staging/production |
+
+### Manual Deploy
+
+1. Go to Actions > Deploy
+2. Click "Run workflow"
+3. Select environment (staging/production)
+4. Click "Run workflow"
+
+### Automatic Deploy
+
+Push a version tag:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+---
+
 ## Security Checklist
 
 - [ ] Change all default passwords
@@ -228,3 +292,6 @@ Adjust limits in `docker-compose.prod.yml`.
 - [ ] Enable firewall rules
 - [ ] Set up regular backups
 - [ ] Configure log rotation
+- [ ] GitHub secrets configured
+- [ ] SSH key authentication only
+- [ ] `.env.production` not in git

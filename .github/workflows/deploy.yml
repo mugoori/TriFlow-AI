@@ -1,0 +1,371 @@
+# ===================================================
+# TriFlow AI - Production Deployment Workflow
+# ===================================================
+# Triggers:
+# - Manual dispatch with environment selection
+# - Tag push (v*.*.*)
+# ===================================================
+
+name: Deploy
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      skip_tests:
+        description: 'Skip tests before deploy'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  # ===========================================
+  # Test (unless skipped)
+  # ===========================================
+  test:
+    if: ${{ github.event.inputs.skip_tests != 'true' }}
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-ci
+          ENVIRONMENT: test
+        run: |
+          cd backend
+          pytest --tb=short -q
+
+  # ===========================================
+  # Build Docker Image
+  # ===========================================
+  build:
+    needs: [test]
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+      image_digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc "/usr/local/share/boost" "$AGENT_TOOLSDIRECTORY"
+          sudo docker system prune -af
+          df -h
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # ===========================================
+  # Deploy to Staging
+  # ===========================================
+  deploy-staging:
+    needs: [build]
+    if: github.event.inputs.environment == 'staging' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.triflow.ai
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Staging Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/triflow-ai
+
+            # Pull latest images
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
+
+            # Update .env with new image tag
+            sed -i 's|APP_VERSION=.*|APP_VERSION=${{ needs.build.outputs.image_tag }}|' .env.production
+
+            # Deploy with zero-downtime
+            docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps backend
+
+            # Wait for health check
+            sleep 10
+            curl -f http://localhost:8000/health || exit 1
+
+            # Run database migrations
+            docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || true
+
+            # Cleanup old images
+            docker image prune -af --filter "until=24h"
+
+      - name: Notify Slack - Staging
+        if: success()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "✅ Staging deployment successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*TriFlow AI* deployed to *staging*\n• Version: `${{ needs.build.outputs.image_tag }}`\n• Commit: `${{ github.sha }}`\n• <https://staging.triflow.ai|Open Staging>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+  # ===========================================
+  # Deploy to Production
+  # ===========================================
+  deploy-production:
+    needs: [build, deploy-staging]
+    if: github.event.inputs.environment == 'production' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://triflow.ai
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/triflow-ai
+
+            # Backup current version
+            CURRENT_VERSION=$(grep APP_VERSION .env.production | cut -d= -f2)
+            echo "ROLLBACK_VERSION=$CURRENT_VERSION" > .rollback
+
+            # Pull latest images
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
+
+            # Update .env with new image tag
+            sed -i 's|APP_VERSION=.*|APP_VERSION=${{ needs.build.outputs.image_tag }}|' .env.production
+
+            # Deploy with zero-downtime (rolling update)
+            docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps --scale backend=2 backend
+            sleep 15
+
+            # Health check
+            if ! curl -f http://localhost:8000/health; then
+              echo "Health check failed, rolling back..."
+              sed -i "s|APP_VERSION=.*|APP_VERSION=$CURRENT_VERSION|" .env.production
+              docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps backend
+              exit 1
+            fi
+
+            # Scale back to 1 instance
+            docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps --scale backend=1 backend
+
+            # Run database migrations
+            docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || true
+
+            # Cleanup
+            docker image prune -af --filter "until=48h"
+
+      - name: Notify Slack - Production
+        if: success()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🚀 Production deployment successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*TriFlow AI* deployed to *production*\n• Version: `${{ needs.build.outputs.image_tag }}`\n• Commit: `${{ github.sha }}`\n• <https://triflow.ai|Open Production>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Notify Slack - Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "❌ Production deployment FAILED",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*TriFlow AI* production deployment *FAILED*\n• Version: `${{ needs.build.outputs.image_tag }}`\n• Commit: `${{ github.sha }}`\n• <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+  # ===========================================
+  # Create GitHub Release
+  # ===========================================
+  release:
+    needs: [deploy-production]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges -20)
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          body: |
+            ## TriFlow AI ${{ github.ref_name }}
+
+            ### Changes
+            ${{ steps.changelog.outputs.changelog }}
+
+            ### Docker Image
+            ```
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ```
+
+            ### Deployment
+            - Staging: https://staging.triflow.ai
+            - Production: https://triflow.ai
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

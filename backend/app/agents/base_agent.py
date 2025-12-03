@@ -5,6 +5,8 @@ Base Agent 클래스
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import logging
+import time
+import random
 
 from anthropic import Anthropic
 from anthropic.types import Message, ToolUseBlock, TextBlock
@@ -12,6 +14,31 @@ from anthropic.types import Message, ToolUseBlock, TextBlock
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Retry 설정
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_BASE_DELAY = 1.0
+DEFAULT_MAX_DELAY = 30.0
+
+
+def is_retryable_api_error(exception: Exception) -> bool:
+    """API 호출 재시도 가능 에러 판별"""
+    error_str = str(exception).lower()
+
+    # Rate limit
+    if "rate" in error_str and "limit" in error_str:
+        return True
+    # Overloaded
+    if "overloaded" in error_str:
+        return True
+    # Temporary errors
+    if "temporarily" in error_str or "temporarily_unavailable" in error_str:
+        return True
+    # Connection errors
+    if isinstance(exception, (ConnectionError, TimeoutError)):
+        return True
+
+    return False
 
 
 class BaseAgent(ABC):
@@ -25,16 +52,19 @@ class BaseAgent(ABC):
         name: str,
         model: str = "claude-sonnet-4-5-20250929",
         max_tokens: int = 4096,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ):
         """
         Args:
             name: 에이전트 이름
             model: 사용할 Claude 모델
             max_tokens: 최대 토큰 수
+            max_retries: API 호출 최대 재시도 횟수
         """
         self.name = name
         self.model = model
         self.max_tokens = max_tokens
+        self.max_retries = max_retries
         self.client = Anthropic(api_key=settings.anthropic_api_key)
 
         logger.info(f"Initialized {self.name} with model {self.model}")
@@ -123,8 +153,8 @@ class BaseAgent(ABC):
                     api_params["tool_choice"] = tool_choice
                     logger.info(f"[{self.name}] Forcing tool choice: {tool_choice}")
 
-                # Claude API 호출
-                response = self.client.messages.create(**api_params)
+                # Claude API 호출 (Retry 로직 포함)
+                response = self._call_api_with_retry(api_params)
 
                 # 응답 처리
                 if response.stop_reason == "end_turn":
@@ -205,6 +235,51 @@ class BaseAgent(ABC):
             "tool_calls": tool_calls,
             "iterations": iterations,
         }
+
+    def _call_api_with_retry(self, api_params: Dict[str, Any]) -> Message:
+        """
+        Retry 로직이 포함된 API 호출
+
+        Args:
+            api_params: API 호출 파라미터
+
+        Returns:
+            Anthropic Message 객체
+
+        Raises:
+            Exception: 최대 재시도 후에도 실패한 경우
+        """
+        last_exception = None
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                return self.client.messages.create(**api_params)
+            except Exception as e:
+                last_exception = e
+
+                # 재시도 가능한 에러가 아니면 즉시 raise
+                if not is_retryable_api_error(e):
+                    logger.warning(f"[{self.name}] Non-retryable error: {e}")
+                    raise
+
+                if attempt < self.max_retries:
+                    # Exponential Backoff with Jitter
+                    delay = min(
+                        DEFAULT_BASE_DELAY * (2 ** attempt) * (0.5 + random.random()),
+                        DEFAULT_MAX_DELAY
+                    )
+                    logger.warning(
+                        f"[{self.name}] Retry {attempt + 1}/{self.max_retries} "
+                        f"after {delay:.2f}s due to: {e}"
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        f"[{self.name}] Max retries ({self.max_retries}) exceeded: {e}"
+                    )
+                    raise
+
+        raise last_exception
 
     def _extract_text_content(self, response: Message) -> str:
         """
