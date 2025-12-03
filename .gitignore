@@ -29,6 +29,9 @@ ENV/
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+backend/.env
 
 # Database
 *.db
@@ -70,3 +73,10 @@ dist-ssr/
 
 # Tauri
 src-tauri/target/
+
+# Backups
+backups/
+
+# Monitoring data
+prometheus_data/
+grafana_data/

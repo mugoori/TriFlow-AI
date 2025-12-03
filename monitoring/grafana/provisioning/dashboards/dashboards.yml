@@ -1,0 +1,17 @@
+# ===================================================
+# Grafana Dashboard Provisioning
+# ===================================================
+
+apiVersion: 1
+
+providers:
+  - name: 'TriFlow AI Dashboards'
+    orgId: 1
+    folder: 'TriFlow AI'
+    folderUid: 'triflow-ai'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

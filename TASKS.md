@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-02
-> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 진행 중
+> **최종 업데이트**: 2025-12-03
+> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → Production 배포 준비
 > **현재 브랜치**: `develop` (V1 개발용)
 
 ---
@@ -443,6 +443,65 @@
   - 테스트 완료:
     - ✅ Google OAuth 로그인 URL 생성 확인
     - ✅ State 토큰 (CSRF 방지) 생성 확인
+
+---
+
+## 🚀 Production 배포 준비 ✅ (2025-12-03)
+
+### 📋 완료 작업 내역
+- [x] **[Docker]** Production Docker Compose 구성 (`docker-compose.prod.yml`)
+  - 내부/외부 네트워크 분리 (triflow-internal, triflow-external)
+  - 리소스 제한 설정 (memory limits/reservations)
+  - 헬스체크 개선 (start_period 추가)
+  - Backend, Prometheus, Grafana, Nginx 서비스 포함
+- [x] **[Config]** 환경별 설정 분리
+  - `.env.production.example` - Production 환경 템플릿
+  - `.env.staging.example` - Staging 환경 템플릿
+  - 필수 환경변수 검증 로직 포함
+- [x] **[Monitoring]** Prometheus + Grafana 설정
+  - `monitoring/prometheus.yml` - Prometheus 설정
+  - `monitoring/grafana/provisioning/` - Grafana 프로비저닝
+  - `triflow-overview.json` - Overview 대시보드 (RPS, 에러율, 응답시간)
+- [x] **[Scripts]** 배포 스크립트 정리
+  - `scripts/deploy.sh` - Linux/macOS 배포 스크립트
+  - `scripts/deploy.ps1` - Windows PowerShell 배포 스크립트
+  - `scripts/health-check.sh` - 헬스체크 스크립트
+  - `scripts/backup.sh` - DB 백업 스크립트
+- [x] **[Docs]** 배포 문서 작성
+  - `docs/DEPLOYMENT.md` - Production 배포 가이드
+  - `docs/TESTING.md` - 테스트 가이드
+
+### 🧪 E2E 테스트 강화
+- [x] **[Test]** pytest 테스트 프레임워크 설정
+  - `backend/pytest.ini` - pytest 설정
+  - `backend/tests/conftest.py` - fixtures 및 설정
+  - `backend/requirements-test.txt` - 테스트 의존성
+- [x] **[Test]** 테스트 케이스 작성
+  - `test_auth.py` - 인증 테스트 (9개 케이스)
+  - `test_sensors.py` - 센서 테스트 (6개 케이스)
+  - `test_workflows.py` - 워크플로우 테스트 (10개 케이스)
+  - `test_rulesets.py` - 규칙 테스트 (8개 케이스)
+  - `test_chat.py` - 채팅/AI 테스트 (8개 케이스)
+  - `test_e2e_flows.py` - E2E 플로우 테스트 (10개 케이스)
+- [x] **[Scripts]** 테스트 실행 스크립트
+  - `scripts/run-tests.sh` - bash 테스트 러너
+  - `scripts/run-tests.ps1` - PowerShell 테스트 러너
+
+### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. 테스트 실행
+.\scripts\run-tests.ps1 -Coverage
+
+# 2. Production 배포 (Staging 환경)
+cp .env.staging.example .env.staging
+# .env.staging 파일 편집 (API 키, 비밀번호 설정)
+.\scripts\deploy.ps1 -Environment staging -Build
+
+# 3. 헬스체크
+curl http://localhost:8000/health
+curl http://localhost:9090/-/healthy  # Prometheus
+curl http://localhost:3000/api/health  # Grafana
+```
 
 ---
 
