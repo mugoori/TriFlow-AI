@@ -1,6 +1,6 @@
 """
 Agent API Router
-에이전트 실행 엔드포인트
+에이전트 실행 엔드포인트 - AgentOrchestrator 사용
 """
 import asyncio
 import json
@@ -10,20 +10,13 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, HTTPException, status, Request, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 
-from app.agents import MetaRouterAgent, JudgmentAgent, WorkflowPlannerAgent, BIPlannerAgent, LearningAgent
+from app.services.agent_orchestrator import orchestrator
 from app.schemas.agent import AgentRequest, AgentResponse, JudgmentRequest
 from app.utils.errors import classify_error, format_error_response
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Agent 인스턴스 (싱글톤 패턴)
-meta_router = MetaRouterAgent()
-judgment_agent = JudgmentAgent()
-workflow_planner = WorkflowPlannerAgent()
-bi_planner = BIPlannerAgent()
-learning_agent = LearningAgent()
 
 
 @router.post("/chat", response_model=AgentResponse)
@@ -41,148 +34,20 @@ async def chat_with_agent(request: AgentRequest):
     try:
         logger.info(f"Chat request: {request.message[:100]}...")
 
-        # Step 1: Meta Router로 Intent 분류 및 라우팅
-        routing_result = meta_router.run(
-            user_message=request.message,
+        # AgentOrchestrator를 통한 자동 라우팅 및 실행
+        result = orchestrator.process(
+            message=request.message,
             context=request.context,
+            tenant_id=request.tenant_id,
         )
 
-        # Step 2: 라우팅 정보 추출
-        routing_info = meta_router.parse_routing_result(routing_result)
-        target_agent_name = routing_info.get("target_agent", "general")
-
-        logger.info(f"Routed to agent: {target_agent_name}")
-
-        # Step 3: 대상 Agent 실행
-        if target_agent_name == "judgment":
-            # Judgment Agent 실행
-            agent_result = judgment_agent.run(
-                user_message=routing_info.get("processed_request", request.message),
-                context={
-                    **(request.context or {}),
-                    **routing_info.get("context", {}),
-                },
-            )
-
-            return AgentResponse(
-                response=agent_result["response"],
-                agent_name="JudgmentAgent",
-                tool_calls=[
-                    {
-                        "tool": tc["tool"],
-                        "input": tc["input"],
-                        "result": tc["result"],
-                    }
-                    for tc in agent_result.get("tool_calls", [])
-                ],
-                iterations=agent_result["iterations"],
-                routing_info=routing_info,
-            )
-
-        elif target_agent_name == "workflow":
-            # Workflow Planner Agent 실행
-            # tool_choice로 create_workflow tool 호출 강제
-            agent_result = workflow_planner.run(
-                user_message=routing_info.get("processed_request", request.message),
-                context={
-                    **(request.context or {}),
-                    **routing_info.get("context", {}),
-                },
-                max_iterations=5,
-                tool_choice={"type": "tool", "name": "create_workflow"},
-            )
-
-            return AgentResponse(
-                response=agent_result["response"],
-                agent_name="WorkflowPlannerAgent",
-                tool_calls=[
-                    {
-                        "tool": tc["tool"],
-                        "input": tc["input"],
-                        "result": tc["result"],
-                    }
-                    for tc in agent_result.get("tool_calls", [])
-                ],
-                iterations=agent_result["iterations"],
-                routing_info=routing_info,
-            )
-
-        elif target_agent_name == "bi":
-            # BI Planner Agent 실행
-            agent_result = bi_planner.run(
-                user_message=routing_info.get("processed_request", request.message),
-                context={
-                    **(request.context or {}),
-                    **routing_info.get("context", {}),
-                },
-            )
-
-            return AgentResponse(
-                response=agent_result["response"],
-                agent_name="BIPlannerAgent",
-                tool_calls=[
-                    {
-                        "tool": tc["tool"],
-                        "input": tc["input"],
-                        "result": tc["result"],
-                    }
-                    for tc in agent_result.get("tool_calls", [])
-                ],
-                iterations=agent_result["iterations"],
-                routing_info=routing_info,
-            )
-
-        elif target_agent_name == "learning":
-            # Learning Agent 실행
-            # 룰셋 생성 요청인지 확인
-            msg_lower = request.message.lower()
-            is_ruleset_creation = any(kw in msg_lower for kw in [
-                "룰셋", "규칙 만들", "규칙 생성", "판단 규칙",
-                "경고", "위험", "임계", "threshold",
-                "ruleset", "create rule"
-            ])
-
-            agent_result = learning_agent.run(
-                user_message=routing_info.get("processed_request", request.message),
-                context={
-                    **(request.context or {}),
-                    **routing_info.get("context", {}),
-                },
-                max_iterations=5,
-                tool_choice={"type": "tool", "name": "create_ruleset"} if is_ruleset_creation else None,
-            )
-
-            return AgentResponse(
-                response=agent_result["response"],
-                agent_name="LearningAgent",
-                tool_calls=[
-                    {
-                        "tool": tc["tool"],
-                        "input": tc["input"],
-                        "result": tc["result"],
-                    }
-                    for tc in agent_result.get("tool_calls", [])
-                ],
-                iterations=agent_result["iterations"],
-                routing_info=routing_info,
-            )
-
-        else:
-            # General 응답
-            return AgentResponse(
-                response=routing_result["response"],
-                agent_name="MetaRouterAgent",
-                tool_calls=[
-                    {
-                        "tool": tc["tool"],
-                        "input": tc["input"],
-                        "result": tc["result"],
-                    }
-                    for tc in routing_result.get("tool_calls", [])
-                ],
-                iterations=routing_result["iterations"],
-                routing_info=routing_info,
-            )
+        return AgentResponse(
+            response=result["response"],
+            agent_name=result["agent_name"],
+            tool_calls=result["tool_calls"],
+            iterations=result["iterations"],
+            routing_info=result.get("routing_info"),
+        )
 
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
@@ -221,24 +86,25 @@ async def run_judgment_agent(request: JudgmentRequest):
         if request.tenant_id:
             context["tenant_id"] = request.tenant_id
 
-        # Judgment Agent 실행
-        result = judgment_agent.run(
-            user_message=request.message,
+        # AgentOrchestrator를 통한 직접 실행 (MetaRouter 우회)
+        result = orchestrator.execute_direct(
+            agent_name="judgment",
+            message=request.message,
             context=context,
         )
 
         return AgentResponse(
             response=result["response"],
-            agent_name="JudgmentAgent",
-            tool_calls=[
-                {
-                    "tool": tc["tool"],
-                    "input": tc["input"],
-                    "result": tc["result"],
-                }
-                for tc in result.get("tool_calls", [])
-            ],
+            agent_name=result["agent_name"],
+            tool_calls=result["tool_calls"],
             iterations=result["iterations"],
+        )
+
+    except ValueError as e:
+        # 알 수 없는 에이전트
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
 
     except Exception as e:
@@ -264,33 +130,7 @@ async def agent_status():
     """
     return {
         "status": "ok",
-        "agents": {
-            "meta_router": {
-                "name": meta_router.name,
-                "model": meta_router.model,
-                "available": True,
-            },
-            "judgment": {
-                "name": judgment_agent.name,
-                "model": judgment_agent.model,
-                "available": True,
-            },
-            "workflow": {
-                "name": workflow_planner.name,
-                "model": workflow_planner.model,
-                "available": True,
-            },
-            "bi": {
-                "name": bi_planner.name,
-                "model": bi_planner.model,
-                "available": True,
-            },
-            "learning": {
-                "name": learning_agent.name,
-                "model": learning_agent.model,
-                "available": True,
-            },
-        },
+        "agents": orchestrator.get_agent_status(),
     }
 
 
@@ -299,6 +139,7 @@ async def agent_status():
 async def stream_chat_response(
     message: str,
     context: dict,
+    tenant_id: str = None,
 ) -> AsyncGenerator[str, None]:
     """
     채팅 응답을 스트리밍으로 생성
@@ -314,47 +155,25 @@ async def stream_chat_response(
         # Step 2: Meta Router로 Intent 분류
         yield f"data: {json.dumps({'type': 'routing', 'message': 'Classifying intent...'})}\n\n"
 
-        routing_result = meta_router.run(
-            user_message=message,
+        # orchestrator.process()를 동기 호출하고 결과 스트리밍
+        result = orchestrator.process(
+            message=message,
             context=context,
+            tenant_id=tenant_id,
         )
 
-        routing_info = meta_router.parse_routing_result(routing_result)
-        target_agent_name = routing_info.get("target_agent", "general")
+        target_agent_name = result.get("agent_name", "MetaRouterAgent")
+        routing_info = result.get("routing_info", {})
+        target_type = routing_info.get("target_agent", "general") if routing_info else "general"
 
-        yield f"data: {json.dumps({'type': 'routed', 'agent': target_agent_name, 'message': f'Routed to {target_agent_name} agent'})}\n\n"
+        yield f"data: {json.dumps({'type': 'routed', 'agent': target_type, 'message': f'Routed to {target_type} agent'})}\n\n"
         await asyncio.sleep(0.1)
 
-        # Step 3: 대상 에이전트 실행
-        yield f"data: {json.dumps({'type': 'processing', 'message': f'Executing {target_agent_name} agent...'})}\n\n"
-
-        if target_agent_name == "judgment":
-            agent_result = judgment_agent.run(
-                user_message=routing_info.get("processed_request", message),
-                context={**(context or {}), **routing_info.get("context", {})},
-            )
-        elif target_agent_name == "workflow":
-            agent_result = workflow_planner.run(
-                user_message=routing_info.get("processed_request", message),
-                context={**(context or {}), **routing_info.get("context", {})},
-                max_iterations=5,
-                tool_choice={"type": "tool", "name": "create_workflow"},
-            )
-        elif target_agent_name == "bi":
-            agent_result = bi_planner.run(
-                user_message=routing_info.get("processed_request", message),
-                context={**(context or {}), **routing_info.get("context", {})},
-            )
-        elif target_agent_name == "learning":
-            agent_result = learning_agent.run(
-                user_message=routing_info.get("processed_request", message),
-                context={**(context or {}), **routing_info.get("context", {})},
-            )
-        else:
-            agent_result = routing_result
+        # Step 3: 에이전트 실행 완료 알림
+        yield f"data: {json.dumps({'type': 'processing', 'message': f'Executed {target_agent_name}...'})}\n\n"
 
         # Step 4: 응답 텍스트를 청크로 스트리밍
-        response_text = agent_result.get("response", "")
+        response_text = result.get("response", "")
         chunk_size = 20  # 글자 수
 
         for i in range(0, len(response_text), chunk_size):
@@ -363,12 +182,12 @@ async def stream_chat_response(
             await asyncio.sleep(0.05)  # 스트리밍 효과
 
         # Step 5: 도구 호출 정보
-        tool_calls = agent_result.get("tool_calls", [])
+        tool_calls = result.get("tool_calls", [])
         if tool_calls:
             yield f"data: {json.dumps({'type': 'tools', 'tool_calls': [{'tool': tc['tool'], 'input': tc['input']} for tc in tool_calls]})}\n\n"
 
         # Step 6: 완료 이벤트
-        yield f"data: {json.dumps({'type': 'done', 'agent_name': target_agent_name, 'iterations': agent_result.get('iterations', 1)})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'agent_name': target_agent_name, 'iterations': result.get('iterations', 1)})}\n\n"
 
     except Exception as e:
         logger.error(f"Streaming error: {e}", exc_info=True)
@@ -407,7 +226,11 @@ async def chat_stream(request: AgentRequest):
         };
     """
     return StreamingResponse(
-        stream_chat_response(request.message, request.context or {}),
+        stream_chat_response(
+            message=request.message,
+            context=request.context or {},
+            tenant_id=request.tenant_id,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

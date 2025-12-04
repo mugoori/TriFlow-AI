@@ -568,6 +568,61 @@ curl -s "http://localhost:8000/api/v1/rag/context?query=테스트" -H "Authoriza
 | **[Agent]** BIPlannerAgent Tool Calling 테스트 | ✅ 완료 | ██████████ 100% |
 | **[Agent]** WorkflowPlannerAgent Tool Calling 테스트 | ✅ 완료 | ██████████ 100% |
 
+### 에이전트 체인 오케스트레이션 ✅ (2025-12-04)
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[Service]** AgentOrchestrator 서비스 클래스 구현 | ✅ 완료 | ██████████ 100% |
+| **[Router]** agents.py 라우터 리팩토링 | ✅ 완료 | ██████████ 100% |
+| **[Test]** 오케스트레이션 통합 테스트 | ✅ 완료 | ██████████ 100% |
+
+#### 📋 에이전트 체인 오케스트레이션 완료 작업 내역
+- [x] **[Service]** AgentOrchestrator 서비스 클래스 구현 (`backend/app/services/agent_orchestrator.py`)
+  - `__init__`: MetaRouterAgent + 4개 Sub-Agent 인스턴스 초기화
+  - `get_agent_status()`: 모든 에이전트 상태 조회
+  - `process()`: 전체 파이프라인 (MetaRouter → Sub-Agent 자동 연결)
+    - Step 1: MetaRouter로 Intent 분류 및 라우팅
+    - Step 2: routing_info에서 target_agent 추출
+    - Step 3: Sub-Agent 자동 실행 (judgment, workflow, bi, learning)
+    - Step 4: 응답 포맷팅 (tool_calls, iterations, routing_info 포함)
+  - `_route()`: MetaRouter 라우팅 헬퍼
+  - `_execute_sub_agent()`: Sub-Agent 실행 (컨텍스트 병합)
+  - `_get_tool_choice()`: 에이전트별 tool_choice 결정
+    - workflow → create_workflow 강제
+    - learning + 룰셋 키워드 → create_ruleset 강제
+  - `_format_response()`: 응답 포맷팅
+  - `execute_direct()`: MetaRouter 우회 직접 실행
+  - 전역 싱글톤 인스턴스: `orchestrator`
+- [x] **[Router]** agents.py 라우터 리팩토링 (`backend/app/routers/agents.py`)
+  - 기존 418줄 → 240줄로 축소 (40% 코드 감소)
+  - 중복 에이전트 인스턴스 제거 (orchestrator 사용)
+  - `/chat`: `orchestrator.process()` 사용
+  - `/judgment`: `orchestrator.execute_direct("judgment", ...)` 사용
+  - `/status`: `orchestrator.get_agent_status()` 사용
+  - `/chat/stream`: orchestrator 결과를 SSE로 스트리밍
+- [x] **[Test]** 서버 로그 검증
+  - `AgentOrchestrator initialized with 5 agents` 로그 확인
+  - `/api/v1/agents/status` 엔드포인트 정상 응답 확인
+  - 5개 에이전트 상태 반환 (meta_router, judgment, workflow, bi, learning)
+
+#### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. 서버 시작
+cd c:/dev/triflow-ai/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 2. 에이전트 상태 확인 (AgentOrchestrator 사용 검증)
+curl -s http://localhost:8000/api/v1/agents/status | python -m json.tool
+
+# 3. 오케스트레이션 테스트 (MetaRouter → Sub-Agent 자동 연결)
+curl -s -X POST http://localhost:8000/api/v1/agents/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "센서 데이터를 분석해줘", "context": {}}'
+
+# 4. 직접 실행 테스트 (MetaRouter 우회)
+curl -s -X POST http://localhost:8000/api/v1/agents/judgment \
+  -H "Content-Type: application/json" \
+  -d '{"message": "온도 분석", "sensor_data": {"temperature": 75.5}}'
+```
+
 #### 📋 Claude API 통합 테스트 완료 작업 내역
 - [x] **[API]** Claude API 직접 호출 테스트
   - API Key 설정 확인 (`ANTHROPIC_API_KEY`)
