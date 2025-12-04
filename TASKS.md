@@ -1,6 +1,6 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-03
+> **최종 업데이트**: 2025-12-04
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → Production 배포 준비
 > **현재 브랜치**: `develop` (V1 개발용)
 
@@ -558,6 +558,59 @@ curl -s "http://localhost:8000/api/v1/rag/documents" -H "Authorization: Bearer $
 
 # 6. 컨텍스트 생성
 curl -s "http://localhost:8000/api/v1/rag/context?query=테스트" -H "Authorization: Bearer $TOKEN"
+```
+
+### Claude API 통합 테스트 ✅ (2025-12-04)
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[API]** Claude API 직접 호출 테스트 | ✅ 완료 | ██████████ 100% |
+| **[Agent]** MetaRouterAgent Tool Calling 테스트 | ✅ 완료 | ██████████ 100% |
+| **[Agent]** BIPlannerAgent Tool Calling 테스트 | ✅ 완료 | ██████████ 100% |
+| **[Agent]** WorkflowPlannerAgent Tool Calling 테스트 | ✅ 완료 | ██████████ 100% |
+
+#### 📋 Claude API 통합 테스트 완료 작업 내역
+- [x] **[API]** Claude API 직접 호출 테스트
+  - API Key 설정 확인 (`ANTHROPIC_API_KEY`)
+  - Model: `claude-sonnet-4-5-20250929`
+  - 응답 정상 확인 (Input: 18 tokens, Output: 10 tokens)
+- [x] **[Agent]** MetaRouterAgent Tool Calling 테스트
+  - 3가지 Intent 분류 시나리오 테스트
+  - Test 1: "센서 이상 감지" → judgment (confidence: 0.95)
+  - Test 2: "생산량 차트" → bi (confidence: 0.95)
+  - Test 3: "워크플로우 생성" → workflow (confidence: 0.95)
+  - Tool Calls: classify_intent → extract_slots → route_request
+- [x] **[Agent]** BIPlannerAgent Tool Calling 테스트
+  - 3단계 Tool Calling 검증: get_table_schema → execute_safe_sql → generate_chart_config
+  - tenant_id 필터 자동 포함 확인
+  - Chart Type: line (생산량 추이 분석)
+- [x] **[Agent]** WorkflowPlannerAgent Tool Calling 테스트
+  - 자연어 → 워크플로우 DSL 변환 검증
+  - Test: "온도 80도 넘으면 슬랙 알림" →
+    - trigger_type: event
+    - condition_sensor_type: temperature
+    - condition_operator: >
+    - condition_value: 80
+    - action_type: send_slack_notification
+    - action_channel: #alerts
+
+#### 🔍 검증 방법 (How to Test)
+```python
+# Claude API 직접 테스트 (DB 없이)
+cd c:/dev/triflow-ai/backend
+python -c "
+from dotenv import load_dotenv
+load_dotenv()
+import os
+from anthropic import Anthropic
+
+client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+response = client.messages.create(
+    model='claude-sonnet-4-5-20250929',
+    max_tokens=256,
+    messages=[{'role': 'user', 'content': 'Hello'}]
+)
+print(response.content[0].text)
+"
 ```
 
 ---
