@@ -48,6 +48,7 @@ import {
 } from '@/services/workflowService';
 import { ActionDetailModal } from '@/components/workflow/ActionDetailModal';
 import { WorkflowEditor } from '@/components/workflow/WorkflowEditor';
+import { FlowEditor } from '@/components/workflow/FlowEditor';
 import type { WorkflowDSL } from '@/services/workflowService';
 
 // 트리거 타입 한글 매핑
@@ -137,6 +138,8 @@ export function WorkflowsPage() {
 
   // 워크플로우 에디터
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isFlowEditorOpen, setIsFlowEditorOpen] = useState(false);
+  const [editorType, setEditorType] = useState<'form' | 'flow'>('flow'); // 기본: Flow 에디터
   const [editingWorkflowDSL, setEditingWorkflowDSL] = useState<WorkflowDSL | undefined>(undefined);
   const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
 
@@ -393,36 +396,39 @@ export function WorkflowsPage() {
     }
   };
 
-  // 워크플로우 저장
-  const handleSaveWorkflow = async (dsl: WorkflowDSL) => {
+  // 워크플로우 저장 (FlowEditor에서 workflow_id 반환 필요)
+  const handleSaveWorkflow = async (dsl: WorkflowDSL): Promise<string | void> => {
     console.log('[WorkflowsPage] handleSaveWorkflow called');
     console.log('[WorkflowsPage] editingWorkflowId:', editingWorkflowId);
     console.log('[WorkflowsPage] DSL to save:', JSON.stringify(dsl, null, 2));
 
     try {
+      let savedWorkflowId: string;
+
       if (editingWorkflowId) {
         // 편집 모드: DSL 업데이트
         console.log('[WorkflowsPage] Calling updateDSL...');
         const result = await workflowService.updateDSL(editingWorkflowId, dsl);
         console.log('[WorkflowsPage] updateDSL result:', result);
-        alert('워크플로우가 수정되었습니다!');
+        savedWorkflowId = editingWorkflowId;
+        // FlowEditor 내부 실행 시에는 alert 표시하지 않음
       } else {
         // 생성 모드
         console.log('[WorkflowsPage] Calling create...');
-        await workflowService.create({
+        const result = await workflowService.create({
           name: dsl.name,
           description: dsl.description,
           dsl_definition: dsl,
         });
-        alert('워크플로우가 생성되었습니다!');
+        savedWorkflowId = result.workflow_id;
+        setEditingWorkflowId(savedWorkflowId); // 생성 후 편집 모드로 전환
       }
-      setIsEditorOpen(false);
-      setEditingWorkflowId(null);
-      setEditingWorkflowDSL(undefined);
       loadWorkflows();
+      return savedWorkflowId;
     } catch (err) {
       console.error('[WorkflowsPage] Save error:', err);
       alert(`저장 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+      return undefined;
     }
   };
 
@@ -432,14 +438,30 @@ export function WorkflowsPage() {
     setEditingWorkflowId(workflow.workflow_id);
     // 깊은 복사로 원본과 분리
     setEditingWorkflowDSL(JSON.parse(JSON.stringify(workflow.dsl_definition)));
-    setIsEditorOpen(true);
+    if (editorType === 'flow') {
+      setIsFlowEditorOpen(true);
+    } else {
+      setIsEditorOpen(true);
+    }
   };
 
   // 새 워크플로우 생성 열기
   const handleNewWorkflow = () => {
     setEditingWorkflowId(null);
     setEditingWorkflowDSL(undefined);
-    setIsEditorOpen(true);
+    if (editorType === 'flow') {
+      setIsFlowEditorOpen(true);
+    } else {
+      setIsEditorOpen(true);
+    }
+  };
+
+  // 에디터 닫기
+  const handleCloseEditor = () => {
+    setIsEditorOpen(false);
+    setIsFlowEditorOpen(false);
+    setEditingWorkflowId(null);
+    setEditingWorkflowDSL(undefined);
   };
 
   return (
@@ -516,6 +538,15 @@ export function WorkflowsPage() {
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               새로고침
             </button>
+            {/* 에디터 타입 선택 */}
+            <select
+              value={editorType}
+              onChange={(e) => setEditorType(e.target.value as 'form' | 'flow')}
+              className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm"
+            >
+              <option value="flow">플로우 에디터</option>
+              <option value="form">폼 에디터</option>
+            </select>
             <button
               onClick={handleNewWorkflow}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1075,16 +1106,21 @@ export function WorkflowsPage() {
           </CardContent>
         </Card>
 
-        {/* 워크플로우 에디터 */}
+        {/* 폼 에디터 */}
         <WorkflowEditor
           initialDSL={editingWorkflowDSL}
           isOpen={isEditorOpen}
           onSave={handleSaveWorkflow}
-          onCancel={() => {
-            setIsEditorOpen(false);
-            setEditingWorkflowId(null);
-            setEditingWorkflowDSL(undefined);
-          }}
+          onCancel={handleCloseEditor}
+        />
+
+        {/* 플로우 에디터 (Drag & Drop) */}
+        <FlowEditor
+          initialDSL={editingWorkflowDSL}
+          workflowId={editingWorkflowId || undefined}
+          isOpen={isFlowEditorOpen}
+          onSave={handleSaveWorkflow}
+          onCancel={handleCloseEditor}
         />
       </div>
     </div>

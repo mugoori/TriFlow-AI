@@ -10,12 +10,14 @@ MVP에서는 Mock 데이터 생성기를 제공하며,
 실제 ERP/MES 연동은 V2에서 구현 예정
 """
 
+import csv
+import io
 import random
 from datetime import datetime, timedelta
 from typing import Optional, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -731,3 +733,182 @@ async def get_erp_mes_stats(
         "data_sources": source_count,
         "field_mappings": mapping_count,
     }
+
+
+# ========== File Import ==========
+
+
+class ImportResponse(BaseModel):
+    """파일 Import 응답 스키마"""
+    success: bool
+    imported_count: int
+    failed_count: int
+    errors: list[str]
+
+
+def parse_csv_content(content: str) -> list[dict]:
+    """CSV 문자열을 파싱하여 딕셔너리 리스트로 변환"""
+    reader = csv.DictReader(io.StringIO(content))
+    return list(reader)
+
+
+def parse_excel_content(content: bytes) -> list[dict]:
+    """Excel 파일을 파싱하여 딕셔너리 리스트로 변환"""
+    try:
+        import pandas as pd
+        df = pd.read_excel(io.BytesIO(content))
+        # NaN 값을 None으로 변환
+        df = df.where(pd.notnull(df), None)
+        return df.to_dict('records')
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="pandas 또는 openpyxl 라이브러리가 필요합니다"
+        )
+
+
+@router.post("/import", response_model=ImportResponse)
+async def import_erp_mes_data(
+    file: UploadFile = File(..., description="CSV 또는 Excel 파일"),
+    source_type: Literal["erp", "mes"] = Form(..., description="소스 타입 (erp 또는 mes)"),
+    record_type: str = Form(..., description="레코드 타입 (production_order, inventory 등)"),
+    source_system: str = Form(default="file_import", description="소스 시스템명"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """CSV/Excel 파일에서 ERP/MES 데이터 Import
+
+    지원 파일 형식:
+    - CSV (.csv): UTF-8 인코딩
+    - Excel (.xlsx, .xls)
+
+    파일의 각 행이 하나의 레코드로 저장됩니다.
+    첫 번째 행은 컬럼 헤더로 사용됩니다.
+    """
+    # 파일 확장자 검증
+    filename = file.filename or ""
+    ext = filename.lower().split(".")[-1] if "." in filename else ""
+
+    if ext not in ["csv", "xlsx", "xls"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"지원하지 않는 파일 형식입니다. CSV 또는 Excel 파일만 지원합니다. (받은 형식: {ext})"
+        )
+
+    # 파일 읽기
+    content = await file.read()
+
+    # 파일 파싱
+    try:
+        if ext == "csv":
+            # CSV 인코딩 감지 시도
+            try:
+                text_content = content.decode("utf-8")
+            except UnicodeDecodeError:
+                try:
+                    text_content = content.decode("cp949")  # 한글 Windows
+                except UnicodeDecodeError:
+                    text_content = content.decode("latin-1")
+
+            rows = parse_csv_content(text_content)
+        else:
+            rows = parse_excel_content(content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"파일 파싱 실패: {str(e)}"
+        )
+
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail="파일에 데이터가 없습니다"
+        )
+
+    # 데이터 Import
+    imported_count = 0
+    failed_count = 0
+    errors: list[str] = []
+
+    for i, row in enumerate(rows):
+        try:
+            # 빈 행 스킵
+            if not any(row.values()):
+                continue
+
+            # external_id 추출 시도 (일반적인 ID 필드명들)
+            external_id = None
+            for id_field in ["id", "ID", "external_id", "AUFNR", "work_order_id", "equipment_id", "order_id"]:
+                if id_field in row and row[id_field]:
+                    external_id = str(row[id_field])
+                    break
+
+            # 정규화 필드 추출 시도
+            quantity = None
+            status = None
+            timestamp = None
+
+            # 수량 필드
+            for qty_field in ["quantity", "qty", "GAMNG", "planned_quantity", "ON_HAND_QTY", "sample_size"]:
+                if qty_field in row and row[qty_field] is not None:
+                    try:
+                        quantity = float(row[qty_field])
+                        break
+                    except (ValueError, TypeError):
+                        pass
+
+            # 상태 필드
+            for status_field in ["status", "STATUS", "result", "sync_status"]:
+                if status_field in row and row[status_field]:
+                    status = str(row[status_field])
+                    break
+
+            # 타임스탬프 필드
+            for ts_field in ["timestamp", "created_at", "GSTRP", "scheduled_start", "inspection_date", "last_update"]:
+                if ts_field in row and row[ts_field]:
+                    try:
+                        ts_value = row[ts_field]
+                        if isinstance(ts_value, datetime):
+                            timestamp = ts_value
+                        else:
+                            timestamp = datetime.fromisoformat(str(ts_value).replace("Z", "+00:00"))
+                        break
+                    except (ValueError, TypeError):
+                        pass
+
+            # 데이터 저장
+            db_data = ErpMesData(
+                tenant_id=current_user.tenant_id,
+                source_type=source_type,
+                source_system=source_system,
+                record_type=record_type,
+                external_id=external_id or f"row_{i+1}",
+                raw_data=row,
+                normalized_quantity=quantity,
+                normalized_status=status,
+                normalized_timestamp=timestamp,
+            )
+            db.add(db_data)
+            imported_count += 1
+
+        except Exception as e:
+            failed_count += 1
+            if len(errors) < 10:  # 에러는 최대 10개만 저장
+                errors.append(f"행 {i+1}: {str(e)}")
+
+    # 커밋
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"데이터 저장 실패: {str(e)}"
+        )
+
+    return ImportResponse(
+        success=imported_count > 0,
+        imported_count=imported_count,
+        failed_count=failed_count,
+        errors=errors,
+    )
