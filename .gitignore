@@ -80,3 +80,6 @@ backups/
 # Monitoring data
 prometheus_data/
 grafana_data/
+
+# Workflow exports
+backend/exports/
