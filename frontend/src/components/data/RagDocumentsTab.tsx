@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui/Toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -42,6 +43,7 @@ const documentTypeLabels: Record<string, string> = {
 
 export function RagDocumentsTab() {
   const { accessToken: token } = useAuth();
+  const toast = useToast();
 
   // 상태
   const [documents, setDocuments] = useState<RagDocument[]>([]);
@@ -116,13 +118,22 @@ export function RagDocumentsTab() {
   // 문서 삭제
   const handleDelete = async (documentId: string) => {
     if (!token) return;
-    if (!confirm('이 문서를 삭제하시겠습니까?')) return;
+
+    const confirmed = await toast.confirm({
+      title: '문서 삭제',
+      message: '이 문서를 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await ragService.deleteDocument(documentId, token);
+      toast.success('문서가 삭제되었습니다');
       await loadDocuments();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '문서 삭제 실패');
+      toast.error(err instanceof Error ? err.message : '문서 삭제 실패');
     }
   };
 

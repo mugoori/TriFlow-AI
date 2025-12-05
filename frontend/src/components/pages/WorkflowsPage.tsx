@@ -50,6 +50,7 @@ import { ActionDetailModal } from '@/components/workflow/ActionDetailModal';
 import { WorkflowEditor } from '@/components/workflow/WorkflowEditor';
 import { FlowEditor } from '@/components/workflow/FlowEditor';
 import type { WorkflowDSL } from '@/services/workflowService';
+import { useToast } from '@/components/ui/Toast';
 
 // 트리거 타입 한글 매핑
 const triggerTypeLabels: Record<string, string> = {
@@ -113,6 +114,8 @@ const translateCondition = (condition: string): string => {
 
 
 export function WorkflowsPage() {
+  const toast = useToast();
+
   // 상태
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -212,13 +215,13 @@ export function WorkflowsPage() {
     e.stopPropagation();
 
     if (!workflow.is_active) {
-      alert('비활성 워크플로우는 실행할 수 없습니다.');
+      toast.warning('비활성 워크플로우는 실행할 수 없습니다.');
       return;
     }
 
     try {
       const instance = await workflowService.run(workflow.workflow_id);
-      alert(`워크플로우 실행 완료: ${instance.status}`);
+      toast.success(`워크플로우 실행 완료: ${instance.status}`);
 
       // 실행 이력 새로고침
       if (selectedWorkflow?.workflow_id === workflow.workflow_id) {
@@ -226,7 +229,7 @@ export function WorkflowsPage() {
         setInstances(response.instances);
       }
     } catch (err) {
-      alert(`실행 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+      toast.error(`실행 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     }
   };
 
@@ -238,9 +241,10 @@ export function WorkflowsPage() {
       await workflowService.update(workflow.workflow_id, {
         is_active: !workflow.is_active,
       });
+      toast.success(`워크플로우가 ${!workflow.is_active ? '활성화' : '비활성화'}되었습니다.`);
       loadWorkflows();
     } catch (err) {
-      alert(`상태 변경 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+      toast.error(`상태 변경 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     }
   };
 
@@ -248,9 +252,15 @@ export function WorkflowsPage() {
   const handleDeleteWorkflow = async (workflow: Workflow, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (!confirm(`"${workflow.name}" 워크플로우를 삭제하시겠습니까?`)) {
-      return;
-    }
+    const confirmed = await toast.confirm({
+      title: '워크플로우 삭제',
+      message: `"${workflow.name}" 워크플로우를 삭제하시겠습니까?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    });
+
+    if (!confirmed) return;
 
     try {
       await workflowService.delete(workflow.workflow_id);
@@ -258,9 +268,10 @@ export function WorkflowsPage() {
         setSelectedWorkflow(null);
         setInstances([]);
       }
+      toast.success(`"${workflow.name}" 워크플로우가 삭제되었습니다.`);
       loadWorkflows();
     } catch (err) {
-      alert(`삭제 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+      toast.error(`삭제 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     }
   };
 
@@ -326,7 +337,7 @@ export function WorkflowsPage() {
   // 시뮬레이션 테스트 실행
   const handleRunWithSimulation = async (workflow: Workflow) => {
     if (!workflow.is_active) {
-      alert('비활성 워크플로우는 실행할 수 없습니다.');
+      toast.warning('비활성 워크플로우는 실행할 수 없습니다.');
       return;
     }
 
@@ -340,6 +351,7 @@ export function WorkflowsPage() {
         input_data: simulatedData || undefined,
       });
       setTestResult(result);
+      toast.success('시뮬레이션 실행이 완료되었습니다.');
 
       // 실행 이력 새로고침
       if (selectedWorkflow?.workflow_id === workflow.workflow_id) {
@@ -352,7 +364,7 @@ export function WorkflowsPage() {
         loadExecutionLogs();
       }
     } catch (err) {
-      alert(`실행 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+      toast.error(`실행 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     } finally {
       setTestRunning(false);
     }
@@ -387,12 +399,21 @@ export function WorkflowsPage() {
 
   // 실행 로그 초기화
   const handleClearLogs = async () => {
-    if (!confirm('모든 실행 로그를 삭제하시겠습니까?')) return;
+    const confirmed = await toast.confirm({
+      title: '실행 로그 삭제',
+      message: '모든 실행 로그를 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     try {
       await workflowService.clearExecutionLogs();
       setExecutionLogs([]);
+      toast.success('실행 로그가 삭제되었습니다.');
     } catch (err) {
       console.error('Failed to clear logs:', err);
+      toast.error('로그 삭제에 실패했습니다.');
     }
   };
 
@@ -427,7 +448,7 @@ export function WorkflowsPage() {
       return savedWorkflowId;
     } catch (err) {
       console.error('[WorkflowsPage] Save error:', err);
-      alert(`저장 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+      toast.error(`저장 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
       return undefined;
     }
   };

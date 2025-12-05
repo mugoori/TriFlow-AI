@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui/Toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -51,6 +52,7 @@ const recordTypeLabels: Record<string, string> = {
 
 export function ErpMesDataTab() {
   const { accessToken: token } = useAuth();
+  const toast = useToast();
 
   // 상태
   const [data, setData] = useState<ErpMesData[]>([]);
@@ -175,13 +177,22 @@ export function ErpMesDataTab() {
   // 데이터 삭제
   const handleDelete = async (dataId: string) => {
     if (!token) return;
-    if (!confirm('이 데이터를 삭제하시겠습니까?')) return;
+
+    const confirmed = await toast.confirm({
+      title: '데이터 삭제',
+      message: '이 데이터를 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await erpMesService.deleteData(dataId, token);
+      toast.success('데이터가 삭제되었습니다');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '삭제 실패');
+      toast.error(err instanceof Error ? err.message : '삭제 실패');
     }
   };
 

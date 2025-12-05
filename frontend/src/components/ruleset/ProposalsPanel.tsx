@@ -28,12 +28,14 @@ import {
   type Proposal,
   type ProposalStats,
 } from '@/services/proposalService';
+import { useToast } from '@/components/ui/Toast';
 
 interface ProposalsPanelProps {
   onRulesetCreated?: (rulesetId: string) => void;
 }
 
 export function ProposalsPanel({ onRulesetCreated }: ProposalsPanelProps) {
+  const toast = useToast();
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [stats, setStats] = useState<ProposalStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +107,9 @@ export function ProposalsPanel({ onRulesetCreated }: ProposalsPanelProps) {
 
       if (action === 'approve' && result.ruleset_id && onRulesetCreated) {
         onRulesetCreated(result.ruleset_id);
+        toast.success(`"${selectedProposal.rule_name}" 제안이 승인되어 룰셋이 생성되었습니다.`);
+      } else if (action === 'reject') {
+        toast.info(`"${selectedProposal.rule_name}" 제안이 거절되었습니다.`);
       }
 
       setSelectedProposal(null);
@@ -112,7 +117,7 @@ export function ProposalsPanel({ onRulesetCreated }: ProposalsPanelProps) {
       loadProposals();
     } catch (err) {
       console.error('Review failed:', err);
-      alert('검토 처리에 실패했습니다.');
+      toast.error('검토 처리에 실패했습니다.');
     } finally {
       setReviewing(false);
     }
@@ -120,7 +125,14 @@ export function ProposalsPanel({ onRulesetCreated }: ProposalsPanelProps) {
 
   // Delete proposal
   const handleDelete = async (proposal: Proposal) => {
-    if (!confirm(`"${proposal.rule_name}" 제안을 삭제하시겠습니까?`)) return;
+    const confirmed = await toast.confirm({
+      title: '제안 삭제',
+      message: `"${proposal.rule_name}" 제안을 삭제하시겠습니까?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await deleteProposal(proposal.proposal_id);
@@ -128,9 +140,10 @@ export function ProposalsPanel({ onRulesetCreated }: ProposalsPanelProps) {
         setSelectedProposal(null);
       }
       loadProposals();
+      toast.success(`"${proposal.rule_name}" 제안이 삭제되었습니다.`);
     } catch (err) {
       console.error('Delete failed:', err);
-      alert('삭제에 실패했습니다.');
+      toast.error('삭제에 실패했습니다.');
     }
   };
 

@@ -744,6 +744,58 @@ python -c "import requests; r=requests.post('http://localhost:8000/api/v1/agents
 더블 클릭으로 start.bat 실행 → Docker 컨테이너 + Backend + Frontend 정상 시작 확인
 ```
 
+### 🎨 UI/UX 개선 (2025-12-05)
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[UI]** Toast 알림 시스템 구현 | ✅ 완료 | ██████████ 100% |
+| **[UI]** ConfirmDialog 컴포넌트 구현 | ✅ 완료 | ██████████ 100% |
+| **[UI]** alert() → Toast 변환 (전체 앱) | ✅ 완료 | ██████████ 100% |
+| **[UI]** confirm() → ConfirmDialog 변환 (전체 앱) | ✅ 완료 | ██████████ 100% |
+
+#### 📋 UI/UX 개선 완료 작업 내역
+- [x] **[UI]** Toast 알림 컴포넌트 구현 (`frontend/src/components/ui/Toast.tsx`)
+  - ToastProvider 컨텍스트 (전역 상태 관리)
+  - useToast 훅 (success, error, warning, info 메서드)
+  - ToastItem 컴포넌트 (애니메이션, 자동 닫힘)
+  - ToastContainer (우측 상단 고정 위치)
+  - 타입별 아이콘/색상 (success=녹색, error=빨강, warning=노랑, info=파랑)
+- [x] **[UI]** ConfirmDialog 컴포넌트 구현 (`frontend/src/components/ui/Toast.tsx`)
+  - toast.confirm() 메서드 (Promise<boolean> 반환)
+  - ConfirmOptions 인터페이스 (title, message, confirmText, cancelText, variant)
+  - 3가지 variant 스타일 (danger=빨강, warning=노랑, info=파랑)
+  - 배경 블러 + 모달 애니메이션
+- [x] **[UI]** alert() → Toast 변환 (8개 파일)
+  - `FlowEditor.tsx` - 저장/실행/삭제 알림
+  - `WorkflowsPage.tsx` - 워크플로우 CRUD 알림
+  - `RulesetsPage.tsx` - 룰셋 CRUD 알림
+  - `ExperimentsPage.tsx` - 실험 상태 변경 알림
+  - `ProposalsPanel.tsx` - 제안 승인/거절 알림
+  - `RagDocumentsTab.tsx` - 문서 삭제 알림
+  - `ErpMesDataTab.tsx` - 데이터 삭제 알림
+- [x] **[UI]** confirm() → ConfirmDialog 변환 (8개 파일)
+  - `FlowEditor.tsx` - 노드 삭제 확인
+  - `WorkflowsPage.tsx` - 워크플로우 삭제, 로그 삭제 확인
+  - `RulesetsPage.tsx` - 룰셋 삭제 확인
+  - `ExperimentsPage.tsx` - 실험 완료/취소/삭제 확인
+  - `ProposalsPanel.tsx` - 제안 삭제 확인
+  - `RagDocumentsTab.tsx` - 문서 삭제 확인
+  - `ErpMesDataTab.tsx` - 데이터 삭제 확인
+
+#### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. Frontend 실행
+cd c:/dev/triflow-ai/frontend && npm run dev
+
+# 2. Toast 테스트
+# - Workflows 페이지에서 워크플로우 저장 → 녹색 성공 토스트
+# - 저장 실패 시 → 빨간 에러 토스트
+
+# 3. ConfirmDialog 테스트
+# - Workflows 페이지에서 워크플로우 삭제 클릭 → 빨간 danger 모달
+# - Experiments 페이지에서 실험 완료 클릭 → 파란 info 모달
+# - Experiments 페이지에서 실험 취소 클릭 → 노란 warning 모달
+```
+
 ---
 
 ## 🚨 V1 미완료 항목 요약 (우선순위별)

@@ -40,9 +40,19 @@ import {
   XCircle,
   Clock,
   SkipForward,
+  Trash2,
 } from 'lucide-react';
 import type { WorkflowDSL, WorkflowNode, WorkflowInstance } from '@/services/workflowService';
 import { workflowService } from '@/services/workflowService';
+import {
+  IfElseBranchEditor,
+  LoopNodeEditor,
+  ParallelBranchEditor,
+  type InnerNode,
+} from './BranchNodeEditor';
+import { ConditionBuilder } from './ConditionBuilder';
+import { ActionParameterForm } from './ActionParameterForm';
+import { useToast } from '@/components/ui/Toast';
 
 // ============ Types ============
 
@@ -283,9 +293,12 @@ interface NodeConfigPanelProps {
   node: Node<CustomNodeData> | null;
   onUpdate: (nodeId: string, data: CustomNodeData) => void;
   onClose: () => void;
+  onDelete: (nodeId: string) => void;
 }
 
-function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProps) {
+function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelProps) {
+  const toast = useToast();
+
   if (!node) return null;
 
   const data = node.data;
@@ -298,33 +311,58 @@ function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProps) {
     });
   };
 
+  // 복합 노드 (if_else, loop, parallel)는 더 넓은 패널 사용
+  const isComplexNode = ['if_else', 'loop', 'parallel'].includes(nodeType);
+  const panelWidth = isComplexNode ? 'w-96' : 'w-72';
+  const maxHeight = isComplexNode ? 'max-h-[600px]' : 'max-h-[400px]';
+
   return (
-    <div className="w-72 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-      <div className="flex items-center justify-between p-3 border-b border-slate-200 dark:border-slate-700">
-        <h3 className="text-sm font-semibold">노드 설정</h3>
-        <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700">
-          <X className="w-4 h-4" />
-        </button>
+    <div className={`${panelWidth} bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 flex flex-col ${maxHeight}`}>
+      <div className="flex items-center justify-between p-3 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <h3 className="text-sm font-semibold">
+          {nodeTypeLabels[nodeType] || '노드'} 설정
+        </h3>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={async () => {
+              const confirmed = await toast.confirm({
+                title: '노드 삭제',
+                message: '이 노드를 삭제하시겠습니까?',
+                confirmText: '삭제',
+                cancelText: '취소',
+                variant: 'danger',
+              });
+              if (confirmed) {
+                onDelete(node.id);
+                onClose();
+              }
+            }}
+            className="p-1 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+            title="노드 삭제"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="p-3 space-y-3 max-h-[400px] overflow-y-auto">
-        {/* 조건 노드 */}
+      <div className="p-3 space-y-3 overflow-y-auto flex-1">
+        {/* 조건 노드 - ConditionBuilder 사용 */}
         {nodeType === 'condition' && (
           <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
               조건식
             </label>
-            <input
-              type="text"
+            <ConditionBuilder
               value={(data.config.condition as string) || ''}
-              onChange={(e) => updateConfig('condition', e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
-              placeholder="temperature > 80"
+              onChange={(value) => updateConfig('condition', value)}
             />
           </div>
         )}
 
-        {/* 액션 노드 */}
+        {/* 액션 노드 - ActionParameterForm 사용 */}
         {nodeType === 'action' && (
           <>
             <div>
@@ -333,8 +371,12 @@ function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProps) {
               </label>
               <select
                 value={(data.config.action as string) || ''}
-                onChange={(e) => updateConfig('action', e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                onChange={(e) => {
+                  updateConfig('action', e.target.value);
+                  // 액션 변경 시 파라미터 초기화
+                  updateConfig('parameters', {});
+                }}
+                className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100"
               >
                 <option value="">선택...</option>
                 <optgroup label="알림">
@@ -359,111 +401,49 @@ function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProps) {
                 </optgroup>
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                파라미터 (JSON)
-              </label>
-              <textarea
-                value={JSON.stringify(data.config.parameters || {}, null, 2)}
-                onChange={(e) => {
-                  try {
-                    updateConfig('parameters', JSON.parse(e.target.value));
-                  } catch {
-                    // ignore parse error while typing
-                  }
-                }}
-                className="w-full px-3 py-2 text-xs font-mono border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 h-20"
-                placeholder='{"message": "알림 내용"}'
-              />
-            </div>
-          </>
-        )}
-
-        {/* If/Else 노드 */}
-        {nodeType === 'if_else' && (
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-              분기 조건
-            </label>
-            <input
-              type="text"
-              value={(data.config.condition as string) || ''}
-              onChange={(e) => updateConfig('condition', e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
-              placeholder="temperature > 80"
+            {/* ActionParameterForm으로 파라미터 자동 폼 생성 */}
+            <ActionParameterForm
+              action={(data.config.action as string) || ''}
+              parameters={(data.config.parameters as Record<string, unknown>) || {}}
+              onChange={(params) => updateConfig('parameters', params)}
             />
-            <p className="mt-1 text-xs text-slate-500">
-              참이면 then, 거짓이면 else 브랜치 실행
-            </p>
-          </div>
-        )}
-
-        {/* Loop 노드 */}
-        {nodeType === 'loop' && (
-          <>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                반복 유형
-              </label>
-              <select
-                value={(data.config.loop_type as string) || 'for'}
-                onChange={(e) => updateConfig('loop_type', e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
-              >
-                <option value="for">횟수 반복</option>
-                <option value="while">조건 반복</option>
-              </select>
-            </div>
-            {(data.config.loop_type as string) === 'while' ? (
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  반복 조건
-                </label>
-                <input
-                  type="text"
-                  value={(data.config.condition as string) || ''}
-                  onChange={(e) => updateConfig('condition', e.target.value)}
-                  className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
-                  placeholder="retry_count < 3"
-                />
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  반복 횟수
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={(data.config.count as number) || 1}
-                  onChange={(e) => updateConfig('count', parseInt(e.target.value) || 1)}
-                  className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
-                />
-              </div>
-            )}
           </>
         )}
 
-        {/* Parallel 노드 */}
+        {/* If/Else 노드 - 분기 편집 UI */}
+        {nodeType === 'if_else' && (
+          <IfElseBranchEditor
+            condition={(data.config.condition as string) || ''}
+            onConditionChange={(value) => updateConfig('condition', value)}
+            thenNodes={(data.config.then as InnerNode[]) || []}
+            onThenNodesChange={(nodes) => updateConfig('then', nodes)}
+            elseNodes={(data.config.else as InnerNode[]) || []}
+            onElseNodesChange={(nodes) => updateConfig('else', nodes)}
+          />
+        )}
+
+        {/* Loop 노드 - 반복 내부 노드 편집 UI */}
+        {nodeType === 'loop' && (
+          <LoopNodeEditor
+            loopType={(data.config.loop_type as 'for' | 'while') || 'for'}
+            onLoopTypeChange={(type) => updateConfig('loop_type', type)}
+            count={(data.config.count as number) || 1}
+            onCountChange={(value) => updateConfig('count', value)}
+            condition={(data.config.condition as string) || ''}
+            onConditionChange={(value) => updateConfig('condition', value)}
+            nodes={(data.config.nodes as InnerNode[]) || []}
+            onNodesChange={(nodes) => updateConfig('nodes', nodes)}
+          />
+        )}
+
+        {/* Parallel 노드 - 병렬 브랜치 편집 UI */}
         {nodeType === 'parallel' && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                type="checkbox"
-                id="fail_fast"
-                checked={(data.config.fail_fast as boolean) || false}
-                onChange={(e) => updateConfig('fail_fast', e.target.checked)}
-                className="rounded border-slate-300"
-              />
-              <label htmlFor="fail_fast" className="text-xs text-slate-600 dark:text-slate-400">
-                실패 시 즉시 중단
-              </label>
-            </div>
-            <p className="text-xs text-slate-500">
-              병렬 브랜치는 연결된 노드들로 자동 구성됩니다.
-            </p>
-          </div>
+          <ParallelBranchEditor
+            branches={(data.config.branches as InnerNode[][]) || [[]]}
+            onChange={(branches) => updateConfig('branches', branches)}
+            failFast={(data.config.fail_fast as boolean) || false}
+            onFailFastChange={(value) => updateConfig('fail_fast', value)}
+          />
         )}
       </div>
     </div>
@@ -811,6 +791,7 @@ type FlowNode = Node<CustomNodeData>;
 function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCancel }: FlowEditorProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
+  const toast = useToast();
   // 기본 DSL
   const defaultDSL: WorkflowDSL = {
     name: '새 워크플로우',
@@ -831,8 +812,14 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
   const [nodes, setNodes, onNodesChange] = useNodesState(initialFlow.nodes as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialFlow.edges);
 
-  // 선택된 노드
-  const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
+  // 선택된 노드 ID (실제 노드 데이터는 nodes에서 가져옴)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // 선택된 노드 (nodes 배열에서 항상 최신 데이터를 가져옴)
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId) return null;
+    return (nodes.find(n => n.id === selectedNodeId) as FlowNode) || null;
+  }, [selectedNodeId, nodes]);
 
   // DSL 미리보기 표시 여부
   const [showPreview, setShowPreview] = useState(false);
@@ -883,7 +870,7 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
 
   // 노드 선택 핸들러
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    setSelectedNode(node as FlowNode);
+    setSelectedNodeId(node.id);
   }, []);
 
   // 노드 데이터 업데이트
@@ -891,8 +878,18 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
     setNodes((nds) =>
       nds.map((n) => (n.id === nodeId ? { ...n, data } : n))
     );
-    setSelectedNode((prev) => (prev?.id === nodeId ? { ...prev, data } : prev));
+    // selectedNode는 nodes에서 자동으로 최신 데이터를 가져오므로 별도 업데이트 불필요
   }, [setNodes]);
+
+  // 노드 삭제
+  const deleteNode = useCallback((nodeId: string) => {
+    const nodeToDelete = nodes.find(n => n.id === nodeId);
+    const nodeLabel = (nodeToDelete?.data as CustomNodeData)?.label || '노드';
+    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+    setSelectedNodeId(null);
+    toast.info(`"${nodeLabel}" 노드가 삭제되었습니다.`);
+  }, [setNodes, setEdges, nodes, toast]);
 
   // 드래그 시작 핸들러
   const onDragStart = useCallback((event: React.DragEvent, nodeType: PaletteNodeType) => {
@@ -964,27 +961,35 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
       if (result) {
         setCurrentWorkflowId(result);
       }
+      toast.success(`워크플로우 "${workflowName}"이(가) 저장되었습니다.`);
       return result;
+    } catch (error) {
+      toast.error('워크플로우 저장에 실패했습니다.');
+      throw error;
     } finally {
       setIsSaving(false);
     }
-  }, [nodes, edges, workflowName, workflowDescription, triggerType, onSave]);
+  }, [nodes, edges, workflowName, workflowDescription, triggerType, onSave, toast]);
 
   // 저장 후 실행 핸들러
   const handleSaveAndRun = useCallback(async () => {
-    const savedId = await handleSave();
-    const wfId = savedId || currentWorkflowId;
-    if (wfId) {
-      setShowSimulationModal(true);
-    } else {
-      alert('먼저 워크플로우를 저장해주세요.');
+    try {
+      const savedId = await handleSave();
+      const wfId = savedId || currentWorkflowId;
+      if (wfId) {
+        setShowSimulationModal(true);
+      } else {
+        toast.warning('먼저 워크플로우를 저장해주세요.');
+      }
+    } catch {
+      // handleSave에서 이미 에러 토스트를 표시함
     }
-  }, [handleSave, currentWorkflowId]);
+  }, [handleSave, currentWorkflowId, toast]);
 
   // 워크플로우 실행 핸들러
   const handleRunWorkflow = useCallback(async (inputData: Record<string, unknown>) => {
     if (!currentWorkflowId) {
-      alert('워크플로우 ID가 없습니다. 먼저 저장해주세요.');
+      toast.warning('워크플로우 ID가 없습니다. 먼저 저장해주세요.');
       return;
     }
 
@@ -1008,6 +1013,7 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
       });
 
       setExecutionResult(result);
+      toast.success('워크플로우 실행이 완료되었습니다.');
 
       // 실행 결과에 따라 노드 상태 업데이트
       const outputData = result.output_data as {
@@ -1030,6 +1036,7 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
       }
     } catch (error) {
       console.error('Workflow execution failed:', error);
+      toast.error('워크플로우 실행에 실패했습니다.');
       setExecutionResult({
         instance_id: '',
         workflow_id: currentWorkflowId,
@@ -1044,15 +1051,41 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
     } finally {
       setIsRunning(false);
     }
-  }, [currentWorkflowId, workflowName, setNodes]);
+  }, [currentWorkflowId, workflowName, setNodes, toast]);
 
   // 노드 더블클릭 핸들러 (인라인 편집)
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
     if (node.data.nodeType !== 'trigger') {
       setEditingNode(node as FlowNode);
-      setSelectedNode(node as FlowNode);
+      setSelectedNodeId(node.id);
     }
   }, []);
+
+  // 키보드 핸들러 (Delete/Backspace로 노드 삭제)
+  const onKeyDown = useCallback(async (event: React.KeyboardEvent) => {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedNodeId) {
+      // 입력 필드에서는 삭제 동작 방지
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+        return;
+      }
+
+      const nodeToDelete = nodes.find(n => n.id === selectedNodeId);
+      if (nodeToDelete && (nodeToDelete.data as CustomNodeData).nodeType !== 'trigger') {
+        event.preventDefault();
+        const confirmed = await toast.confirm({
+          title: '노드 삭제',
+          message: '선택된 노드를 삭제하시겠습니까?',
+          confirmText: '삭제',
+          cancelText: '취소',
+          variant: 'danger',
+        });
+        if (confirmed) {
+          deleteNode(selectedNodeId);
+        }
+      }
+    }
+  }, [selectedNodeId, nodes, deleteNode, toast]);
 
   // 현재 DSL 미리보기
   const currentDSL = useMemo(
@@ -1133,7 +1166,7 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
           </div>
 
           {/* React Flow Canvas */}
-          <div className="flex-1" ref={reactFlowWrapper}>
+          <div className="flex-1 outline-none" ref={reactFlowWrapper} tabIndex={0} onKeyDown={onKeyDown}>
             <ReactFlow
               onDrop={onDrop}
               onDragOver={onDragOver}
@@ -1175,7 +1208,8 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
                   <NodeConfigPanel
                     node={selectedNode}
                     onUpdate={updateNodeData}
-                    onClose={() => setSelectedNode(null)}
+                    onClose={() => setSelectedNodeId(null)}
+                    onDelete={deleteNode}
                   />
                 </Panel>
               )}

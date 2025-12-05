@@ -27,6 +27,7 @@ import {
   cancelExperiment,
   deleteExperiment,
 } from '../../services/experimentService';
+import { useToast } from '@/components/ui/Toast';
 
 // Status badge colors
 const statusColors: Record<string, string> = {
@@ -46,6 +47,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function ExperimentsPage() {
+  const toast = useToast();
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [selectedExperiment, setSelectedExperiment] = useState<Experiment | null>(null);
   const [stats, setStats] = useState<ExperimentStats | null>(null);
@@ -103,8 +105,9 @@ export default function ExperimentsPage() {
       if (selectedExperiment?.experiment_id === updated.experiment_id) {
         setSelectedExperiment(updated);
       }
+      toast.success(`"${exp.name}" 실험이 시작되었습니다.`);
     } catch (err: any) {
-      alert(err.message || '실험 시작 실패');
+      toast.error(err.message || '실험 시작 실패');
     }
   };
 
@@ -115,8 +118,9 @@ export default function ExperimentsPage() {
       if (selectedExperiment?.experiment_id === updated.experiment_id) {
         setSelectedExperiment(updated);
       }
+      toast.info(`"${exp.name}" 실험이 일시정지되었습니다.`);
     } catch (err: any) {
-      alert(err.message || '실험 일시정지 실패');
+      toast.error(err.message || '실험 일시정지 실패');
     }
   };
 
@@ -127,47 +131,72 @@ export default function ExperimentsPage() {
       if (selectedExperiment?.experiment_id === updated.experiment_id) {
         setSelectedExperiment(updated);
       }
+      toast.success(`"${exp.name}" 실험이 재개되었습니다.`);
     } catch (err: any) {
-      alert(err.message || '실험 재개 실패');
+      toast.error(err.message || '실험 재개 실패');
     }
   };
 
   const handleComplete = async (exp: Experiment) => {
-    if (!confirm('실험을 완료하시겠습니까?')) return;
+    const confirmed = await toast.confirm({
+      title: '실험 완료',
+      message: `"${exp.name}" 실험을 완료하시겠습니까?`,
+      confirmText: '완료',
+      cancelText: '취소',
+      variant: 'info',
+    });
+    if (!confirmed) return;
     try {
       const updated = await completeExperiment(exp.experiment_id);
       setExperiments(prev => prev.map(e => e.experiment_id === updated.experiment_id ? updated : e));
       if (selectedExperiment?.experiment_id === updated.experiment_id) {
         setSelectedExperiment(updated);
       }
+      toast.success(`"${exp.name}" 실험이 완료되었습니다.`);
     } catch (err: any) {
-      alert(err.message || '실험 완료 실패');
+      toast.error(err.message || '실험 완료 실패');
     }
   };
 
   const handleCancel = async (exp: Experiment) => {
-    if (!confirm('실험을 취소하시겠습니까?')) return;
+    const confirmed = await toast.confirm({
+      title: '실험 취소',
+      message: `"${exp.name}" 실험을 취소하시겠습니까?`,
+      confirmText: '취소하기',
+      cancelText: '돌아가기',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     try {
       const updated = await cancelExperiment(exp.experiment_id);
       setExperiments(prev => prev.map(e => e.experiment_id === updated.experiment_id ? updated : e));
       if (selectedExperiment?.experiment_id === updated.experiment_id) {
         setSelectedExperiment(updated);
       }
+      toast.warning(`"${exp.name}" 실험이 취소되었습니다.`);
     } catch (err: any) {
-      alert(err.message || '실험 취소 실패');
+      toast.error(err.message || '실험 취소 실패');
     }
   };
 
   const handleDelete = async (exp: Experiment) => {
-    if (!confirm('실험을 삭제하시겠습니까?')) return;
+    const confirmed = await toast.confirm({
+      title: '실험 삭제',
+      message: `"${exp.name}" 실험을 삭제하시겠습니까?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await deleteExperiment(exp.experiment_id);
       setExperiments(prev => prev.filter(e => e.experiment_id !== exp.experiment_id));
       if (selectedExperiment?.experiment_id === exp.experiment_id) {
         setSelectedExperiment(null);
       }
+      toast.success(`"${exp.name}" 실험이 삭제되었습니다.`);
     } catch (err: any) {
-      alert(err.message || '실험 삭제 실패');
+      toast.error(err.message || '실험 삭제 실패');
     }
   };
 

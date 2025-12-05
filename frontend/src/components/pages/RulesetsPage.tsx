@@ -31,12 +31,14 @@ import { rulesetService, type Ruleset, type RulesetExecuteResponse } from '@/ser
 import { RulesetEditorModal } from '@/components/ruleset/RulesetEditorModal';
 import { ProposalsPanel } from '@/components/ruleset/ProposalsPanel';
 import { VersionHistoryPanel } from '@/components/ruleset/VersionHistoryPanel';
+import { useToast } from '@/components/ui/Toast';
 
 interface RulesetsPageProps {
   highlightRulesetId?: string | null;
 }
 
 export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
+  const toast = useToast();
   // Tab state
   const [activeTab, setActiveTab] = useState<'rulesets' | 'proposals'>('rulesets');
 
@@ -123,7 +125,14 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
 
   // Delete ruleset
   const handleDelete = async (ruleset: Ruleset) => {
-    if (!confirm(`"${ruleset.name}" 룰셋을 삭제하시겠습니까?`)) return;
+    const confirmed = await toast.confirm({
+      title: '룰셋 삭제',
+      message: `"${ruleset.name}" 룰셋을 삭제하시겠습니까?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await rulesetService.delete(ruleset.ruleset_id);
@@ -131,9 +140,10 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
       if (selectedRuleset?.ruleset_id === ruleset.ruleset_id) {
         setSelectedRuleset(null);
       }
+      toast.success(`"${ruleset.name}" 룰셋이 삭제되었습니다.`);
     } catch (err) {
       console.error('Failed to delete ruleset:', err);
-      alert('룰셋 삭제에 실패했습니다.');
+      toast.error('룰셋 삭제에 실패했습니다.');
     }
     setOpenMenu(null);
   };
@@ -150,9 +160,10 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
       if (selectedRuleset?.ruleset_id === ruleset.ruleset_id) {
         setSelectedRuleset(updated);
       }
+      toast.success(`룰셋이 ${!ruleset.is_active ? '활성화' : '비활성화'}되었습니다.`);
     } catch (err) {
       console.error('Failed to toggle ruleset:', err);
-      alert('룰셋 상태 변경에 실패했습니다.');
+      toast.error('룰셋 상태 변경에 실패했습니다.');
     }
     setOpenMenu(null);
   };
