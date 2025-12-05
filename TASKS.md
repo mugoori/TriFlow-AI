@@ -1,6 +1,6 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-04
+> **최종 업데이트**: 2025-12-05
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → Production 배포 준비
 > **현재 브랜치**: `develop` (V1 개발용)
 
@@ -12,7 +12,7 @@
 | Milestone | Goal | Status | Progress | 완료/전체 |
 | :--- | :--- | :--- | :--- | :--- |
 | **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | ✅ 완료 | ██████████ 100% | 23/23 |
+| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | ✅ 완료 | ██████████ 100% | 25/25 |
 | **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
 
 ### 🚀 MVP Detailed Progress (Sprint 1~6)
@@ -70,11 +70,11 @@
 
 ## 📋 V1 개발 작업 목록
 
-### 🔧 V1 Sprint 1: Builder UI & Workflow Execution ✅ (90%)
+### 🔧 V1 Sprint 1: Builder UI & Workflow Execution ✅ (100%)
 | Task | Status | Progress |
 | :--- | :--- | :--- |
 | **[UI]** Workflow Visual Editor (노드 추가/삭제/이동) | ✅ 완료 | ██████████ 100% |
-| **[UI]** Workflow Visual Editor (Drag & Drop) | ⏳ 미구현 | ░░░░░░░░░░ 0% |
+| **[UI]** Workflow Visual Editor (Drag & Drop) | ✅ 완료 | ██████████ 100% |
 | **[UI]** Ruleset Editor (Rhai Script 편집기) | ✅ 완료 | ██████████ 100% |
 | **[UI]** Action Catalog 관리 UI | ✅ 완료 | ██████████ 100% |
 | **[i18n]** Action Catalog 한글화 | ✅ 완료 | ██████████ 100% |
@@ -141,6 +141,15 @@
   - display_name, category_display_name 필드 추가
   - 12개 액션 한글 이름 적용
   - 4개 카테고리 한글 표시
+- [x] **[UI]** Workflow Visual Editor (Drag & Drop) 구현 (`frontend/src/components/workflow/FlowEditor.tsx`)
+  - React Flow (@xyflow/react) 기반 비주얼 에디터
+  - 노드 팔레트: 조건, 액션, If/Else, 반복, 병렬 노드 드래그 앤 드롭
+  - 커스텀 노드 컴포넌트 (타입별 색상/아이콘)
+  - 노드 설정 패널 (조건식, 액션, 파라미터 편집)
+  - DSL ↔ Flow 양방향 변환 (기존 워크플로우 로드/저장)
+  - 트리거 타입 선택 (수동, 이벤트, 스케줄)
+  - 실시간 DSL 미리보기
+  - WorkflowsPage 통합 (폼 에디터/플로우 에디터 전환)
 
 ### 🧠 V1 Sprint 2: Learning Pipeline 강화 ✅ (100%)
 | Task | Status | Progress |
@@ -278,6 +287,7 @@
 | **[Integration]** 실시간 센서 스트리밍 (WebSocket) | ✅ 완료 | ██████████ 100% |
 | **[Integration]** CSV/Excel Import | ✅ 완료 | ██████████ 100% |
 | **[Integration]** 데이터 동기화 스케줄러 | ✅ 완료 | ██████████ 100% |
+| **[UI]** Data 페이지 파일 업로드 UI | ✅ 완료 | ██████████ 100% |
 
 #### 📋 V1 Sprint 3 완료 작업 내역 (2025-11-28)
 - [x] **[Service]** Notification Service 구현 (`backend/app/services/notifications.py`)
@@ -324,6 +334,36 @@
   - `backend/app/routers/scheduler.py` - 스케줄러 관리 API
   - 기본 작업: 오래된 데이터 정리, 샘플 데이터 생성
   - 작업 활성화/비활성화/즉시 실행 지원
+
+#### 📋 V1 Sprint 3 추가 완료 작업 내역 (2025-12-04)
+- [x] **[UI]** Data 페이지 파일 업로드 UI 구현
+  - Frontend: `frontend/src/services/api.ts` - FormData 지원 추가
+    - ApiClient에 multipart/form-data 업로드 지원
+  - Frontend: `frontend/src/components/ui/FileUploadZone.tsx` (신규)
+    - 드래그 앤 드롭 파일 업로드 컴포넌트
+    - 파일 검증, 상태 표시 (idle, uploading, success, error)
+    - 파일 크기/타입 제한 옵션
+  - Frontend: `frontend/src/components/pages/DataPage.tsx` 탭 구조 변경
+    - 3개 탭: [센서 데이터] [ERP/MES] [지식 베이스]
+  - Frontend: `frontend/src/components/data/SensorDataTab.tsx` (신규)
+    - 기존 DataPage에서 센서 데이터 로직 추출
+    - CSV/Excel 업로드 기능 추가 (POST /sensors/import)
+  - Frontend: `frontend/src/components/data/ErpMesDataTab.tsx` (신규)
+    - ERP/MES 데이터 목록/필터링
+    - Mock 데이터 생성기 (소스 타입, 레코드 타입, 개수 선택)
+    - CSV/Excel 파일 Import 기능
+  - Frontend: `frontend/src/services/erpMesService.ts` (신규)
+    - ERP/MES API 클라이언트 (목록 조회, Mock 생성, 파일 Import)
+  - Frontend: `frontend/src/components/data/RagDocumentsTab.tsx` (신규)
+    - RAG 문서 관리 UI (목록, 추가, 삭제)
+    - 파일 업로드 (PDF, TXT, MD) + 텍스트 직접 추가
+    - 벡터 검색 기능 (유사도 표시)
+  - Frontend: `frontend/src/services/ragService.ts` (신규)
+    - RAG API 클라이언트 (문서 CRUD, 검색, 파일 업로드)
+  - Backend: `backend/app/routers/erp_mes.py` - Import API 추가
+    - `POST /erp-mes/import` - CSV/Excel 파일 Import
+    - 인코딩 자동 감지 (UTF-8, CP949, Latin-1)
+    - 필드 자동 매핑 (external_id, quantity, status, timestamp)
 
 #### 📋 V1 Sprint 3 추가 완료 작업 내역 (2025-12-02)
 - [x] **[Integration]** ERP/MES Mock API 구현
@@ -666,6 +706,42 @@ response = client.messages.create(
 )
 print(response.content[0].text)
 "
+```
+
+---
+
+### 🔧 버그 수정 및 유지보수 (2025-12-05)
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[Fix]** 채팅 API 응답 없음 버그 수정 | ✅ 완료 | ██████████ 100% |
+| **[DX]** start.bat 스크립트 개선 | ✅ 완료 | ██████████ 100% |
+
+#### 📋 유지보수 작업 완료 내역 (2025-12-05)
+- [x] **[Fix]** 채팅 API 응답 없음 버그 수정 (`backend/app/middleware/pii_masking.py`)
+  - 문제: PII 마스킹 미들웨어에서 `await request.body()` 호출 시 body 소비
+  - 원인: 마스킹이 필요 없는 경우에도 body가 이미 소비되어 빈 body로 요청 전달
+  - 해결: Body를 읽은 후 마스킹 여부와 관계없이 항상 새 Request 객체 생성하여 body 복원
+  - 영향: `/api/v1/agents/chat`, `/api/v1/agents/chat/stream` 엔드포인트 정상화
+- [x] **[DX]** start.bat 스크립트 개선
+  - PowerShell 스크립트(`start.ps1`)로 전환하여 안정성 향상
+  - docker-compose 파일 경로 명시적 지정 (`-f c:\dev\triflow-ai\docker-compose.yml`)
+  - 백엔드/프론트엔드 실행 로그 상세 표시
+  - Health Check 자동 수행 및 결과 표시
+  - stop.bat에도 동일하게 경로 명시
+
+#### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. 서버 시작
+cd c:/dev/triflow-ai/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 2. 채팅 API 테스트 (일반)
+python -c "import requests; r=requests.post('http://localhost:8000/api/v1/agents/chat', json={'message':'hello'}); print('Status:', r.status_code, 'Agent:', r.json().get('agent_name'))"
+
+# 3. 스트리밍 API 테스트
+python -c "import requests; r=requests.post('http://localhost:8000/api/v1/agents/chat/stream', json={'message':'hello'}, stream=True); print([l for l in list(r.iter_lines())[:5]])"
+
+# 4. start.bat 테스트
+더블 클릭으로 start.bat 실행 → Docker 컨테이너 + Backend + Frontend 정상 시작 확인
 ```
 
 ---

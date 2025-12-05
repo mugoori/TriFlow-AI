@@ -3,8 +3,10 @@ Agent API Router
 에이전트 실행 엔드포인트 - AgentOrchestrator 사용
 """
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
+from functools import partial
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, HTTPException, status, Request, Header
@@ -17,6 +19,9 @@ from app.utils.errors import classify_error, format_error_response
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ThreadPoolExecutor for running synchronous agent calls
+_executor = ThreadPoolExecutor(max_workers=4)
 
 
 @router.post("/chat", response_model=AgentResponse)
@@ -35,10 +40,16 @@ async def chat_with_agent(request: AgentRequest):
         logger.info(f"Chat request: {request.message[:100]}...")
 
         # AgentOrchestrator를 통한 자동 라우팅 및 실행
-        result = orchestrator.process(
-            message=request.message,
-            context=request.context,
-            tenant_id=request.tenant_id,
+        # run_in_executor로 동기 함수를 비동기로 실행 (이벤트 루프 블로킹 방지)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            _executor,
+            partial(
+                orchestrator.process,
+                message=request.message,
+                context=request.context,
+                tenant_id=request.tenant_id,
+            )
         )
 
         return AgentResponse(
@@ -87,10 +98,16 @@ async def run_judgment_agent(request: JudgmentRequest):
             context["tenant_id"] = request.tenant_id
 
         # AgentOrchestrator를 통한 직접 실행 (MetaRouter 우회)
-        result = orchestrator.execute_direct(
-            agent_name="judgment",
-            message=request.message,
-            context=context,
+        # run_in_executor로 동기 함수를 비동기로 실행
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            _executor,
+            partial(
+                orchestrator.execute_direct,
+                agent_name="judgment",
+                message=request.message,
+                context=context,
+            )
         )
 
         return AgentResponse(
@@ -155,11 +172,16 @@ async def stream_chat_response(
         # Step 2: Meta Router로 Intent 분류
         yield f"data: {json.dumps({'type': 'routing', 'message': 'Classifying intent...'})}\n\n"
 
-        # orchestrator.process()를 동기 호출하고 결과 스트리밍
-        result = orchestrator.process(
-            message=message,
-            context=context,
-            tenant_id=tenant_id,
+        # orchestrator.process()를 run_in_executor로 비동기 실행
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            _executor,
+            partial(
+                orchestrator.process,
+                message=message,
+                context=context,
+                tenant_id=tenant_id,
+            )
         )
 
         target_agent_name = result.get("agent_name", "MetaRouterAgent")

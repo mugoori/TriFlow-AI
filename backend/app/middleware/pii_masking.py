@@ -116,6 +116,8 @@ class PIIMaskingMiddleware(BaseHTTPMiddleware):
         """
         Request Body에서 PII 마스킹
         특히 채팅 메시지의 'message' 필드를 대상으로 함
+
+        주의: Request body를 읽으면 소비되므로, 항상 새 Request를 생성해야 함
         """
         try:
             content_type = request.headers.get("content-type", "")
@@ -123,7 +125,7 @@ class PIIMaskingMiddleware(BaseHTTPMiddleware):
             if "application/json" not in content_type:
                 return request
 
-            # Body 읽기
+            # Body 읽기 (한 번 읽으면 소비됨)
             body = await request.body()
             if not body:
                 return request
@@ -154,25 +156,31 @@ class PIIMaskingMiddleware(BaseHTTPMiddleware):
                         body_json["context"][key] = masked_value
                         masked = True
 
+            # Body가 소비되었으므로, 항상 새 Request 생성 필요
             if masked:
-                # 마스킹된 body로 새 request 생성
                 new_body = json.dumps(body_json, ensure_ascii=False).encode("utf-8")
+            else:
+                new_body = body  # 원본 body 사용
 
-                # Request 객체 재구성
-                scope = request.scope.copy()
-                scope["_body"] = new_body
+            # Request 객체 재구성 (body 소비 문제 해결)
+            scope = request.scope.copy()
 
-                async def receive():
-                    return {"type": "http.request", "body": new_body}
+            async def receive():
+                return {"type": "http.request", "body": new_body}
 
-                request = Request(scope, receive, request._send)
-                request._body = new_body
-
-            return request
+            new_request = Request(scope, receive, request._send)
+            return new_request
 
         except json.JSONDecodeError:
             logger.debug("Request body is not valid JSON, skipping PII masking")
-            return request
+            # JSON이 아니어도 body가 소비되었으므로 새 Request 생성
+            body = await request.body() if not hasattr(request, '_body') else request._body
+            scope = request.scope.copy()
+
+            async def receive():
+                return {"type": "http.request", "body": body}
+
+            return Request(scope, receive, request._send)
         except Exception as e:
             logger.error(f"Error masking request body: {e}")
             return request
