@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './api';
+import { getAccessToken } from './authService';
 import type { AgentRequest, AgentResponse, SSEEvent } from '../types/agent';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -32,10 +33,16 @@ export const agentService = {
 
     const fetchStream = async () => {
       try {
+        const token = getAccessToken();
+        if (!token) {
+          throw new Error('인증 토큰이 없습니다. 다시 로그인해주세요.');
+        }
+
         const response = await fetch(`${API_BASE_URL}/api/v1/agents/chat/stream`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify(request),
           signal: controller.signal,

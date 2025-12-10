@@ -1,3 +1,5 @@
+import { getAccessToken } from './authService';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export class ApiClient {
@@ -13,10 +15,12 @@ export class ApiClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
+    const token = getAccessToken();
     const config: RequestInit = {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         ...options.headers,
       },
     };
@@ -83,12 +87,14 @@ export class ApiClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
+    const token = getAccessToken();
     const config: RequestInit = {
       method: 'POST',
       body: formData,
       ...options,
       headers: {
         // Content-Type을 설정하지 않음 - 브라우저가 boundary와 함께 자동 설정
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         ...options.headers,
       },
     };
