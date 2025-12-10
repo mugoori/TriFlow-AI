@@ -1,6 +1,6 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-05
+> **최종 업데이트**: 2025-12-10
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → Production 배포 준비
 > **현재 브랜치**: `develop` (V1 개발용)
 
@@ -794,6 +794,101 @@ cd c:/dev/triflow-ai/frontend && npm run dev
 # - Workflows 페이지에서 워크플로우 삭제 클릭 → 빨간 danger 모달
 # - Experiments 페이지에서 실험 완료 클릭 → 파란 info 모달
 # - Experiments 페이지에서 실험 취소 클릭 → 노란 warning 모달
+```
+
+### 🔧 Settings API 및 알림 설정 (2025-12-10)
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[API]** Settings API 구현 (암호화 저장) | ✅ 완료 | ██████████ 100% |
+| **[Service]** SettingsService 구현 (DB + 환경변수 fallback) | ✅ 완료 | ██████████ 100% |
+| **[UI]** Settings 페이지 알림 설정 UI 개선 | ✅ 완료 | ██████████ 100% |
+| **[Integration]** NotificationManager DB 설정 연동 | ✅ 완료 | ██████████ 100% |
+
+#### 📋 Settings API 완료 작업 내역
+- [x] **[Service]** SettingsService 구현 (`backend/app/services/settings_service.py`)
+  - `EncryptionService` - Fernet 대칭키 암호화 (sensitive 설정용)
+  - `SettingsService` - Redis 캐시 + PostgreSQL 저장
+  - DB 우선, 환경변수 fallback 전략
+  - 설정 정의: `SETTING_DEFINITIONS` (slack_webhook_url, smtp_* 등)
+  - 민감 정보 마스킹: `mask_value()` (예: `https://hooks...***...xyz`)
+- [x] **[API]** Settings Router 구현 (`backend/app/routers/settings.py`)
+  - `GET /api/v1/settings` - 설정 목록 조회 (카테고리 필터)
+  - `GET /api/v1/settings/{key}` - 단일 설정 조회
+  - `PUT /api/v1/settings/{key}` - 설정 업데이트
+  - `DELETE /api/v1/settings/{key}` - 설정 삭제 (환경변수 fallback)
+  - `POST /api/v1/settings/bulk` - 일괄 업데이트
+  - `POST /api/v1/settings/test/slack` - Slack 연결 테스트
+  - `POST /api/v1/settings/test/email` - Email 연결 테스트
+- [x] **[Frontend]** settingsService 구현 (`frontend/src/services/settingsService.ts`)
+  - API 클라이언트 (getSettings, updateSetting, testSlack, testEmail)
+- [x] **[UI]** SettingsPage 알림 설정 개선 (`frontend/src/components/pages/SettingsPage.tsx`)
+  - Gmail 프리셋 버튼 (smtp.gmail.com, 587, TLS)
+  - 설정 상태 배지 (✓ 설정됨 / ○ 미설정)
+  - Email 필수 필드 진척도 표시 (○ 3/5)
+  - 민감 정보 마스킹 표시 ("저장된 값이 있습니다")
+  - Slack/Email 테스트 버튼 (실제 메시지 전송)
+- [x] **[Integration]** NotificationManager DB 설정 연동 (`backend/app/services/notifications.py`)
+  - `_get_setting()` 메서드 - DB 우선, 환경변수 fallback
+  - SlackNotificationService: DB에서 webhook_url, default_channel 조회
+  - EmailNotificationService: DB에서 SMTP 설정 조회
+
+#### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. 서버 시작
+cd c:/dev/triflow-ai/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 2. 관리자 로그인
+TOKEN=$(curl -s -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@triflow.ai","password":"admin1234"}' | jq -r '.access_token')
+
+# 3. 설정 목록 조회
+curl -s "http://localhost:8000/api/v1/settings" -H "Authorization: Bearer $TOKEN"
+
+# 4. Slack Webhook 설정
+curl -s -X PUT "http://localhost:8000/api/v1/settings/slack_webhook_url" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"value":"https://hooks.slack.com/services/xxx"}'
+
+# 5. Frontend UI 확인
+# - Settings 페이지 → 알림 설정 섹션
+# - Gmail 자동 입력 버튼 클릭 → SMTP 설정 자동 채움
+# - 설정 저장 → 상태 배지 "✓ 설정됨" 확인
+```
+
+### 🧪 테스트 안정화 (2025-12-10)
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[Test]** SQLite 폴백 지원 | ✅ 완료 | ██████████ 100% |
+| **[Test]** Mock fixture 수정 (orchestrator 패턴) | ✅ 완료 | ██████████ 100% |
+| **[Test]** 전체 테스트 통과 (537 passed) | ✅ 완료 | ██████████ 100% |
+
+#### 📋 테스트 안정화 완료 작업 내역
+- [x] **[Test]** SQLite 폴백 지원 (`backend/tests/conftest.py`)
+  - `check_postgres_available()` - PostgreSQL 연결 가능 여부 확인
+  - `USE_SQLITE` 환경변수 또는 PostgreSQL 불가 시 SQLite 사용
+  - `pytest_collection_modifyitems` - DB 의존 테스트 자동 스킵
+  - SQLite용 audit_logs 테이블 스키마 (UUID → TEXT)
+- [x] **[Test]** Mock fixture 수정
+  - 기존: `app.routers.agents.meta_router` 패치 (존재하지 않음)
+  - 변경: `app.routers.agents.orchestrator` 패치
+  - `create_mock_orchestrator()` 헬퍼 함수 추가
+  - 4개 fixture 수정: mock_agents, mock_meta_router_judgment/workflow/bi
+- [x] **[Config]** pytest.ini 마커 추가
+  - `requires_db` 마커 등록 (PostgreSQL 필수 테스트용)
+
+#### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. SQLite 모드 테스트 (Docker 없이)
+cd c:/dev/triflow-ai/backend
+USE_SQLITE=1 python -m pytest tests/ -v --ignore=tests/integration
+
+# 2. PostgreSQL 모드 테스트 (Docker 필요)
+docker-compose up -d postgres redis
+python -m pytest tests/ -v
+
+# 예상 결과: 537 passed, 1 skipped
 ```
 
 ---

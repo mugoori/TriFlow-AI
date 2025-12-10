@@ -357,6 +357,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register rag router: {e}")
 
+# Settings 라우터 (시스템 설정)
+try:
+    from app.routers import settings as settings_router
+    app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["settings"])
+    logger.info("Settings router registered")
+except Exception as e:
+    logger.error(f"Failed to register settings router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

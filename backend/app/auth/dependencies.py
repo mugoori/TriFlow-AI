@@ -198,3 +198,27 @@ async def get_optional_user(
         return await get_current_user(credentials, x_api_key, request, db)
     except HTTPException:
         return None
+
+
+async def require_admin(
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """
+    관리자 권한 확인
+
+    Args:
+        current_user: 인증된 활성 사용자
+
+    Returns:
+        관리자 User 객체
+
+    Raises:
+        HTTPException 403: 관리자 권한 없음
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+
+    return current_user

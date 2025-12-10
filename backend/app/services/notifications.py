@@ -1,6 +1,7 @@
 # ===================================================
 # TriFlow AI - Notification Services
 # Slack, Email, SMS 알림 서비스 구현
+# DB 설정 우선 조회 → 환경변수 fallback
 # ===================================================
 
 import os
@@ -15,6 +16,21 @@ from enum import Enum
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    """
+    설정 값 조회 (DB 우선 → 환경변수 fallback)
+    settings_service를 lazy import하여 순환 참조 방지
+    """
+    try:
+        from app.services.settings_service import settings_service
+        return settings_service.get_setting(key, default)
+    except Exception as e:
+        # settings_service 로드 실패 시 환경변수만 사용
+        logger.debug(f"settings_service 로드 실패, 환경변수 사용: {e}")
+        env_key = key.upper()
+        return os.getenv(env_key, default)
 
 
 class NotificationStatus(str, Enum):
@@ -35,10 +51,16 @@ class NotificationResult:
 class SlackNotificationService:
     """Slack Webhook 알림 서비스"""
 
-    def __init__(self):
-        self.webhook_url = os.getenv("SLACK_WEBHOOK_URL")
-        self.default_channel = os.getenv("SLACK_DEFAULT_CHANNEL", "#alerts")
-        self.enabled = bool(self.webhook_url)
+    def _get_config(self):
+        """설정 조회 (매 요청마다 최신 설정 반영)"""
+        return {
+            "webhook_url": get_setting("slack_webhook_url"),
+            "default_channel": get_setting("slack_default_channel", "#alerts"),
+        }
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self._get_config()["webhook_url"])
 
     async def send(
         self,
@@ -85,10 +107,14 @@ class SlackNotificationService:
         if attachments:
             payload["attachments"] = attachments
 
+        config = self._get_config()
+        webhook_url = config["webhook_url"]
+        default_channel = config["default_channel"]
+
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    self.webhook_url,
+                    webhook_url,
                     json=payload,
                     timeout=10.0
                 )
@@ -98,7 +124,7 @@ class SlackNotificationService:
                     return NotificationResult(
                         status=NotificationStatus.SUCCESS,
                         message="Slack 알림이 전송되었습니다",
-                        details={"channel": channel or self.default_channel}
+                        details={"channel": channel or default_channel}
                     )
                 else:
                     logger.error(f"Slack 알림 실패: {response.status_code} - {response.text}")
@@ -127,14 +153,22 @@ class SlackNotificationService:
 class EmailNotificationService:
     """SMTP 이메일 알림 서비스"""
 
-    def __init__(self):
-        self.smtp_host = os.getenv("SMTP_HOST")
-        self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
-        self.smtp_user = os.getenv("SMTP_USER")
-        self.smtp_password = os.getenv("SMTP_PASSWORD")
-        self.smtp_from = os.getenv("SMTP_FROM", self.smtp_user)
-        self.smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
-        self.enabled = bool(self.smtp_host and self.smtp_user and self.smtp_password)
+    def _get_config(self):
+        """설정 조회 (매 요청마다 최신 설정 반영)"""
+        smtp_user = get_setting("smtp_user")
+        return {
+            "smtp_host": get_setting("smtp_host"),
+            "smtp_port": int(get_setting("smtp_port", "587")),
+            "smtp_user": smtp_user,
+            "smtp_password": get_setting("smtp_password"),
+            "smtp_from": get_setting("smtp_from", smtp_user),
+            "smtp_use_tls": get_setting("smtp_use_tls", "true").lower() == "true",
+        }
+
+    @property
+    def enabled(self) -> bool:
+        config = self._get_config()
+        return bool(config["smtp_host"] and config["smtp_user"] and config["smtp_password"])
 
     async def send(
         self,
@@ -156,6 +190,8 @@ class EmailNotificationService:
             cc: 참조 (선택)
             bcc: 숨은 참조 (선택)
         """
+        config = self._get_config()
+
         if not self.enabled:
             logger.warning("Email 알림이 비활성화됨 (SMTP 설정 미완료)")
             return NotificationResult(
@@ -174,7 +210,7 @@ class EmailNotificationService:
                 msg = MIMEText(body, "plain", "utf-8")
 
             msg["Subject"] = subject
-            msg["From"] = self.smtp_from
+            msg["From"] = config["smtp_from"]
             msg["To"] = to
 
             if cc:
@@ -190,14 +226,14 @@ class EmailNotificationService:
                 recipients.extend([addr.strip() for addr in bcc.split(",")])
 
             # SMTP 연결 및 전송
-            if self.smtp_use_tls:
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+            if config["smtp_use_tls"]:
+                server = smtplib.SMTP(config["smtp_host"], config["smtp_port"])
                 server.starttls()
             else:
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server = smtplib.SMTP(config["smtp_host"], config["smtp_port"])
 
-            server.login(self.smtp_user, self.smtp_password)
-            server.sendmail(self.smtp_from, recipients, msg.as_string())
+            server.login(config["smtp_user"], config["smtp_password"])
+            server.sendmail(config["smtp_from"], recipients, msg.as_string())
             server.quit()
 
             logger.info(f"Email 전송 성공: {to} - {subject}")
@@ -309,14 +345,16 @@ class NotificationManager:
 
     def get_status(self) -> Dict[str, Any]:
         """알림 서비스 상태 조회"""
+        slack_config = self.slack._get_config()
+        email_config = self.email._get_config()
         return {
             "slack": {
                 "enabled": self.slack.enabled,
-                "webhook_configured": bool(self.slack.webhook_url),
+                "webhook_configured": bool(slack_config["webhook_url"]),
             },
             "email": {
                 "enabled": self.email.enabled,
-                "smtp_host": self.email.smtp_host or "미설정",
+                "smtp_host": email_config["smtp_host"] or "미설정",
             },
             "sms": {
                 "enabled": self.sms.enabled,
