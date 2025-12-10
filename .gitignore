@@ -83,3 +83,4 @@ grafana_data/
 
 # Workflow exports
 backend/exports/
+extract_code.py
