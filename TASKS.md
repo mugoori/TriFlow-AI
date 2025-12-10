@@ -1459,6 +1459,34 @@ cd backend && python -m pytest tests/test_security.py -v
 
 ---
 
+### 🔧 개발 환경 개선 (2025-12-10)
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[DX]** 백엔드 자동 재시작 설정 | ✅ 완료 | ██████████ 100% |
+| **[DX]** 중복 인스턴스 방지 | ✅ 완료 | ██████████ 100% |
+
+#### 📋 개발 환경 개선 완료 내역 (2025-12-10)
+- [x] **[DX]** `start.ps1` 개선
+  - `--reload` 옵션 추가: 코드 수정 시 서버 자동 재시작
+  - 기존 프로세스 정리 코드 추가: 포트 8000 사용 중인 프로세스 자동 종료
+  - 중복 서버 인스턴스 실행 방지
+- [x] **[DX]** `backend/start_server.bat` 개선
+  - `--reload-dir app` 옵션 추가: app 디렉토리만 감시하여 불필요한 재시작 방지
+
+#### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. 통합 시작 스크립트 실행
+.\start.ps1
+
+# 2. 백엔드 코드 수정 (예: app/main.py에 주석 추가)
+# → 터미널에서 "[WatchFiles] Reloading..." 메시지 확인
+
+# 3. Health Check
+curl http://localhost:8000/health
+```
+
+---
+
 ## 📁 프로젝트 구조 (예정)
 
 ```

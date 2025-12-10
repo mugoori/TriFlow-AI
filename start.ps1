@@ -42,10 +42,22 @@ Write-Host ""
 # Backend 시작
 Write-Host "[3/3] Starting Backend and Frontend..."
 Write-Host ""
+
+# 기존 백엔드 프로세스 정리
+Write-Host "     [Backend] Cleaning up existing processes..."
+$existingPids = netstat -ano | Select-String ":8000.*LISTENING" | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -Unique
+foreach ($procId in $existingPids) {
+    if ($procId -match '^\d+$') {
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+        Write-Host "     [Backend] Killed PID: $procId"
+    }
+}
+Start-Sleep -Seconds 2
+
 Write-Host "     [Backend] Initializing..."
 Write-Host "     [Backend] Directory: c:\dev\triflow-ai\backend"
 Write-Host "     [Backend] URL: http://localhost:8000"
-Start-Process cmd -ArgumentList '/k', 'cd /d c:\dev\triflow-ai\backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level info'
+Start-Process cmd -ArgumentList '/k', 'cd /d c:\dev\triflow-ai\backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level info'
 
 # Backend 시작 대기
 Write-Host "     [Backend] Waiting for server to start..."
