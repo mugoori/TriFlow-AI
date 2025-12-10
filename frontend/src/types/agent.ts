@@ -25,10 +25,19 @@ export interface ChatMessage {
   tool_calls?: ToolCall[];
 }
 
+/**
+ * 대화 이력 메시지 (API 전송용)
+ */
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface AgentRequest {
   message: string;
   context?: Record<string, any>;
   tenant_id?: string;
+  conversation_history?: ConversationMessage[];
 }
 
 // SSE Streaming Event Types

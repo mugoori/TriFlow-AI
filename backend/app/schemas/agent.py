@@ -1,7 +1,7 @@
 """
 Agent API Pydantic Schemas
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -12,12 +12,23 @@ class ChatMessage(BaseModel):
     content: str = Field(..., description="메시지 내용")
 
 
+class ConversationMessage(BaseModel):
+    """대화 이력의 개별 메시지 (타입 검증 강화)"""
+
+    role: Literal["user", "assistant"] = Field(..., description="메시지 역할")
+    content: str = Field(..., description="메시지 내용")
+
+
 class AgentRequest(BaseModel):
     """Agent 실행 요청"""
 
     message: str = Field(..., description="사용자 메시지")
     context: Optional[Dict[str, Any]] = Field(default=None, description="추가 컨텍스트")
     tenant_id: Optional[str] = Field(default=None, description="테넌트 ID")
+    conversation_history: Optional[List[ConversationMessage]] = Field(
+        default=None,
+        description="대화 이력 (최근 대화 컨텍스트 유지용)"
+    )
 
 
 class ToolCall(BaseModel):

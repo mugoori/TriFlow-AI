@@ -130,7 +130,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
             {/* 메시지 헤더 */}
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                {isUser ? '사용자' : message.agent_name || 'Agent'}
+                {isUser ? '사용자' : 'TriFlow Agent'}
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-500">
                 {new Date(message.timestamp).toLocaleTimeString('ko-KR', {
@@ -260,9 +260,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </div>
             )}
 
-            {/* 피드백 버튼 (AI 응답에만 표시) */}
+            {/* 처리 에이전트 정보 + 피드백 버튼 (AI 응답에만 표시) */}
             {!isUser && (
               <div className="mt-3 pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                {/* 처리 에이전트 표시 */}
+                {message.agent_name && (
+                  <span className="text-xs text-slate-400 dark:text-slate-500 mr-2">
+                    <span className="font-medium">처리:</span> {message.agent_name}
+                  </span>
+                )}
                 <span className="text-xs text-slate-400 dark:text-slate-500 mr-1">도움이 되었나요?</span>
 
                 {/* 좋아요 버튼 */}

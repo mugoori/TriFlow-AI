@@ -60,11 +60,39 @@ else:
 logger = logging.getLogger(__name__)
 
 
+async def warmup_agents():
+    """에이전트 사전 초기화 - 첫 요청 지연 방지"""
+    import asyncio
+    from functools import partial
+    from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        from app.services.agent_orchestrator import orchestrator
+
+        # ThreadPoolExecutor로 동기 함수 실행
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=1)
+
+        # 간단한 워밍업 요청 (LLM API 호출 포함)
+        await loop.run_in_executor(
+            executor,
+            partial(
+                orchestrator.process,
+                message="시스템 워밍업",
+                context={"warmup": True},
+                tenant_id=None,
+            )
+        )
+        executor.shutdown(wait=False)
+    except Exception as e:
+        logger.warning(f"Agent warmup failed (non-critical): {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     앱 시작/종료 시 실행되는 이벤트
-    - 시작: DB 초기화, Admin 계정 시딩
+    - 시작: DB 초기화, Admin 계정 시딩, 에이전트 워밍업
     - 종료: 리소스 정리
     """
     # Startup
@@ -84,6 +112,11 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.warning(f"Database initialization skipped: {e}")
+
+    # 에이전트 워밍업 (첫 요청 지연 방지)
+    logger.info("Warming up agents...")
+    await warmup_agents()
+    logger.info("Agents warmed up successfully")
 
     yield
 

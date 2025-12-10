@@ -4,8 +4,8 @@
  * SSE 스트리밍 지원
  */
 
-import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
-import type { ChatMessage, SSEEvent, StreamingState } from '../types/agent';
+import { createContext, useContext, useState, useCallback, useRef, ReactNode, useMemo } from 'react';
+import type { ChatMessage, SSEEvent, StreamingState, ConversationMessage } from '../types/agent';
 import { agentService } from '../services/agentService';
 
 interface ChatContextType {
@@ -28,8 +28,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   });
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // 대화 이력을 API 형식으로 변환하는 헬퍼 함수
+  const getConversationHistory = useCallback((currentMessages: ChatMessage[]): ConversationMessage[] => {
+    return currentMessages.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+  }, []);
+
   // 일반 채팅 (비스트리밍)
   const sendMessage = useCallback(async (content: string) => {
+    // 현재 대화 이력을 API 전송 전에 저장
+    const conversationHistory = getConversationHistory(messages);
+
     const userMessage: ChatMessage = {
       role: 'user',
       content,
@@ -41,6 +52,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     try {
       const response = await agentService.chat({
         message: content,
+        conversation_history: conversationHistory,
       });
 
       const assistantMessage: ChatMessage = {
@@ -63,10 +75,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [messages, getConversationHistory]);
 
   // 스트리밍 채팅 (SSE)
   const sendMessageStream = useCallback((content: string) => {
+    // 현재 대화 이력을 API 전송 전에 저장
+    const conversationHistory = getConversationHistory(messages);
+
     // 사용자 메시지 추가
     const userMessage: ChatMessage = {
       role: 'user',
@@ -192,13 +207,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setStreaming({ isStreaming: false });
     };
 
-    // SSE 스트림 시작
+    // SSE 스트림 시작 (대화 이력 포함)
     abortControllerRef.current = agentService.chatStream(
-      { message: content },
+      { message: content, conversation_history: conversationHistory },
       handleEvent,
       handleError
     );
-  }, []);
+  }, [messages, getConversationHistory]);
 
   // 스트림 취소
   const cancelStream = useCallback(() => {

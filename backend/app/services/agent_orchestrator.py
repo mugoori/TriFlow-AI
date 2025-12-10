@@ -90,12 +90,14 @@ class AgentOrchestrator:
 
         logger.info(f"[Orchestrator] Processing: {message[:100]}...")
 
-        # Step 1: MetaRouter로 Intent 분류 및 라우팅
-        routing_result = self._route(message, context)
-        routing_info = self.meta_router.parse_routing_result(routing_result)
+        # Step 1: 하이브리드 라우팅 (규칙 기반 우선 → LLM fallback)
+        routing_info = self._route_hybrid(message, context)
         target_agent = routing_info.get("target_agent", "general")
 
-        logger.info(f"[Orchestrator] Routed to: {target_agent}")
+        logger.info(
+            f"[Orchestrator] Routed to: {target_agent} "
+            f"(source: {routing_info.get('context', {}).get('classification_source', 'unknown')})"
+        )
 
         # Step 2: Sub-Agent 실행
         if target_agent in self.agents:
@@ -109,17 +111,60 @@ class AgentOrchestrator:
 
         # Step 3: general인 경우 MetaRouter 응답 반환
         return self._format_response(
-            result=routing_result,
+            result=routing_info,
             agent_name="MetaRouterAgent",
             routing_info=routing_info,
         )
+
+    def _route_hybrid(
+        self,
+        message: str,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        하이브리드 라우팅 (규칙 기반 우선 → LLM fallback)
+
+        1차: 규칙 기반 분류 시도 (IntentClassifier)
+        2차: 규칙 매칭 실패 시 LLM 분류 (MetaRouter)
+        """
+        # 1차: 규칙 기반 분류 시도
+        rule_result = self.meta_router.classify_with_rules(message)
+
+        if rule_result and rule_result.confidence >= 0.9:
+            # 규칙 기반 분류 성공
+            logger.info(
+                f"[Orchestrator] Rule-based routing: {message[:30]}... → {rule_result.intent}"
+            )
+            return {
+                "target_agent": rule_result.intent,
+                "processed_request": message,
+                "context": {
+                    "classification_source": "rule_engine",
+                    "matched_pattern": rule_result.matched_pattern,
+                    "confidence": rule_result.confidence,
+                },
+                "intent": rule_result.intent,
+                "slots": {},
+            }
+
+        # 2차: LLM 분류 (규칙 매칭 실패)
+        logger.info(f"[Orchestrator] LLM routing fallback for: {message[:30]}...")
+        llm_result = self.meta_router.run(
+            user_message=message,
+            context=context,
+        )
+        routing_info = self.meta_router.parse_routing_result(llm_result)
+        routing_info["context"] = routing_info.get("context", {})
+        routing_info["context"]["classification_source"] = "llm"
+
+        return routing_info
 
     def _route(
         self,
         message: str,
         context: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """MetaRouter로 라우팅"""
+        """MetaRouter로 라우팅 (레거시, 하위 호환성)"""
         return self.meta_router.run(
             user_message=message,
             context=context,

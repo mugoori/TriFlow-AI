@@ -112,7 +112,7 @@ class BaseAgent(ABC):
 
         Args:
             user_message: 사용자 입력 메시지
-            context: 추가 컨텍스트 정보
+            context: 추가 컨텍스트 정보 (conversation_history 포함 가능)
             max_iterations: 최대 반복 횟수 (무한 루프 방지)
             tool_choice: Tool 선택 강제 옵션
                 - {"type": "auto"}: 자동 선택 (기본)
@@ -127,7 +127,24 @@ class BaseAgent(ABC):
             }
         """
         context = context or {}
-        messages = [{"role": "user", "content": user_message}]
+
+        # 대화 이력이 있으면 messages에 포함
+        messages = []
+        conversation_history = context.get("conversation_history", [])
+
+        if conversation_history:
+            # 최근 10개 메시지만 포함 (토큰 제한)
+            recent_history = conversation_history[-10:]
+            for msg in recent_history:
+                messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                })
+            logger.info(f"[{self.name}] Loaded {len(recent_history)} messages from conversation history")
+
+        # 현재 사용자 메시지 추가
+        messages.append({"role": "user", "content": user_message})
+
         tool_calls = []
         iterations = 0
         force_tool_on_first = tool_choice is not None

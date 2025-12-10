@@ -147,7 +147,12 @@
       "Bash(echo \"=== 1. GET Settings List ===\" curl -s -X GET \"http://localhost:8000/api/v1/settings\" -H \"Authorization: Bearer $TOKEN\")",
       "Bash(echo \"\" echo \"=== 2. PUT Settings (Slack Webhook) ===\" curl -s -X PUT \"http://localhost:8000/api/v1/settings/slack_webhook_url\" -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" -d '{\"\"\"\"value\"\"\"\":\"\"\"\"https://hooks.slack.com/services/TEST/TEST/TEST123\"\"\"\"}')",
       "Bash(echo \"\" echo \"=== 3. GET Single Setting ===\" curl -s -X GET \"http://localhost:8000/api/v1/settings/slack_webhook_url\" -H \"Authorization: Bearer $TOKEN\")",
-      "Bash(USE_SQLITE=0 python -m pytest:*)"
+      "Bash(USE_SQLITE=0 python -m pytest:*)",
+      "Bash(for:*)",
+      "Bash(do curl -s http://localhost:8000/api/v1/info)",
+      "Bash(done)",
+      "Bash(cmd /c:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

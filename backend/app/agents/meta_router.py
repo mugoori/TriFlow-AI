@@ -1,12 +1,17 @@
 """
 Meta Router Agent
 사용자 요청을 분석하여 적절한 Sub-Agent로 라우팅
+
+하이브리드 분류 방식:
+1. 규칙 기반 분류 (IntentClassifier) - 명확한 패턴
+2. LLM 분류 (기존 방식) - 애매한 경우 fallback
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import logging
 from pathlib import Path
 
 from .base_agent import BaseAgent
+from .intent_classifier import IntentClassifier, ClassificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +19,7 @@ logger = logging.getLogger(__name__)
 class MetaRouterAgent(BaseAgent):
     """
     Meta Router Agent
-    - Intent 분류
+    - Intent 분류 (하이브리드: 규칙 기반 + LLM)
     - 슬롯 추출
     - Sub-Agent 라우팅
     """
@@ -25,6 +30,8 @@ class MetaRouterAgent(BaseAgent):
             model="claude-sonnet-4-5-20250929",
             max_tokens=2048,
         )
+        # 하이브리드 분류기 초기화
+        self.intent_classifier = IntentClassifier()
 
     def get_system_prompt(self) -> str:
         """
@@ -188,3 +195,76 @@ class MetaRouterAgent(BaseAgent):
                 routing_info["context"] = tool_call["result"].get("context", {})
 
         return routing_info
+
+    def classify_with_rules(self, user_input: str) -> Optional[ClassificationResult]:
+        """
+        규칙 기반 분류 시도
+
+        Args:
+            user_input: 사용자 입력 텍스트
+
+        Returns:
+            ClassificationResult: 규칙 매칭 시
+            None: 규칙으로 분류 불가 (LLM 필요)
+        """
+        return self.intent_classifier.classify(user_input)
+
+    def route_with_hybrid(
+        self,
+        user_input: str,
+        llm_result: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        하이브리드 라우팅 (규칙 우선, LLM fallback)
+
+        Args:
+            user_input: 사용자 입력 텍스트
+            llm_result: LLM 분류 결과 (이미 호출한 경우)
+
+        Returns:
+            라우팅 정보 딕셔너리
+        """
+        # 1차: 규칙 기반 분류 시도
+        rule_result = self.classify_with_rules(user_input)
+
+        if rule_result and rule_result.confidence >= 0.9:
+            logger.info(
+                f"[Hybrid Router] Rule-based: '{user_input[:30]}...' → {rule_result.intent} "
+                f"(confidence: {rule_result.confidence})"
+            )
+            return {
+                "target_agent": rule_result.intent,
+                "processed_request": user_input,
+                "context": {
+                    "classification_source": "rule_engine",
+                    "matched_pattern": rule_result.matched_pattern,
+                    "confidence": rule_result.confidence,
+                },
+                "intent": rule_result.intent,
+                "slots": {},  # 규칙 기반은 슬롯 추출 안함 (LLM에서 추출)
+            }
+
+        # 2차: LLM 분류 (규칙 매칭 실패 시)
+        if llm_result:
+            routing_info = self.parse_routing_result(llm_result)
+            routing_info["context"]["classification_source"] = "llm"
+            logger.info(
+                f"[Hybrid Router] LLM-based: '{user_input[:30]}...' → {routing_info['target_agent']}"
+            )
+            return routing_info
+
+        # LLM 결과가 없으면 기본값 반환
+        logger.warning(f"[Hybrid Router] No classification for: '{user_input[:30]}...'")
+        return {
+            "target_agent": "general",
+            "processed_request": user_input,
+            "context": {"classification_source": "fallback"},
+            "intent": "general",
+            "slots": {},
+        }
+
+    def get_classification_debug(self, user_input: str) -> Dict[str, Any]:
+        """
+        분류 디버그 정보 (개발/테스트용)
+        """
+        return self.intent_classifier.get_classification_debug(user_input)

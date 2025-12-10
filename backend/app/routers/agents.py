@@ -31,13 +31,22 @@ async def chat_with_agent(request: AgentRequest):
     사용자 메시지를 분석하여 적절한 Sub-Agent로 라우팅
 
     Args:
-        request: AgentRequest (message, context, tenant_id)
+        request: AgentRequest (message, context, tenant_id, conversation_history)
 
     Returns:
         AgentResponse
     """
     try:
         logger.info(f"Chat request: {request.message[:100]}...")
+
+        # Context 구성 (대화 이력 포함)
+        context = request.context or {}
+        if request.conversation_history:
+            # 대화 이력을 context에 포함 (최근 10개 메시지만)
+            context["conversation_history"] = [
+                msg.model_dump() for msg in request.conversation_history[-10:]
+            ]
+            logger.info(f"Including {len(context['conversation_history'])} messages from conversation history")
 
         # AgentOrchestrator를 통한 자동 라우팅 및 실행
         # run_in_executor로 동기 함수를 비동기로 실행 (이벤트 루프 블로킹 방지)
@@ -47,7 +56,7 @@ async def chat_with_agent(request: AgentRequest):
             partial(
                 orchestrator.process,
                 message=request.message,
-                context=request.context,
+                context=context,
                 tenant_id=request.tenant_id,
             )
         )
@@ -157,6 +166,7 @@ async def stream_chat_response(
     message: str,
     context: dict,
     tenant_id: str = None,
+    conversation_history: list = None,
 ) -> AsyncGenerator[str, None]:
     """
     채팅 응답을 스트리밍으로 생성
@@ -172,6 +182,11 @@ async def stream_chat_response(
         # Step 2: Meta Router로 Intent 분류
         yield f"data: {json.dumps({'type': 'routing', 'message': 'Classifying intent...'})}\n\n"
 
+        # 대화 이력을 context에 포함
+        merged_context = dict(context)
+        if conversation_history:
+            merged_context["conversation_history"] = conversation_history[-10:]
+
         # orchestrator.process()를 run_in_executor로 비동기 실행
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
@@ -179,7 +194,7 @@ async def stream_chat_response(
             partial(
                 orchestrator.process,
                 message=message,
-                context=context,
+                context=merged_context,
                 tenant_id=tenant_id,
             )
         )
@@ -247,11 +262,17 @@ async def chat_stream(request: AgentRequest):
             }
         };
     """
+    # 대화 이력 변환
+    history = None
+    if request.conversation_history:
+        history = [msg.model_dump() for msg in request.conversation_history]
+
     return StreamingResponse(
         stream_chat_response(
             message=request.message,
             context=request.context or {},
             tenant_id=request.tenant_id,
+            conversation_history=history,
         ),
         media_type="text/event-stream",
         headers={
