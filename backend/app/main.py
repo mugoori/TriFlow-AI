@@ -12,7 +12,36 @@ from prometheus_client import make_asgi_app
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
 
+# Sentry 초기화 (가장 먼저 실행되어야 함)
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+
 from app.config import settings
+
+# Sentry 설정
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        release=f"triflow-ai@{settings.app_version}",
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        profiles_sample_rate=settings.sentry_profiles_sample_rate,
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            SqlalchemyIntegration(),
+            RedisIntegration(),
+            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+        ],
+        # PII 필터링
+        send_default_pii=False,
+        # 성능 영향 최소화
+        attach_stacktrace=True,
+        # 에러 샘플링
+        sample_rate=1.0,
+    )
 from app.utils.errors import classify_error, format_error_response, ErrorCategory
 from app.database import check_db_connection, SessionLocal
 
@@ -71,6 +100,17 @@ app = FastAPI(
 )
 
 # ========== 미들웨어 설정 (등록 역순으로 실행됨) ==========
+
+# 0. Metrics 미들웨어 (가장 먼저 - 모든 요청 측정)
+METRICS_ENABLED = os.getenv("METRICS_ENABLED", "true").lower() == "true"
+if METRICS_ENABLED:
+    try:
+        from app.middleware.metrics import MetricsMiddleware
+
+        app.add_middleware(MetricsMiddleware)
+        logger.info("Metrics middleware enabled")
+    except Exception as e:
+        logger.warning(f"Failed to enable Metrics middleware: {e}")
 
 # 1. CORS 미들웨어 (가장 먼저 실행)
 app.add_middleware(

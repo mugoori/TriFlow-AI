@@ -25,11 +25,19 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # TriFlow Backend API
+  # TriFlow Backend API (Docker)
   - job_name: 'triflow-backend'
     static_configs:
       - targets: ['backend:8000']
-    metrics_path: '/metrics'
+    metrics_path: '/metrics/'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # TriFlow Backend API (Local Development - host.docker.internal)
+  - job_name: 'triflow-backend-local'
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+    metrics_path: '/metrics/'
     scrape_interval: 10s
     scrape_timeout: 5s
 

@@ -545,6 +545,54 @@ curl http://localhost:3000/api/health  # Grafana
 
 ---
 
+## 📊 모니터링 시스템 구축 ✅ (2025-12-10)
+
+### 📋 완료 작업 내역
+- [x] **[Backend]** Prometheus 커스텀 메트릭 정의 (`backend/app/utils/metrics.py`)
+  - HTTP 요청 메트릭 (requests_total, duration_seconds, active_connections)
+  - LLM 토큰 사용량/비용 메트릭 (calls_total, tokens_total, cost_usd)
+  - Agent 호출 메트릭 (agent_calls_total, response_duration)
+  - 인증 메트릭 (auth_attempts, failures, token_operations)
+- [x] **[Backend]** 메트릭 수집 미들웨어 (`backend/app/middleware/metrics.py`)
+  - 모든 HTTP 요청 자동 메트릭 수집
+  - 엔드포인트 정규화 (UUID → `{id}`)
+  - `/metrics`, `/health`, `/docs` 경로 제외
+- [x] **[Backend]** Sentry 에러 트래킹 연동 (`backend/app/main.py`)
+  - FastAPI, SQLAlchemy, Redis 통합
+  - 환경별 샘플링 설정 (traces, profiles)
+  - PII 필터링 (`send_default_pii=False`)
+- [x] **[Infra]** Docker Compose 업데이트 (`docker-compose.yml`)
+  - Prometheus v2.47.0 서비스 추가
+  - Grafana 10.2.0 서비스 추가
+  - 볼륨 및 네트워크 설정
+- [x] **[Config]** Prometheus 설정 개선 (`monitoring/prometheus.yml`)
+  - `metrics_path: '/metrics/'` (trailing slash 수정)
+  - Local 개발용 `host.docker.internal` 타겟 추가
+- [x] **[Dashboard]** Grafana 대시보드 업데이트 (`monitoring/grafana/provisioning/dashboards/json/triflow-overview.json`)
+  - System Overview 패널 (RPS, 에러율, 응답시간)
+  - LLM Token Usage 패널 (토큰, 비용)
+  - Agent Metrics 패널 (호출 수, 성공률)
+
+### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. Backend 서버 실행
+cd backend && python -m uvicorn app.main:app --reload
+
+# 2. 메트릭 수집 확인
+curl http://localhost:8000/metrics/ | findstr http_requests_total
+
+# 3. Prometheus/Grafana 실행
+docker-compose up -d prometheus grafana
+
+# 4. Prometheus Targets 확인
+curl http://localhost:9090/api/v1/targets
+
+# 5. Grafana 접속 (admin / triflow_grafana_password)
+# http://localhost:3001
+```
+
+---
+
 ## 🧠 V1+ 에이전트 고도화 (Agent Enhancement)
 
 ### RAG (Retrieval-Augmented Generation) 시스템 ✅ (2025-12-03)

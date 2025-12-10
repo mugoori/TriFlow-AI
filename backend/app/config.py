@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # Monitoring
     prometheus_port: int = 9090
 
+    # Sentry (Error Tracking)
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.1
+    sentry_profiles_sample_rate: float = 0.1
+
     # OAuth2 - Google
     google_client_id: str = ""
     google_client_secret: str = ""
