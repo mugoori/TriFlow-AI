@@ -1350,6 +1350,67 @@ python -m pytest tests/ -v
 
 ---
 
+## 🔒 Production 보안 강화 ✅ (2025-12-10)
+
+### 보안 미들웨어 구현
+| Task | Status | Progress |
+| :--- | :--- | :--- |
+| **[Security]** Rate Limiting 미들웨어 | ✅ 완료 | ██████████ 100% |
+| **[Security]** Security Headers 미들웨어 | ✅ 완료 | ██████████ 100% |
+| **[Security]** API Key 스코프 검증 데코레이터 | ✅ 완료 | ██████████ 100% |
+| **[Security]** main.py 미들웨어 등록 | ✅ 완료 | ██████████ 100% |
+| **[Test]** 보안 테스트 작성 (23개) | ✅ 완료 | ██████████ 100% |
+
+#### 📋 Production 보안 강화 완료 작업 내역
+- [x] **[Middleware]** Rate Limiting 미들웨어 (`backend/app/middleware/rate_limit.py`)
+  - Redis 기반 슬라이딩 윈도우 Rate Limiter
+  - 엔드포인트별 제한 설정:
+    - `/api/v1/auth/login`: 10 req/min
+    - `/api/v1/auth/register`: 5 req/min
+    - `/api/v1/agents/chat`: 30 req/min
+    - 기본: 100 req/min
+  - X-RateLimit-* 응답 헤더 (Limit, Remaining, Reset)
+  - 429 Too Many Requests 응답
+- [x] **[Middleware]** Security Headers 미들웨어 (`backend/app/middleware/security_headers.py`)
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `X-XSS-Protection: 1; mode=block`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()`
+  - HSTS (Production 환경만): `max-age=31536000; includeSubDomains`
+- [x] **[Auth]** API Key 스코프 검증 (`backend/app/auth/dependencies.py`)
+  - `require_scope(scopes)`: 모든 스코프 필요 (AND 조건)
+  - `require_any_scope(scopes)`: 하나만 있으면 통과 (OR 조건)
+  - 유효 스코프: read, write, delete, admin, sensors, workflows, rulesets, erp_mes, notifications
+- [x] **[Config]** main.py 미들웨어 등록 순서
+  1. CORS 미들웨어
+  2. Security Headers 미들웨어
+  3. Rate Limiting 미들웨어
+  4. PII 마스킹 미들웨어
+  5. Audit Log 미들웨어
+- [x] **[Test]** 보안 테스트 (`backend/tests/test_security.py`)
+  - 보안 헤더 검증 (3개)
+  - Rate Limiting 검증 (4개)
+  - 스코프 검증 (4개)
+  - 인증 엔드포인트 보안 (4개)
+  - API Key 보안 (2개)
+  - 에러 응답 보안 (2개)
+  - 입력 검증 (3개)
+
+#### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. 보안 헤더 확인
+curl -I http://localhost:8000/api/v1/info
+
+# 2. Rate Limiting 테스트 (11회 이상 요청 시 429)
+for i in {1..15}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/api/v1/auth/login -d '{}' -H "Content-Type: application/json"; done
+
+# 3. 보안 테스트 실행
+cd backend && python -m pytest tests/test_security.py -v
+```
+
+---
+
 ## 📁 프로젝트 구조 (예정)
 
 ```

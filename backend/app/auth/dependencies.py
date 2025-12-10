@@ -3,7 +3,7 @@ FastAPI 인증 의존성
 Depends(get_current_user) 형태로 사용
 JWT Bearer 토큰 또는 API Key 인증 지원
 """
-from typing import Optional
+from typing import Optional, List, Callable
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status, Request, Header
@@ -222,3 +222,188 @@ async def require_admin(
         )
 
     return current_user
+
+
+# ========== API Key 스코프 검증 ==========
+
+# 유효한 스코프 목록
+VALID_SCOPES = {
+    "read",       # 데이터 조회
+    "write",      # 데이터 생성/수정
+    "delete",     # 데이터 삭제
+    "admin",      # 모든 권한 (관리자용)
+    "sensors",    # 센서 데이터
+    "workflows",  # 워크플로우
+    "rulesets",   # 룰셋
+    "erp_mes",    # ERP/MES 데이터
+    "notifications",  # 알림 전송
+}
+
+
+def require_scope(required_scopes: List[str]) -> Callable:
+    """
+    API Key 스코프 검증 의존성 팩토리
+
+    사용법:
+        @router.get("/sensors")
+        async def list_sensors(
+            user: User = Depends(require_scope(["read", "sensors"]))
+        ):
+            ...
+
+    Args:
+        required_scopes: 필요한 스코프 목록 (모두 충족해야 함)
+
+    Returns:
+        FastAPI Dependency 함수
+    """
+    async def scope_checker(
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+        x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+        request: Request = None,
+        db: Session = Depends(get_db),
+    ) -> User:
+        """스코프 검증 의존성"""
+        # API Key 추출
+        api_key = None
+        if x_api_key and x_api_key.startswith(API_KEY_PREFIX):
+            api_key = x_api_key
+        elif credentials and credentials.credentials.startswith(API_KEY_PREFIX):
+            api_key = credentials.credentials
+
+        # API Key 인증인 경우 스코프 검증
+        if api_key:
+            from app.services.api_key_service import validate_api_key
+
+            # 클라이언트 IP 추출
+            client_ip = None
+            if request:
+                client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                if not client_ip:
+                    client_ip = request.client.host if request.client else None
+
+            # API Key 검증 (스코프 포함)
+            api_key_obj = validate_api_key(
+                db=db,
+                api_key=api_key,
+                client_ip=client_ip,
+                required_scopes=required_scopes,
+            )
+
+            if not api_key_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired API Key",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            # 스코프 검증
+            if api_key_obj.scopes:
+                key_scopes = set(api_key_obj.scopes)
+                required_set = set(required_scopes)
+
+                # admin 스코프는 모든 스코프를 포함
+                if "admin" not in key_scopes:
+                    missing_scopes = required_set - key_scopes
+                    if missing_scopes:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Missing required scopes: {', '.join(missing_scopes)}",
+                        )
+
+            # API Key 소유자 조회
+            user = db.query(User).filter(User.user_id == api_key_obj.user_id).first()
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="API Key owner not found",
+                )
+            return user
+
+        # JWT 인증인 경우 (스코프 검증 없이 통과 - JWT는 전체 권한)
+        return await get_current_user(credentials, x_api_key, request, db)
+
+    return scope_checker
+
+
+def require_any_scope(required_scopes: List[str]) -> Callable:
+    """
+    API Key 스코프 검증 (하나라도 충족하면 통과)
+
+    사용법:
+        @router.get("/data")
+        async def get_data(
+            user: User = Depends(require_any_scope(["read", "admin"]))
+        ):
+            ...
+
+    Args:
+        required_scopes: 필요한 스코프 목록 (하나라도 충족하면 통과)
+
+    Returns:
+        FastAPI Dependency 함수
+    """
+    async def scope_checker(
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+        x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+        request: Request = None,
+        db: Session = Depends(get_db),
+    ) -> User:
+        """스코프 검증 의존성 (OR 조건)"""
+        # API Key 추출
+        api_key = None
+        if x_api_key and x_api_key.startswith(API_KEY_PREFIX):
+            api_key = x_api_key
+        elif credentials and credentials.credentials.startswith(API_KEY_PREFIX):
+            api_key = credentials.credentials
+
+        # API Key 인증인 경우 스코프 검증
+        if api_key:
+            from app.services.api_key_service import validate_api_key
+
+            # 클라이언트 IP 추출
+            client_ip = None
+            if request:
+                client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                if not client_ip:
+                    client_ip = request.client.host if request.client else None
+
+            # API Key 검증
+            api_key_obj = validate_api_key(
+                db=db,
+                api_key=api_key,
+                client_ip=client_ip,
+            )
+
+            if not api_key_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired API Key",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            # 스코프 검증 (하나라도 있으면 통과)
+            if api_key_obj.scopes:
+                key_scopes = set(api_key_obj.scopes)
+                required_set = set(required_scopes)
+
+                # admin 스코프는 모든 스코프를 포함
+                if "admin" not in key_scopes and not (key_scopes & required_set):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Requires one of: {', '.join(required_scopes)}",
+                    )
+
+            # API Key 소유자 조회
+            user = db.query(User).filter(User.user_id == api_key_obj.user_id).first()
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="API Key owner not found",
+                )
+            return user
+
+        # JWT 인증인 경우 (스코프 검증 없이 통과)
+        return await get_current_user(credentials, x_api_key, request, db)
+
+    return scope_checker
