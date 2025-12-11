@@ -43,16 +43,70 @@ Write-Host ""
 Write-Host "[3/3] Starting Backend and Frontend..."
 Write-Host ""
 
-# 기존 백엔드 프로세스 정리
+# 기존 백엔드 프로세스 정리 (강화된 버전)
 Write-Host "     [Backend] Cleaning up existing processes..."
-$existingPids = netstat -ano | Select-String ":8000.*LISTENING" | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -Unique
-foreach ($procId in $existingPids) {
-    if ($procId -match '^\d+$') {
-        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-        Write-Host "     [Backend] Killed PID: $procId"
+
+# 1. 포트 8000을 사용하는 모든 Python 프로세스 종료
+Get-Process -Name "python*" -ErrorAction SilentlyContinue | ForEach-Object {
+    $proc = $_
+    try {
+        $connections = Get-NetTCPConnection -OwningProcess $proc.Id -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 8000 }
+        if ($connections) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            Write-Host "     [Backend] Killed Python process PID: $($proc.Id)"
+        }
+    } catch {
+        # 무시
     }
 }
+
+# 2. netstat로 포트 8000 LISTENING 프로세스 종료
+$existingPids = netstat -ano | Select-String ":8000.*LISTENING" | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -Unique
+foreach ($procId in $existingPids) {
+    if ($procId -match '^\d+$' -and $procId -ne "0") {
+        try {
+            $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
+            if ($proc) {
+                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+                Write-Host "     [Backend] Killed PID: $procId ($($proc.ProcessName))"
+            }
+        } catch {
+            # Ghost socket - 프로세스 없음
+            Write-Host "     [Backend] Ghost socket detected for PID: $procId"
+        }
+    }
+}
+
+# 3. Ghost socket 감지 및 대기
 Start-Sleep -Seconds 2
+$stillListening = netstat -ano | Select-String ":8000.*LISTENING"
+if ($stillListening) {
+    Write-Host "     [Backend] WARNING: Port 8000 still in use (ghost sockets)"
+    Write-Host "     [Backend] Waiting for TCP TIME_WAIT to clear..."
+
+    # 최대 30초 대기
+    $maxWait = 30
+    $waited = 0
+    while ($waited -lt $maxWait) {
+        Start-Sleep -Seconds 2
+        $waited += 2
+        $stillListening = netstat -ano | Select-String ":8000.*LISTENING"
+        if (-not $stillListening) {
+            Write-Host "     [Backend] Port 8000 is now free!"
+            break
+        }
+        Write-Host "     [Backend] Still waiting... ($waited/$maxWait sec)"
+    }
+
+    # 그래도 안되면 netsh로 강제 리셋
+    if ($stillListening) {
+        Write-Host "     [Backend] Attempting TCP reset..."
+        netsh int ip reset | Out-Null
+        Start-Sleep -Seconds 3
+    }
+}
+
+Write-Host "     [Backend] Process cleanup complete."
 
 Write-Host "     [Backend] Initializing..."
 Write-Host "     [Backend] Directory: c:\dev\triflow-ai\backend"
