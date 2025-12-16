@@ -9,7 +9,7 @@
 -- 1. workflow_steps (워크플로우 단계)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS core.workflow_steps (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    step_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workflow_id UUID NOT NULL REFERENCES core.workflows(workflow_id) ON DELETE CASCADE,
     step_order INT NOT NULL,
     node_id TEXT NOT NULL,
@@ -67,7 +67,7 @@ COMMENT ON COLUMN core.workflow_instances.checkpoint_data IS '장기 실행 워�
 CREATE TABLE IF NOT EXISTS core.workflow_execution_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     instance_id UUID NOT NULL REFERENCES core.workflow_instances(instance_id) ON DELETE CASCADE,
-    step_id UUID REFERENCES core.workflow_steps(id),
+    step_id UUID REFERENCES core.workflow_steps(step_id),
     node_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'SKIPPED', 'RETRYING')),
     input_data JSONB,

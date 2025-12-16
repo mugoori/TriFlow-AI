@@ -2,10 +2,24 @@
 TriFlow AI - 에러 유틸리티
 사용자 친화적 에러 메시지 및 에러 분류
 """
+import asyncio
 import logging
 from enum import Enum
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
+
+# Optional imports for specific timeout exceptions
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+
+try:
+    import redis.exceptions
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +155,26 @@ ERROR_MESSAGES: Dict[str, UserFriendlyError] = {
 }
 
 
+def _is_timeout_exception(exception: Exception) -> bool:
+    """
+    실제 timeout 예외인지 확인
+    단순 문자열 매칭이 아닌 예외 타입 기반 확인
+    """
+    # Python 내장 timeout 예외
+    if isinstance(exception, (asyncio.TimeoutError, TimeoutError)):
+        return True
+
+    # httpx timeout 예외
+    if HTTPX_AVAILABLE and isinstance(exception, httpx.TimeoutException):
+        return True
+
+    # redis timeout 예외
+    if REDIS_AVAILABLE and isinstance(exception, redis.exceptions.TimeoutError):
+        return True
+
+    return False
+
+
 def classify_error(exception: Exception) -> UserFriendlyError:
     """
     예외를 분류하여 사용자 친화적 에러로 변환
@@ -153,6 +187,17 @@ def classify_error(exception: Exception) -> UserFriendlyError:
     """
     error_str = str(exception).lower()
     error_type = type(exception).__name__.lower()
+
+    # 디버그 로깅: 실제 예외 정보 출력
+    logger.debug(
+        f"classify_error called: type={type(exception).__name__}, "
+        f"message={str(exception)[:200]}"
+    )
+
+    # Timeout 에러 - 예외 타입 우선 확인 (문자열 매칭보다 우선)
+    if _is_timeout_exception(exception):
+        logger.info(f"Timeout exception detected: {type(exception).__name__}")
+        return ERROR_MESSAGES["agent_timeout"]
 
     # Anthropic API 에러
     if "rate" in error_str and "limit" in error_str:
@@ -170,13 +215,15 @@ def classify_error(exception: Exception) -> UserFriendlyError:
     if "duplicate" in error_str or "unique" in error_str:
         return ERROR_MESSAGES["duplicate_key"]
 
-    # 네트워크 에러
-    if "timeout" in error_str or "timed out" in error_str:
-        return ERROR_MESSAGES["agent_timeout"]
+    # 네트워크 에러 (timeout 문자열 매칭 제거 - 위에서 타입 기반으로 처리)
     if "connectionerror" in error_type or "networkerror" in error_type:
         return ERROR_MESSAGES["network_error"]
 
-    # 기본 에러
+    # 기본 에러 - 기술적 세부사항 포함하여 디버깅 지원
+    logger.warning(
+        f"Unclassified exception: type={type(exception).__name__}, "
+        f"message={str(exception)[:500]}"
+    )
     return UserFriendlyError(
         category=ErrorCategory.INTERNAL,
         message_ko="예기치 않은 오류가 발생했습니다.",

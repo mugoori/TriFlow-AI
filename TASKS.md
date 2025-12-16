@@ -593,6 +593,39 @@ curl http://localhost:9090/api/v1/targets
 
 ---
 
+## 🐛 V2 버그 수정 (2025-12-16)
+
+### 📋 완료 작업 내역
+- [x] **[Bug Fix]** Workflows 테이블 스키마 불일치 수정
+  - 문제: `dsl_digest` 등 7개 컬럼이 DB에 없어 워크플로우 저장 시 500 에러
+  - 해결: `backend/migrations/013_workflows_schema_extension.sql` 마이그레이션 생성
+  - 추가 컬럼: dsl_digest, trigger_config, timeout_seconds, max_retry, tags, metadata, activated_at
+- [x] **[Bug Fix]** 504 Timeout 오류 분류 버그 수정 (`backend/app/utils/errors.py`)
+  - 문제: `classify_error()`가 에러 메시지에 "timeout" 문자열 포함 시 모두 504로 분류
+  - 해결: 예외 타입 기반 분류로 변경 (`_is_timeout_exception()` 헬퍼 추가)
+- [x] **[Bug Fix]** 워크플로우 삭제 시 500 에러 수정
+  - 문제: `workflow_steps.step_id` 컬럼이 DB에서는 `id`로 정의되어 스키마 불일치
+  - 해결: `backend/migrations/014_workflow_steps_column_rename.sql` 마이그레이션 생성
+  - 작업: `workflow_steps.id` → `step_id` 컬럼명 변경
+- [x] **[UI]** 로딩 인디케이터 가시성 개선 (`frontend/src/components/ChatContainer.tsx`)
+  - 문제: `animate-pulse` 애니메이션이 멈춘 것처럼 보임
+  - 해결: 회전 스피너 (`animate-spin`)로 변경
+
+### 🔍 검증 방법 (How to Test)
+```powershell
+# 1. 마이그레이션 적용
+docker exec triflow-postgres psql -U triflow -d triflow_ai -f /tmp/013_workflows_schema_extension.sql
+docker exec triflow-postgres psql -U triflow -d triflow_ai -f /tmp/014_workflow_steps_column_rename.sql
+
+# 2. 워크플로우 삭제 테스트
+# Frontend에서 Workflows 탭 → 워크플로우 선택 → 삭제 버튼 클릭
+
+# 3. 워크플로우 저장 테스트 (채팅)
+# "온도 80도 넘으면 슬랙 알림 보내" → 워크플로우 미리보기 → "적용" 버튼 클릭
+```
+
+---
+
 ## 🧠 V1+ 에이전트 고도화 (Agent Enhancement)
 
 ### RAG (Retrieval-Augmented Generation) 시스템 ✅ (2025-12-03)

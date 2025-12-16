@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS rulesets (
     UNIQUE(tenant_id, name, version)
 );
 
--- Workflow 정의
+-- Workflow 정의 (B-3-1 Core Schema 스펙 준수)
 CREATE TABLE IF NOT EXISTS workflows (
     workflow_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
@@ -51,6 +51,15 @@ CREATE TABLE IF NOT EXISTS workflows (
     dsl_json JSONB NOT NULL,
     version VARCHAR(50) NOT NULL,
     is_active BOOLEAN DEFAULT false,
+    -- B-3-1 확장 컬럼
+    dsl_digest VARCHAR(64),                     -- DSL JSON SHA256 해시 (변경 추적)
+    trigger_config JSONB,                       -- 트리거 설정 (schedule, event, webhook)
+    timeout_seconds INTEGER DEFAULT 300,        -- 워크플로우 타임아웃 (초)
+    max_retry INTEGER DEFAULT 3,                -- 최대 재시도 횟수
+    tags TEXT[] DEFAULT '{}',                   -- 태그 배열 (검색용)
+    metadata JSONB DEFAULT '{}',                -- 추가 메타데이터
+    activated_at TIMESTAMP,                     -- 활성화 시각
+    -- 감사 컬럼
     created_by UUID REFERENCES users(user_id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -108,6 +117,9 @@ CREATE INDEX idx_users_tenant_id ON users(tenant_id);
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_rulesets_tenant_active ON rulesets(tenant_id, is_active);
 CREATE INDEX idx_workflows_tenant_active ON workflows(tenant_id, is_active);
+CREATE INDEX idx_workflows_tags ON workflows USING GIN (tags);
+CREATE INDEX idx_workflows_dsl_digest ON workflows(dsl_digest);
+CREATE INDEX idx_workflows_trigger_config ON workflows USING GIN (trigger_config);
 CREATE INDEX idx_judgment_executions_tenant_workflow ON judgment_executions(tenant_id, workflow_id, executed_at DESC);
 CREATE INDEX idx_workflow_instances_tenant_status ON workflow_instances(tenant_id, status, started_at DESC);
 CREATE INDEX idx_sensor_data_line_type_time ON sensor_data(tenant_id, line_code, sensor_type, recorded_at DESC);
