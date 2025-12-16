@@ -51,6 +51,12 @@ import { WorkflowEditor } from '@/components/workflow/WorkflowEditor';
 import { FlowEditor } from '@/components/workflow/FlowEditor';
 import type { WorkflowDSL } from '@/services/workflowService';
 import { useToast } from '@/components/ui/Toast';
+import {
+  flattenWorkflowNodes,
+  getNodeTypeLabel,
+  getNodeSummary,
+} from '@/utils/workflowUtils';
+import type { WorkflowNode } from '@/types/agent';
 
 // 트리거 타입 한글 매핑
 const triggerTypeLabels: Record<string, string> = {
@@ -90,28 +96,6 @@ const categoryColors: Record<string, string> = {
   control: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800',
   analysis: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800',
 };
-
-// 조건식 한글화 헬퍼 (temperature >= 80 → 온도 >= 80)
-const conditionLabels: Record<string, string> = {
-  temperature: '온도',
-  pressure: '압력',
-  humidity: '습도',
-  vibration: '진동',
-  flow_rate: '유량',
-  defect_rate: '불량률',
-  rpm: 'RPM',
-  power: '전력',
-  speed: '속도',
-};
-
-const translateCondition = (condition: string): string => {
-  let result = condition;
-  for (const [eng, kor] of Object.entries(conditionLabels)) {
-    result = result.replace(new RegExp(`\\b${eng}\\b`, 'gi'), kor);
-  }
-  return result;
-};
-
 
 export function WorkflowsPage() {
   const toast = useToast();
@@ -303,12 +287,6 @@ export function WorkflowsPage() {
     ? actions.filter((a) => a.category === selectedCategory)
     : actions;
 
-  // 액션명을 한글로 변환하는 헬퍼 함수
-  const getActionDisplayName = useCallback((actionName: string): string => {
-    const action = actions.find((a) => a.name === actionName);
-    return action?.display_name || actionName;
-  }, [actions]);
-
   // 액션 클릭 핸들러
   const handleActionClick = (action: ActionCatalogItem) => {
     setSelectedAction(action);
@@ -455,7 +433,6 @@ export function WorkflowsPage() {
 
   // 워크플로우 편집 열기
   const handleEditWorkflow = (workflow: Workflow) => {
-    console.log('[WorkflowsPage] handleEditWorkflow called, workflow_id:', workflow.workflow_id);
     setEditingWorkflowId(workflow.workflow_id);
     // 깊은 복사로 원본과 분리
     setEditingWorkflowDSL(JSON.parse(JSON.stringify(workflow.dsl_definition)));
@@ -1046,30 +1023,41 @@ export function WorkflowsPage() {
                                   </div>
                                 )}
 
-                                {/* DSL 미리보기 */}
+                                {/* DSL 미리보기 - 중첩 노드 평탄화하여 표시 */}
                                 <div>
                                   <h4 className="text-sm font-semibold mb-2">워크플로우 구조</h4>
                                   <div className="flex flex-wrap gap-2">
                                     {workflow.dsl_definition?.nodes?.length > 0 ? (
-                                      workflow.dsl_definition.nodes.map((node, idx) => (
-                                        <div
-                                          key={node.id || idx}
-                                          className={`px-3 py-2 rounded-lg border ${
-                                            node.type === 'condition'
-                                              ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20'
-                                              : 'border-blue-300 bg-blue-50 dark:bg-blue-900/20'
-                                          }`}
-                                        >
-                                          <div className="text-xs text-slate-500">
-                                            {idx + 1}. {node.type === 'condition' ? '조건' : '액션'}
+                                      flattenWorkflowNodes(workflow.dsl_definition.nodes as WorkflowNode[]).map((flatNode, idx) => {
+                                        const node = flatNode.node;
+                                        const isCondition = node.type === 'condition' || node.type === 'if_else';
+                                        const bgClass = isCondition
+                                          ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20'
+                                          : node.type === 'parallel'
+                                          ? 'border-purple-300 bg-purple-50 dark:bg-purple-900/20'
+                                          : node.type === 'loop'
+                                          ? 'border-green-300 bg-green-50 dark:bg-green-900/20'
+                                          : 'border-blue-300 bg-blue-50 dark:bg-blue-900/20';
+                                        return (
+                                          <div
+                                            key={`${node.id || idx}-${flatNode.depth}`}
+                                            className={`px-3 py-2 rounded-lg border ${bgClass}`}
+                                            style={{ marginLeft: `${flatNode.depth * 8}px` }}
+                                          >
+                                            <div className="text-xs text-slate-500 flex items-center gap-1">
+                                              {flatNode.depth > 0 && (
+                                                <span className="text-slate-400">
+                                                  {flatNode.branchType === 'then' ? 'T' : flatNode.branchType === 'else' ? 'E' : ''}
+                                                </span>
+                                              )}
+                                              {idx + 1}. {getNodeTypeLabel(node.type)}
+                                            </div>
+                                            <div className="text-sm">
+                                              {getNodeSummary(node)}
+                                            </div>
                                           </div>
-                                          <div className="text-sm">
-                                            {node.type === 'condition'
-                                              ? translateCondition((node.config as { condition?: string })?.condition || node.id)
-                                              : getActionDisplayName((node.config as { action?: string })?.action || node.id)}
-                                          </div>
-                                        </div>
-                                      ))
+                                        );
+                                      })
                                     ) : (
                                       <span className="text-sm text-slate-500">노드 정보 없음</span>
                                     )}

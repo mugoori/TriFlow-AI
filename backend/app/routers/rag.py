@@ -2,6 +2,8 @@
 TriFlow AI - RAG (문서/지식베이스) API 라우터
 ==============================================
 문서 업로드, 검색, 관리 엔드포인트
+
+스키마 버전: Migration 012 (B-3-3 스펙)
 """
 import logging
 from typing import List, Optional
@@ -20,26 +22,32 @@ router = APIRouter(prefix="/rag", tags=["RAG - Knowledge Base"])
 
 
 # ===========================================
-# Schemas
+# Schemas (Migration 012 스키마 기준)
 # ===========================================
 
 class DocumentCreate(BaseModel):
-    """문서 생성 요청"""
+    """문서 생성 요청 (새 스키마)"""
     title: str = Field(..., min_length=1, max_length=500)
     content: str = Field(..., min_length=1)
-    document_type: str = Field(default="MANUAL", description="MANUAL, PROCEDURE, FAQ, LOG 등")
-    source_url: Optional[str] = None
+    source_type: str = Field(
+        default="manual",
+        description="manual, sop, wiki, faq, judgment_log, feedback, external_doc"
+    )
+    source_id: Optional[str] = Field(None, description="소스 식별자 (예: SOP-001)")
+    section: Optional[str] = Field(None, description="문서 섹션")
     metadata: Optional[dict] = None
+    tags: Optional[List[str]] = Field(default=[], description="문서 태그")
 
 
 class DocumentResponse(BaseModel):
     """문서 응답"""
     document_id: str
     title: str
-    document_type: str
-    source_url: Optional[str] = None
+    source_type: str
+    source_id: Optional[str] = None
     created_at: Optional[str] = None
     chunk_count: int = 0
+    tags: List[str] = []
 
 
 class SearchRequest(BaseModel):
@@ -47,16 +55,20 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000)
     top_k: int = Field(default=5, ge=1, le=20)
     similarity_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    source_type: Optional[str] = Field(None, description="소스 타입 필터")
 
 
 class SearchResult(BaseModel):
-    """검색 결과 항목"""
+    """검색 결과 항목 (새 스키마)"""
     document_id: str
     title: str
-    document_type: str
-    chunk_text: str
+    source_type: str
+    source_id: Optional[str] = None
+    section: Optional[str] = None
+    text: str  # chunk_text → text
     chunk_index: int
     similarity: float
+    tags: List[str] = []
 
 
 class SearchResponse(BaseModel):
@@ -77,9 +89,10 @@ async def add_document(
     current_user: User = Depends(get_current_user),
 ):
     """
-    새 문서를 RAG 시스템에 추가합니다.
+    새 문서를 RAG 시스템에 추가합니다. (Migration 012 스키마)
     - 문서는 자동으로 청크로 분할됩니다.
     - 각 청크는 벡터 임베딩으로 변환되어 저장됩니다.
+    - source_type: manual, sop, wiki, faq, judgment_log, feedback, external_doc
     """
     logger.info(f"RAG add_document request: title={document.title}, tenant_id={current_user.tenant_id}")
     try:
@@ -88,9 +101,11 @@ async def add_document(
             tenant_id=current_user.tenant_id,
             title=document.title,
             content=document.content,
-            document_type=document.document_type,
-            source_url=document.source_url,
+            source_type=document.source_type,
+            source_id=document.source_id,
+            section=document.section,
             metadata=document.metadata,
+            tags=document.tags,
         )
         logger.info(f"RAG add_document result: {result}")
 
@@ -112,7 +127,8 @@ async def add_document(
 async def upload_document(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
-    document_type: str = Form("MANUAL"),
+    source_type: str = Form("manual"),
+    source_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -128,7 +144,6 @@ async def upload_document(
     if filename.endswith(".pdf"):
         # PDF 텍스트 추출 (간단한 구현)
         try:
-            import io
             # PyMuPDF 또는 pdfplumber 사용
             try:
                 import fitz  # PyMuPDF
@@ -157,8 +172,8 @@ async def upload_document(
         tenant_id=current_user.tenant_id,
         title=title or filename,
         content=text_content,
-        document_type=document_type,
-        source_url=f"upload://{filename}",
+        source_type=source_type,
+        source_id=source_id or f"upload://{filename}",
     )
 
     if not result["success"]:
@@ -196,18 +211,19 @@ async def search_documents(
 
 @router.get("/documents", response_model=dict, summary="문서 목록")
 async def list_documents(
-    document_type: Optional[str] = None,
+    source_type: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     current_user: User = Depends(get_current_user),
 ):
     """
     RAG 시스템의 문서 목록을 조회합니다.
+    source_type 필터: manual, sop, wiki, faq, judgment_log, feedback, external_doc
     """
     rag_service = get_rag_service()
     result = await rag_service.list_documents(
         tenant_id=current_user.tenant_id,
-        document_type=document_type,
+        source_type=source_type,
         limit=limit,
         offset=offset,
     )

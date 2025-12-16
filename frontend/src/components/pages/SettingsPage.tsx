@@ -2,7 +2,7 @@
  * Settings Page
  * 일반 설정, Backend 연결, AI 모델, 알림 설정, 앱 정보
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { settingsService, NotificationTestResult } from '../../services/settingsService';
 
 type Theme = 'system' | 'light' | 'dark';
@@ -54,8 +54,9 @@ const APP_INFO = {
   github: 'https://github.com/mugoori/TriFlow-AI',
 };
 
-export function SettingsPage() {
-  const [settings, setSettings] = useState<Settings>({
+// localStorage에서 초기 설정 로드 (컴포넌트 외부에서 동기적으로 실행)
+function getInitialSettings(): Settings {
+  const defaultSettings: Settings = {
     theme: 'system',
     language: 'ko',
     notifications: true,
@@ -64,7 +65,22 @@ export function SettingsPage() {
     aiModel: 'claude-sonnet-4-5-20250929',
     maxTokens: 4096,
     tenantId: 'default-tenant',
-  });
+  };
+
+  try {
+    const saved = localStorage.getItem('triflow-settings');
+    if (saved) {
+      return { ...defaultSettings, ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.error('Failed to parse saved settings:', e);
+  }
+  return defaultSettings;
+}
+
+export function SettingsPage() {
+  // 초기 상태를 localStorage에서 동기적으로 로드 (깜빡임 방지)
+  const [settings, setSettings] = useState<Settings>(getInitialSettings);
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     backend: 'checking',
@@ -110,21 +126,19 @@ export function SettingsPage() {
   ).length;
   const emailConfigured = emailFilledCount === 5;
 
-  // Load settings from localStorage on mount
-  useEffect(() => {
-    const savedSettings = localStorage.getItem('triflow-settings');
-    if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings);
-        setSettings(prev => ({ ...prev, ...parsed }));
-      } catch (e) {
-        console.error('Failed to parse saved settings:', e);
-      }
-    }
-  }, []);
+  // 초기 마운트 여부 추적 (깜빡임 방지)
+  // 참고: 설정은 getInitialSettings()에서 동기적으로 이미 로드됨
+  const isInitialMount = useRef(true);
 
-  // Apply theme
+  // Apply theme (사용자가 테마를 변경할 때만 적용, 초기 마운트 시 건너뜀)
+  // index.html의 인라인 스크립트가 이미 올바른 테마를 적용했으므로
+  // 초기 마운트 시 재적용하면 깜빡임이 발생함
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return; // 초기 마운트 시 건너뛰기
+    }
+
     const root = document.documentElement;
     if (settings.theme === 'dark') {
       root.classList.add('dark');

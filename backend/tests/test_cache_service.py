@@ -3,7 +3,7 @@ Cache Service 테스트
 Redis 캐싱 유틸리티 테스트
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 import json
 
 from app.services.cache_service import (

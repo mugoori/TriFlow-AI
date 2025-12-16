@@ -1,9 +1,16 @@
 # B-5. Workflow / State Machine Spec
 
+## 문서 정보
+- **문서 ID**: B-5
+- **버전**: 2.0 (V7 Intent + 15 Nodes)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
+- **관련 문서**: A-1, B-2, B-3-1, B-6, E-3
+
 ## 1. 개요
 
 ### 1.1 목적
-본 문서는 AI Factory Decision Engine의 Workflow DSL 및 State Machine 명세를 정의한다. 비즈니스 로직을 선언적으로 표현하고, 장기 실행 프로세스와 이벤트 기반 오케스트레이션을 지원한다.
+본 문서는 AI Factory Decision Engine의 Workflow DSL 및 State Machine 명세를 정의한다. 비즈니스 로직을 선언적으로 표현하고, 장기 실행 프로세스와 이벤트 기반 오케스트레이션을 지원한다. **V7 Intent 체계와 연동하여 Intent Router → Orchestrator → Workflow Engine 파이프라인을 구현한다.**
 
 ### 1.2 범위
 - Workflow DSL 문법 및 노드 타입 정의
@@ -18,11 +25,14 @@
 | 요구사항 ID | Workflow 관련 항목 | 관련 문서 |
 |------------|-------------------|----------|
 | WF-FR-001 | DSL 기반 워크플로우 정의 | A-2, B-4 |
-| WF-FR-002 | 13개 노드 타입 지원 | B-2 |
+| WF-FR-002 | **15개 노드 타입 지원 (P0/P1/P2)** | B-2, B-3-1 |
 | WF-FR-003 | 조건 분기 및 병렬 처리 | B-1 |
 | WF-FR-004 | 에러 복구 및 보상 | C-3 |
 | WF-FR-005 | 장기 실행 지원 | D-1 |
 | WF-FR-006 | 버전 관리 및 배포 | D-3 |
+| WF-FR-007 | **V7 Intent → Orchestrator 연동** | B-6, E-3 |
+| WF-FR-008 | **CODE 노드 (Python 실행)** | B-3-1 |
+| WF-FR-009 | **TRIGGER 노드 (이벤트 트리거)** | B-3-1 |
 
 ---
 
@@ -40,20 +50,28 @@ graph TB
         STATE --> PERSIST[Persistence Layer]
     end
 
-    subgraph "Node Executors"
-        DATA_EX[DATA Executor]
-        BI_EX[BI Executor]
-        JUDGE_EX[JUDGMENT Executor]
-        MCP_EX[MCP Executor]
-        ACTION_EX[ACTION Executor]
-        APPROVAL_EX[APPROVAL Executor]
-        WAIT_EX[WAIT Executor]
-        SWITCH_EX[SWITCH Executor]
-        PARALLEL_EX[PARALLEL Executor]
-        COMP_EX[COMPENSATION Executor]
-        DEPLOY_EX[DEPLOY Executor]
-        ROLLBACK_EX[ROLLBACK Executor]
-        SIM_EX[SIMULATE Executor]
+    subgraph "Node Executors (15종)"
+        subgraph "P0 - 핵심 (5개)"
+            DATA_EX[DATA Executor]
+            JUDGE_EX[JUDGMENT Executor]
+            CODE_EX[CODE Executor]
+            SWITCH_EX[SWITCH Executor]
+            ACTION_EX[ACTION Executor]
+        end
+        subgraph "P1 - 확장 (5개)"
+            BI_EX[BI Executor]
+            MCP_EX[MCP Executor]
+            TRIGGER_EX[TRIGGER Executor]
+            WAIT_EX[WAIT Executor]
+            APPROVAL_EX[APPROVAL Executor]
+        end
+        subgraph "P2 - 고급 (5개)"
+            PARALLEL_EX[PARALLEL Executor]
+            COMP_EX[COMPENSATION Executor]
+            DEPLOY_EX[DEPLOY Executor]
+            ROLLBACK_EX[ROLLBACK Executor]
+            SIM_EX[SIMULATE Executor]
+        end
     end
 
     subgraph "External Systems"
@@ -64,10 +82,12 @@ graph TB
         AAS[AAS Registry]
     end
 
-    EXE --> DATA_EX & BI_EX & JUDGE_EX & MCP_EX
-    EXE --> ACTION_EX & APPROVAL_EX & WAIT_EX
-    EXE --> SWITCH_EX & PARALLEL_EX & COMP_EX
-    EXE --> DEPLOY_EX & ROLLBACK_EX & SIM_EX
+    EXE --> DATA_EX & JUDGE_EX & CODE_EX & SWITCH_EX & ACTION_EX
+    EXE --> BI_EX & MCP_EX & TRIGGER_EX & WAIT_EX & APPROVAL_EX
+    EXE --> PARALLEL_EX & COMP_EX & DEPLOY_EX & ROLLBACK_EX & SIM_EX
+
+    CODE_EX --> DB
+    TRIGGER_EX --> DB
 
     DATA_EX --> DB
     BI_EX --> DB
@@ -212,7 +232,29 @@ stateDiagram-v2
 
 ---
 
-## 4. 노드 타입 상세 명세 (13종)
+## 4. 노드 타입 상세 명세 (15종)
+
+### 4.0 노드 타입 개요
+
+| 우선순위 | 노드 타입 | 설명 | 주요 용도 |
+|---------|----------|------|----------|
+| **P0** | DATA | 외부 데이터 소스 조회 | 모든 데이터 파이프라인 시작점 |
+| **P0** | JUDGMENT | LLM 기반 분석/판단 | 원인 분석, 예측, 비교 |
+| **P0** | CODE | Python 코드 실행 | 데이터 변환, 계산 |
+| **P0** | SWITCH | 조건 분기 | 규칙 기반 라우팅 |
+| **P0** | ACTION | 외부 액션 실행 | 알림, Webhook |
+| **P1** | BI | BI 시각화 생성 | 차트, 리포트 |
+| **P1** | MCP | MCP 서버 도구 호출 | 외부 서비스 연동 |
+| **P1** | TRIGGER | 워크플로우 트리거 | 스케줄, 이벤트 기반 시작 |
+| **P1** | WAIT | 대기 | 시간, 이벤트 대기 |
+| **P1** | APPROVAL | 사용자 승인 대기 | 결재, 승인 워크플로우 |
+| **P2** | PARALLEL | 병렬 실행 | 동시 처리 |
+| **P2** | COMPENSATION | 보상 트랜잭션 | 롤백 액션 |
+| **P2** | DEPLOY | 배포 | 룰, 모델 배포 |
+| **P2** | ROLLBACK | 롤백 | 버전 복구 |
+| **P2** | SIMULATE | 시뮬레이션 | What-if 분석 |
+
+---
 
 ### 4.1 DATA 노드
 
@@ -402,7 +444,109 @@ flowchart TD
 
 ---
 
-### 4.4 MCP 노드
+### 4.4 CODE 노드 (신규 - P0)
+
+Python 코드를 샌드박스 환경에서 실행하여 데이터 변환, 계산, 검증을 수행한다.
+
+```json
+{
+  "id": "code_transform",
+  "type": "CODE",
+  "name": "불량률 계산 및 통계 분석",
+  "config": {
+    "code_type": "transform | calculate | validate | format | custom",
+    "code_template_id": "defect_rate_calc_v1",
+    "inline_code": null,
+    "sandbox_enabled": true,
+    "allowed_imports": ["pandas", "numpy", "datetime", "json", "statistics"]
+  },
+  "input": {
+    "data": "${defect_data}",
+    "parameters": {
+      "threshold": 0.05,
+      "window_days": 7
+    }
+  },
+  "output": {
+    "variable": "calculated_metrics",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "defect_rate": {"type": "number"},
+        "trend": {"enum": ["increasing", "decreasing", "stable"]},
+        "stats": {"type": "object"}
+      }
+    }
+  },
+  "execution": {
+    "timeout_ms": 30000,
+    "memory_limit_mb": 512,
+    "cpu_limit_percent": 50
+  },
+  "audit": {
+    "log_input": true,
+    "log_output": true,
+    "log_execution_time": true
+  }
+}
+```
+
+**Code 템플릿 예시:**
+
+```python
+# defect_rate_calc_v1.py
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+
+def execute(data, parameters):
+    df = pd.DataFrame(data)
+    threshold = parameters.get('threshold', 0.05)
+    window = parameters.get('window_days', 7)
+
+    # 불량률 계산
+    df['defect_rate'] = df['defect_count'] / df['production_count']
+
+    # 추세 분석
+    recent = df.tail(window)
+    slope = np.polyfit(range(len(recent)), recent['defect_rate'], 1)[0]
+
+    trend = 'stable'
+    if slope > 0.001:
+        trend = 'increasing'
+    elif slope < -0.001:
+        trend = 'decreasing'
+
+    return {
+        'defect_rate': float(df['defect_rate'].mean()),
+        'trend': trend,
+        'stats': {
+            'mean': float(df['defect_rate'].mean()),
+            'std': float(df['defect_rate'].std()),
+            'max': float(df['defect_rate'].max()),
+            'min': float(df['defect_rate'].min())
+        },
+        'alert': df['defect_rate'].iloc[-1] > threshold
+    }
+```
+
+**속성 정의:**
+
+| 속성 | 타입 | 필수 | 설명 |
+|-----|------|------|------|
+| id | string | Y | 노드 고유 ID |
+| type | "CODE" | Y | 노드 타입 |
+| config.code_type | enum | Y | transform, calculate, validate, format, custom |
+| config.code_template_id | string | N | 사전 정의된 코드 템플릿 ID |
+| config.inline_code | string | N | 인라인 Python 코드 (custom일 때) |
+| config.sandbox_enabled | boolean | Y | 샌드박스 실행 여부 (기본 true) |
+| config.allowed_imports | array | N | 허용된 import 목록 |
+| execution.timeout_ms | integer | N | 타임아웃 (기본 30000) |
+| execution.memory_limit_mb | integer | N | 메모리 제한 (기본 512) |
+
+---
+
+### 4.5 MCP 노드
 
 외부 MCP 서버를 호출하여 도구 실행, 리소스 접근 등을 수행한다.
 
@@ -569,7 +713,80 @@ stateDiagram-v2
 
 ---
 
-### 4.7 WAIT 노드
+### 4.7 TRIGGER 노드 (신규 - P1)
+
+워크플로우를 시작하는 트리거를 정의한다. 스케줄, 이벤트, 조건, 웹훅 등 다양한 트리거 유형을 지원한다.
+
+```json
+{
+  "id": "trigger_defect_alert",
+  "type": "TRIGGER",
+  "name": "불량률 임계값 트리거",
+  "config": {
+    "trigger_type": "schedule | event | condition | webhook | manual",
+    "schedule_config": {
+      "cron": "0 8 * * *",
+      "timezone": "Asia/Seoul"
+    },
+    "event_config": {
+      "event_type": "mes.defect.detected",
+      "filter": {
+        "severity": {"$gte": "high"},
+        "line_id": {"$in": ["L01", "L02", "L03"]}
+      }
+    },
+    "condition_config": {
+      "expression": "defect_rate > 0.05",
+      "check_interval_seconds": 60,
+      "debounce_seconds": 300
+    },
+    "webhook_config": {
+      "path": "/api/v1/triggers/defect-alert",
+      "method": "POST",
+      "auth": "bearer_token",
+      "rate_limit": {"requests": 100, "window_sec": 60}
+    }
+  },
+  "output": {
+    "triggered": true,
+    "trigger_time": "2025-12-16T08:00:00+09:00",
+    "trigger_reason": "Schedule: 0 8 * * *",
+    "initial_context": {
+      "trigger_type": "schedule",
+      "trigger_id": "trigger_defect_alert",
+      "workflow_id": "wf_daily_defect_check"
+    }
+  },
+  "enabled": true,
+  "retry_on_failure": false
+}
+```
+
+**트리거 타입 상세:**
+
+| 타입 | 설명 | 사용 사례 |
+|------|------|----------|
+| schedule | 크론 표현식 기반 스케줄 | 일일 리포트, 정기 점검 |
+| event | 이벤트 버스 구독 | MES 이상 감지, 센서 알림 |
+| condition | 주기적 조건 평가 | 임계값 초과 감시 |
+| webhook | HTTP 호출 트리거 | 외부 시스템 연동 |
+| manual | 수동 실행 | 테스트, 일회성 실행 |
+
+**속성 정의:**
+
+| 속성 | 타입 | 필수 | 설명 |
+|-----|------|------|------|
+| id | string | Y | 트리거 고유 ID |
+| type | "TRIGGER" | Y | 노드 타입 |
+| config.trigger_type | enum | Y | schedule, event, condition, webhook, manual |
+| config.schedule_config.cron | string | N | 크론 표현식 |
+| config.event_config.event_type | string | N | 이벤트 타입 |
+| config.condition_config.expression | string | N | 조건 표현식 |
+| enabled | boolean | Y | 활성화 여부 |
+
+---
+
+### 4.8 WAIT 노드
 
 지정된 조건이 충족되거나 타임아웃까지 대기한다.
 
@@ -2102,9 +2319,9 @@ workflow_dashboard:
         "properties": {
           "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
           "type": {
-            "enum": ["DATA", "BI", "MCP", "JUDGMENT", "ACTION", "APPROVAL",
-                     "WAIT", "SWITCH", "PARALLEL", "COMPENSATION",
-                     "DEPLOY", "ROLLBACK", "SIMULATE"]
+            "enum": ["DATA", "JUDGMENT", "CODE", "SWITCH", "ACTION",
+                     "BI", "MCP", "TRIGGER", "WAIT", "APPROVAL",
+                     "PARALLEL", "COMPENSATION", "DEPLOY", "ROLLBACK", "SIMULATE"]
           },
           "name": {"type": "string"},
           "description": {"type": "string"},
@@ -2316,8 +2533,11 @@ workflow_dashboard:
 
 | 본 문서 항목 | 관련 문서 | 연결 내용 |
 |-------------|----------|----------|
-| 노드 타입 정의 | B-2 Module Design | Executor 모듈 설계 |
+| 노드 타입 정의 (15종) | B-2 Module Design | Executor 모듈 설계 |
 | JUDGMENT 노드 | B-6 AI/Agent Spec | 판정 정책, 프롬프트 템플릿 |
+| CODE 노드 (신규) | B-3-1 Core Schema | Python 코드 실행, 데이터 변환 |
+| TRIGGER 노드 (신규) | B-3-1 Core Schema | 워크플로우 시작 트리거 |
+| V7 Intent 매핑 | E-3 Intent Router | Intent → 노드 타입 라우팅 |
 | 데이터 조회 | B-3 DB Schema | fact_*, dim_* 테이블 |
 | API 호출 | B-4 API Spec | Workflow API endpoints |
 | 에러 처리 | D-3 Runbook | 장애 대응 절차 |
@@ -2340,6 +2560,8 @@ workflow_dashboard:
 | DEPLOY 배포 | TC-WF-009 | High |
 | ROLLBACK 롤백 | TC-WF-010 | High |
 | SIMULATE 시뮬레이션 | TC-WF-011 | Medium |
+| CODE Python 실행 | TC-WF-014 | High |
+| TRIGGER 이벤트 트리거 | TC-WF-015 | High |
 | 장기 실행 체크포인트 | TC-WF-012 | High |
 | DLQ 처리 | TC-WF-013 | Medium |
 
@@ -2360,9 +2582,29 @@ workflow_dashboard:
 | Circuit Breaker | 회로 차단기, 연속 실패 시 요청 차단 |
 | Idempotency | 멱등성, 동일 요청의 동일 결과 보장 |
 
-### 14.2 변경 이력
+### 14.2 V7 Intent → 노드 타입 매핑 (신규)
+
+| V7 Intent | 주요 노드 타입 | 설명 |
+|-----------|--------------|------|
+| CHECK | DATA, CODE | 단순 데이터 조회 및 변환 |
+| TREND | DATA, CODE, BI | 시계열 데이터 조회 및 시각화 |
+| COMPARE | DATA, JUDGMENT, CODE | 비교 분석 |
+| RANK | DATA, JUDGMENT, CODE | 순위/최대/최소 조회 |
+| FIND_CAUSE | DATA, JUDGMENT, SWITCH | 원인 분석 |
+| DETECT_ANOMALY | DATA, SWITCH, ACTION | 이상 감지 및 알림 |
+| PREDICT | DATA, JUDGMENT, SIMULATE | 예측 분석 |
+| WHAT_IF | DATA, JUDGMENT, SIMULATE | 가정/시뮬레이션 |
+| REPORT | DATA, CODE, BI | 보고서/차트 생성 |
+| NOTIFY | TRIGGER, ACTION, WAIT | 알림/워크플로우 설정 |
+| CONTINUE | - | 컨텍스트 의존 (이전 노드 재사용) |
+| CLARIFY | - | 추가 질문 (노드 실행 없음) |
+| STOP | - | 중단 (노드 실행 없음) |
+| SYSTEM | - | 직접 응답 (노드 실행 없음) |
+
+### 14.3 변경 이력
 
 | 버전 | 날짜 | 변경 내용 | 작성자 |
 |-----|------|----------|-------|
 | 1.0 | 2024-01-10 | 초안 작성 | - |
 | 2.0 | 2024-01-15 | 상세 노드 스펙, 조건식 문법, 에러 처리 추가 | AI Assistant |
+| 3.0 | 2025-12-16 | **V7 Intent 체계 연동, 노드 타입 13→15개 확장 (CODE, TRIGGER 추가), Orchestrator 연동 문서화** | AI Factory Team |

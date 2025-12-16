@@ -7,6 +7,15 @@
     "core:default",
     "opener:default",
     "shell:allow-open",
-    "shell:allow-execute"
+    "shell:allow-execute",
+    "http:default",
+    {
+      "identifier": "http:allow-fetch",
+      "allow": [
+        { "url": "http://localhost:*" },
+        { "url": "http://127.0.0.1:*" },
+        { "url": "https://*" }
+      ]
+    }
   ]
 }

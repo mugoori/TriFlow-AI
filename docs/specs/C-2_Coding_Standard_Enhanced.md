@@ -2,9 +2,9 @@
 
 ## 문서 정보
 - **문서 ID**: C-2
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - B-1 System Architecture
   - B-2 Module/Service Design
@@ -258,6 +258,97 @@ SELECT j.id,j.workflow_id,j.executed_at,w.name as workflow_name FROM core.judgme
 
 ---
 
+### 1.4 V7 Intent 및 노드 타입 명명 규칙
+
+#### 1.4.1 V7 Intent 명명 규칙
+
+**Intent 카테고리별 상수**:
+```python
+# ✅ 좋은 예 - V7 Intent 정의
+class V7Intent(str, Enum):
+    """V7 Intent 열거형 (14개)"""
+    # 정보 조회 (Information) - 4개
+    CHECK = "CHECK"               # 단순 현재 상태/수치 조회
+    TREND = "TREND"               # 시간에 따른 변화/추이
+    COMPARE = "COMPARE"           # 두 개 이상 대상 비교
+    RANK = "RANK"                 # 순위/최대/최소 조회
+
+    # 분석 (Analysis) - 4개
+    FIND_CAUSE = "FIND_CAUSE"     # 원인 분석
+    DETECT_ANOMALY = "DETECT_ANOMALY"  # 이상/문제 탐지
+    PREDICT = "PREDICT"           # 미래 예측
+    WHAT_IF = "WHAT_IF"           # 가정/시뮬레이션
+
+    # 액션 (Action) - 2개
+    REPORT = "REPORT"             # 보고서/차트 생성
+    NOTIFY = "NOTIFY"             # 알림/워크플로우 설정
+
+    # 대화 제어 (Conversation) - 4개
+    CONTINUE = "CONTINUE"         # 대화 계속
+    CLARIFY = "CLARIFY"           # 명확화 필요
+    STOP = "STOP"                 # 중단/취소
+    SYSTEM = "SYSTEM"             # 인사, 도움말
+```
+
+**Route Target 정의**:
+```python
+class RouteTarget(str, Enum):
+    """V7 Intent → 라우팅 대상"""
+    DATA_LAYER = "data_layer"           # 직접 데이터 조회
+    JUDGMENT_ENGINE = "judgment_engine" # 판단/분석 필요
+    RULE_ENGINE = "rule_engine"         # 규칙 기반 처리
+    BI_GUIDE = "bi_guide"               # BI 서비스 안내
+    WORKFLOW_GUIDE = "workflow_guide"   # Workflow 생성 안내
+    CONTEXT_DEPENDENT = "context_dependent"  # 이전 대화 기반
+    ASK_BACK = "ask_back"               # 추가 질문 필요
+    DIRECT_RESPONSE = "direct_response" # 직접 응답
+```
+
+#### 1.4.2 노드 타입 명명 규칙 (15개)
+
+**노드 타입 상수**:
+```python
+class NodeType(str, Enum):
+    """Workflow 노드 타입 (15개, 우선순위별)"""
+    # P0 (핵심) - 5개
+    DATA = "DATA"           # 데이터 조회
+    JUDGMENT = "JUDGMENT"   # 판단 수행
+    CODE = "CODE"           # Python 코드 실행
+    SWITCH = "SWITCH"       # 분기 처리
+    ACTION = "ACTION"       # 외부 액션
+
+    # P1 (확장) - 5개
+    BI = "BI"               # BI 대시보드
+    MCP = "MCP"             # MCP 도구 호출
+    TRIGGER = "TRIGGER"     # 이벤트 트리거 (신규)
+    WAIT = "WAIT"           # 대기
+    APPROVAL = "APPROVAL"   # 승인
+
+    # P2 (고급) - 5개
+    PARALLEL = "PARALLEL"   # 병렬 실행
+    COMPENSATION = "COMPENSATION"  # 보상 트랜잭션
+    DEPLOY = "DEPLOY"       # 배포
+    ROLLBACK = "ROLLBACK"   # 롤백
+    SIMULATE = "SIMULATE"   # 시뮬레이션
+```
+
+**Route → Node 매핑 규칙**:
+```python
+# Orchestrator Plan Generator 패턴
+ROUTE_TO_NODE_MAP: Dict[str, List[NodeType]] = {
+    "data_layer": [NodeType.DATA, NodeType.CODE],
+    "judgment_engine": [NodeType.DATA, NodeType.JUDGMENT, NodeType.CODE],
+    "rule_engine": [NodeType.DATA, NodeType.CODE, NodeType.SWITCH],
+    "bi_guide": [NodeType.DATA, NodeType.BI, NodeType.CODE],
+    "workflow_guide": [
+        NodeType.TRIGGER, NodeType.DATA, NodeType.JUDGMENT,
+        NodeType.ACTION, NodeType.WAIT
+    ],
+}
+```
+
+---
+
 ## 2. 프로젝트 구조
 
 ### 2.1 Monorepo 구조
@@ -285,8 +376,30 @@ factory-ai-platform/
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
 │   │   └── pyproject.toml
-│   ├── workflow/
-│   │   └── (동일 구조)
+│   ├── intent-router/          # V7 Intent 체계
+│   │   ├── src/
+│   │   │   ├── schema.py       # V7 Intent 정의 (14개)
+│   │   │   ├── classifier.py   # Intent 분류기
+│   │   │   ├── slot_extractor.py
+│   │   │   ├── legacy_mapper.py  # Legacy → V7 매핑
+│   │   │   └── router.py
+│   │   └── tests/
+│   ├── orchestrator/           # Orchestrator Service
+│   │   ├── src/
+│   │   │   ├── plan_generator.py
+│   │   │   ├── route_mapper.py  # Route → Node 매핑
+│   │   │   ├── dsl_generator.py
+│   │   │   └── orchestrator.py
+│   │   └── tests/
+│   ├── workflow/               # 15 노드 타입
+│   │   ├── src/
+│   │   │   ├── nodes/
+│   │   │   │   ├── p0/         # 핵심 노드 (DATA, JUDGMENT, CODE, SWITCH, ACTION)
+│   │   │   │   ├── p1/         # 확장 노드 (BI, MCP, TRIGGER, WAIT, APPROVAL)
+│   │   │   │   └── p2/         # 고급 노드 (PARALLEL, COMPENSATION, ...)
+│   │   │   ├── engine.py
+│   │   │   └── state.py
+│   │   └── tests/
 │   └── bi/
 │       └── (동일 구조)
 ├── frontend/
@@ -663,3 +776,11 @@ alembic history
 |------|------|--------|----------|
 | 1.0 | 2025-10-30 | Engineering Team | 초안 작성 |
 | 2.0 | 2025-11-26 | Engineering Team | Enhanced 버전 (Python/TS 상세, Clean Architecture 추가) |
+| 3.0 | 2025-12-16 | Engineering Team | V7 Intent + Orchestrator 통합 업데이트 |
+
+### v3.0 변경 사항
+- **V7 Intent 명명 규칙**: 14개 V7 Intent Enum 정의 가이드라인 추가
+- **노드 타입 명명 규칙**: 15개 노드 타입 (P0/P1/P2) 코딩 표준 추가
+- **Route Target 정의**: Intent→Route→Node 매핑 규칙 추가
+- **프로젝트 구조 확장**: intent-router, orchestrator 서비스 디렉토리 구조 추가
+- **Workflow 노드 구조**: P0/P1/P2 우선순위별 노드 디렉토리 구조 정의

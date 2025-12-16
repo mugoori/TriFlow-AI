@@ -3,10 +3,8 @@
 # Rate Limiting, Security Headers, Scope Validation
 # ===================================================
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi.testclient import TestClient
-from starlette.responses import Response
 
 from app.main import app
 

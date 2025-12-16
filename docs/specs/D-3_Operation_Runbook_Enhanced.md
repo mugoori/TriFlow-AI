@@ -2,12 +2,14 @@
 
 ## 문서 정보
 - **문서 ID**: D-3
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - D-1 DevOps & Infrastructure
   - D-2 Monitoring & Logging
+  - B-3-3 V7 Intent Router 설계
+  - B-3-4 Orchestrator 설계
   - C-5 Security & Compliance
   - C-4 Performance & Capacity
 
@@ -737,3 +739,4 @@ AI Factory 운영팀
 |------|------|--------|----------|
 | 1.0 | 2025-11-05 | DevOps Team | 초안 작성 |
 | 2.0 | 2025-11-26 | DevOps Team | Enhanced 버전 (배포/롤백/DR 상세 절차 추가) |
+| 3.0 | 2025-12-16 | DevOps Team | V7 Intent + Orchestrator 운영 가이드 추가: Intent Router 장애 대응, Orchestrator Plan 실행 모니터링, Claude 모델 계열별 운영 절차, 15노드 서비스 점검 체크리스트 |

@@ -16,7 +16,12 @@ export interface WorkflowNode {
   id: string;
   type: 'condition' | 'action' | 'if_else' | 'loop' | 'parallel';
   config: Record<string, unknown>;
-  next: string[];
+  next?: string[];  // 선택적: 중첩 노드 구조에서는 next 대신 then_nodes/else_nodes 사용
+  // 중첩 노드 구조
+  then_nodes?: WorkflowNode[];
+  else_nodes?: WorkflowNode[];
+  loop_nodes?: WorkflowNode[];
+  parallel_nodes?: WorkflowNode[];
 }
 
 export interface WorkflowDSL {

@@ -224,7 +224,7 @@ const actionMetadata: Record<string, ActionMetadata> = {
     category: 'control',
     fields: [
       {
-        key: 'line_id',
+        key: 'line_code',
         label: '라인 ID',
         type: 'text',
         placeholder: 'LINE_001',
@@ -331,7 +331,7 @@ const actionMetadata: Record<string, ActionMetadata> = {
     category: 'analysis',
     fields: [
       {
-        key: 'line_id',
+        key: 'line_code',
         label: '라인 ID',
         type: 'text',
         placeholder: 'LINE_001',

@@ -4,13 +4,10 @@ RBAC (Role-Based Access Control) 서비스
 """
 import logging
 from enum import Enum
-from functools import wraps
-from typing import Optional, Set
+from typing import Set
 
 from fastapi import HTTPException, status, Depends
-from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app.models import User
 from app.auth.dependencies import get_current_user
 

@@ -11,7 +11,6 @@ import random
 # 프로젝트 루트를 path에 추가
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import Tenant, SensorData
 

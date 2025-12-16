@@ -3,8 +3,6 @@ Error Handling 테스트
 에러 분류, 포맷팅, Retry 로직 테스트
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import time
 
 from app.utils.errors import (
     ErrorCategory,
@@ -17,7 +15,6 @@ from app.utils.retry import (
     is_retryable_error,
     retry_with_backoff,
     RetryableOperation,
-    RETRYABLE_EXCEPTIONS,
 )
 from app.agents.base_agent import is_retryable_api_error
 

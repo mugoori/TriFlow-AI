@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.core import ErpMesData, FieldMapping, DataSource, Tenant
+from app.models.core import ErpMesData, FieldMapping, DataSource
 from app.models import User
 from app.auth.dependencies import get_current_user
 

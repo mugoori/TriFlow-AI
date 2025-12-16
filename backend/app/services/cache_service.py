@@ -7,7 +7,6 @@ import hashlib
 import logging
 from typing import Any, Optional, Callable, TypeVar
 from functools import wraps
-from datetime import timedelta
 
 import redis
 from redis import ConnectionPool

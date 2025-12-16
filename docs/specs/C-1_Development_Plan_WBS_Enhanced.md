@@ -2,9 +2,9 @@
 
 ## 문서 정보
 - **문서 ID**: C-1
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - A-1 Product Vision & Scope
   - A-2 System Requirements Spec
@@ -33,7 +33,9 @@
 
 **주요 목표**:
 - Judgment Engine (Rule + LLM Hybrid) 정확도 > 80%
-- Workflow Engine (12 노드 타입) 안정성 > 99%
+- Workflow Engine (15 노드 타입) 안정성 > 99%
+- V7 Intent Router (14개 Intent + 15개 Legacy 매핑) 정확도 > 90%
+- Orchestrator (자동 Workflow Plan 생성) 성공률 > 85%
 - BI 플래너 (자연어 → SQL) 파싱 성공률 > 90%
 - 시스템 가용성 > 99% (MVP 기준)
 
@@ -100,12 +102,14 @@ AI Factory Decision Engine (MVP)
 │
 ├─ 3. Backend 개발
 │   ├─ 3.1 Judgment Service
-│   ├─ 3.2 Workflow Service
+│   ├─ 3.2 Workflow Service (15 노드 타입)
 │   ├─ 3.3 BI Service
 │   ├─ 3.4 Learning Service
 │   ├─ 3.5 MCP ToolHub
 │   ├─ 3.6 Data Hub
-│   └─ 3.7 Chat Service
+│   ├─ 3.7 Chat Service
+│   ├─ 3.8 Intent Router (V7 체계)
+│   └─ 3.9 Orchestrator Service
 │
 ├─ 4. Frontend 개발
 │   ├─ 4.1 Web Dashboard
@@ -124,10 +128,12 @@ AI Factory Decision Engine (MVP)
 │
 ├─ 6. AI/ML 개발
 │   ├─ 6.1 Rule 엔진 (Rhai) 통합
-│   ├─ 6.2 LLM 클라이언트 (OpenAI, Anthropic)
-│   ├─ 6.3 Prompt 템플릿 관리
+│   ├─ 6.2 LLM 클라이언트 (Claude Haiku/Sonnet/Opus)
+│   ├─ 6.3 Prompt 템플릿 관리 (V7 Intent)
 │   ├─ 6.4 Rule 자동 추출 (Decision Tree)
-│   └─ 6.5 Canary 배포 로직
+│   ├─ 6.5 Canary 배포 로직
+│   ├─ 6.6 V7 Intent 분류기 개발
+│   └─ 6.7 Orchestrator Plan Generator
 │
 ├─ 7. DevOps 및 인프라
 │   ├─ 7.1 Kubernetes 클러스터 구축
@@ -170,19 +176,65 @@ AI Factory Decision Engine (MVP)
 **총 기간**: 2주
 **의존성**: B-2-1 (설계 문서), B-3-1 (DB 스키마)
 
-#### WBS 3.2: Workflow Service 개발
+#### WBS 3.2: Workflow Service 개발 (15 노드 타입)
 
 | Task ID | 작업명 | 기간 | 담당 | 산출물 |
 |---------|--------|------|------|--------|
 | 3.2.1 | DSLParser 구현 | 3일 | BE2 | dsl_parser.py, JSON Schema 검증 |
-| 3.2.2 | NodeExecutor 구현 (DATA, JUDGMENT) | 3일 | BE2 | node_executors.py |
-| 3.2.3 | FlowControl 구현 (SWITCH, PARALLEL) | 3일 | BE2 | flow_control.py |
-| 3.2.4 | StateManager 구현 | 2일 | BE2 | state_manager.py, DB 영속화 |
-| 3.2.5 | CircuitBreaker 구현 | 2일 | BE2 | circuit_breaker.py |
-| 3.2.6 | WorkflowExecutor 통합 | 2일 | BE2 | workflow_executor.py, E2E 테스트 |
+| 3.2.2 | P0 NodeExecutor 구현 (DATA, JUDGMENT, CODE, SWITCH, ACTION) | 4일 | BE2 | node_executors_p0.py |
+| 3.2.3 | P1 NodeExecutor 구현 (BI, MCP, TRIGGER, WAIT, APPROVAL) | 3일 | BE2 | node_executors_p1.py |
+| 3.2.4 | P2 NodeExecutor 구현 (PARALLEL, COMPENSATION, DEPLOY, ROLLBACK, SIMULATE) | 3일 | BE2 | node_executors_p2.py |
+| 3.2.5 | StateManager 구현 | 2일 | BE2 | state_manager.py, DB 영속화 |
+| 3.2.6 | CircuitBreaker 구현 | 2일 | BE2 | circuit_breaker.py |
+| 3.2.7 | WorkflowExecutor 통합 | 2일 | BE2 | workflow_executor.py, E2E 테스트 |
 
-**총 기간**: 2주
+**총 기간**: 2.5주
 **의존성**: B-2-1, B-5 (DSL 스펙)
+
+**15 노드 타입 우선순위**:
+- **P0 (핵심)**: DATA, JUDGMENT, CODE, SWITCH, ACTION
+- **P1 (확장)**: BI, MCP, TRIGGER, WAIT, APPROVAL
+- **P2 (고급)**: PARALLEL, COMPENSATION, DEPLOY, ROLLBACK, SIMULATE
+
+#### WBS 3.8: Intent Router 개발 (V7 체계)
+
+| Task ID | 작업명 | 기간 | 담당 | 산출물 |
+|---------|--------|------|------|--------|
+| 3.8.1 | V7 Intent 스키마 정의 | 1일 | BE1, ML1 | schema.py (14개 Intent 정의) |
+| 3.8.2 | LLM Intent 분류기 구현 | 2일 | ML1 | intent_classifier.py |
+| 3.8.3 | Slot 추출기 구현 | 2일 | ML1 | slot_extractor.py |
+| 3.8.4 | Legacy Intent 매핑 | 1일 | BE1 | legacy_mapper.py (15개 매핑) |
+| 3.8.5 | Route Target 결정 로직 | 1일 | BE1 | route_resolver.py |
+| 3.8.6 | Intent Router 통합 | 2일 | BE1 | router.py, E2E 테스트 |
+
+**총 기간**: 1.5주
+**의존성**: B-6 (AI Agent Architecture)
+
+**V7 Intent 체계 (14개)**:
+- **정보 조회**: CHECK, TREND, COMPARE, RANK
+- **분석**: FIND_CAUSE, DETECT_ANOMALY, PREDICT, WHAT_IF
+- **액션**: REPORT, NOTIFY
+- **대화 제어**: CONTINUE, CLARIFY, STOP, SYSTEM
+
+#### WBS 3.9: Orchestrator Service 개발
+
+| Task ID | 작업명 | 기간 | 담당 | 산출물 |
+|---------|--------|------|------|--------|
+| 3.9.1 | Plan Generator 구현 | 3일 | BE1, ML1 | plan_generator.py |
+| 3.9.2 | Route→Node 매핑 로직 | 2일 | BE1 | route_node_mapper.py |
+| 3.9.3 | Workflow DSL 생성기 | 2일 | BE2 | dsl_generator.py |
+| 3.9.4 | Plan Executor 구현 | 2일 | BE2 | plan_executor.py |
+| 3.9.5 | Orchestrator 통합 | 2일 | BE1, BE2 | orchestrator.py, E2E 테스트 |
+
+**총 기간**: 1.5주
+**의존성**: 3.2 (Workflow Service), 3.8 (Intent Router)
+
+**Orchestrator 파이프라인**:
+```
+Intent Router → Orchestrator → Workflow Engine
+     ↓              ↓               ↓
+  V7 Intent   Plan Generation   Execution
+```
 
 #### WBS 4.3: Workflow Visual Editor 개발
 
@@ -227,54 +279,65 @@ AI Factory Decision Engine (MVP)
 
 ---
 
-### 4.2 Sprint 2 (Week 3-4): Workflow 및 BI
+### 4.2 Sprint 2 (Week 3-4): Workflow, Intent Router 및 BI
 
-**목표**: Workflow Service, BI Service 개발
+**목표**: Workflow Service (15 노드), V7 Intent Router, BI Service 개발
 
 **백로그**:
 - [x] Workflow Service 개발 (BE2)
-  - DSLParser, WorkflowExecutor, StateManager
+  - DSLParser, P0/P1 NodeExecutor (15개 노드 타입)
+  - WorkflowExecutor, StateManager
+- [x] V7 Intent Router 개발 (BE1, ML1)
+  - V7 Intent 스키마 (14개), Slot 추출
+  - Legacy Intent 매핑 (15개)
 - [x] BI Service 개발 (BE3)
   - LLMBIPlanner, SQLGenerator, QueryExecutor
 - [x] MCP ToolHub 기본 구조 (BE2)
 - [x] Web Dashboard 기본 구조 (FE1)
 
 **산출물**:
-- workflow-service v0.1.0
+- workflow-service v0.1.0 (15 노드 타입)
+- intent-router v0.1.0 (V7 체계)
 - bi-service v0.1.0
 - mcp-hub v0.1.0
 - web-ui v0.1.0 (기본 레이아웃)
 
 **DoD**:
-- Workflow 실행 E2E 테스트 통과
+- Workflow 15 노드 타입 E2E 테스트 통과
+- V7 Intent 분류 정확도 > 85%
 - BI 자연어 쿼리 성공
 - Web UI 로그인 및 대시보드 표시
 
 ---
 
-### 4.3 Sprint 3 (Week 5-6): 통합 및 UI
+### 4.3 Sprint 3 (Week 5-6): Orchestrator 통합 및 UI
 
-**목표**: 서비스 통합, UI 개발
+**목표**: Orchestrator 개발, 서비스 통합, UI 개발
 
 **백로그**:
+- [x] Orchestrator Service 개발 (BE1, BE2)
+  - Plan Generator, Route→Node 매핑
+  - Workflow DSL 자동 생성
 - [x] Judgment UI 구현 (FE1)
   - Judgment 실행 폼, 결과 카드, 피드백 버튼
 - [x] Workflow Editor 구현 (FE1)
-  - Visual Editor, Node Palette, DSL 검증
+  - Visual Editor, 15개 Node Palette, DSL 검증
 - [x] BI Query UI 구현 (FE1)
   - 자연어 입력, 차트 렌더링
-- [x] Chat Service 개발 (BE3)
-  - Intent Router, Slot Extraction
+- [x] Chat Service 통합 (BE3)
+  - V7 Intent Router 연동, Orchestrator 연결
 - [x] ERP/MES 커넥터 구현 (DE1)
 
 **산출물**:
+- orchestrator-service v0.1.0
 - web-ui v0.2.0 (Judgment, Workflow, BI 화면)
-- chat-service v0.1.0
+- chat-service v0.1.0 (V7 통합)
 - 커넥터 2개 (ERP, MES)
 
 **DoD**:
+- V7 Intent → Orchestrator → Workflow 파이프라인 동작
 - 모든 UI 화면 렌더링 성공
-- Judgment → 피드백 → Chat 흐름 동작
+- Orchestrator 자동 Plan 생성 성공률 > 80%
 - 커넥터 헬스 체크 성공
 
 ---
@@ -550,7 +613,9 @@ Deploy                                                    ██████
 | 컴포넌트 | 버전 (MVP) | 기술 스택 | 담당 |
 |---------|-----------|----------|------|
 | **judgment-service** | v1.0.0 | Python, FastAPI, Rhai | BE1, ML1 |
-| **workflow-service** | v1.0.0 | Python, FastAPI | BE2 |
+| **workflow-service** | v1.0.0 | Python, FastAPI (15 노드) | BE2 |
+| **intent-router** | v1.0.0 | Python, FastAPI, Claude API (V7) | BE1, ML1 |
+| **orchestrator-service** | v1.0.0 | Python, FastAPI, Claude API | BE1, BE2 |
 | **bi-service** | v1.0.0 | Python, FastAPI, SQLAlchemy | BE3, DE1 |
 | **learning-service** | v1.0.0 | Python, FastAPI, scikit-learn | ML1, BE1 |
 | **mcp-hub** | v1.0.0 | Python, FastAPI | BE2 |
@@ -564,6 +629,9 @@ Deploy                                                    ██████
 #### 9.2.1 기능 DoD
 - [x] 모든 P0 요구사항 구현 완료 (35개)
 - [x] 주요 P1 요구사항 구현 완료 (선택 15개)
+- [x] V7 Intent 체계 구현 (14개 Intent + 15개 Legacy 매핑)
+- [x] 15개 노드 타입 구현 (P0: 5개, P1: 5개, P2: 5개)
+- [x] Orchestrator 자동 Plan 생성 기능
 - [x] API 문서 작성 (Swagger/OpenAPI)
 - [x] 핵심 유스케이스 10개 동작 확인
 
@@ -612,3 +680,12 @@ Deploy                                                    ██████
 |------|------|--------|----------|
 | 1.0 | 2025-10-15 | PM Team | 초안 작성 |
 | 2.0 | 2025-11-26 | PM Team | Enhanced 버전 (Sprint 상세, 리소스, 일정 추가) |
+| 3.0 | 2025-12-16 | SE Team | V7 Intent + Orchestrator 통합 업데이트 |
+
+### v3.0 변경 사항
+- **노드 타입**: 12개 → 15개 확장 (CODE, TRIGGER 노드 추가, P0/P1/P2 분류)
+- **V7 Intent 체계**: 14개 V7 Intent + 15개 Legacy Intent 매핑 추가
+- **Orchestrator**: 새로운 서비스 컴포넌트 추가
+- **WBS 확장**: Intent Router (3.8), Orchestrator Service (3.9) 작업 추가
+- **Sprint 계획**: V7 체계 개발 작업 반영
+- **DoD 확장**: V7 Intent, 노드 타입, Orchestrator 기능 검증 항목 추가

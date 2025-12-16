@@ -2,9 +2,9 @@
 
 ## 문서 정보
 - **문서 ID**: A-1
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + 15 Nodes)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - A-2 System Requirements Spec
   - A-3 Use Case & User Story
@@ -274,11 +274,11 @@
 | 기능 | 설명 | 우선순위 |
 |------|------|---------|
 | **Hybrid Judgment Engine** | Rule + LLM 조합 판단, 6가지 정책 | P0 |
-| **Workflow Engine** | 12가지 노드 타입, DSL 실행 | P0 |
+| **Workflow Engine** | 15가지 노드 타입 (P0/P1/P2), DSL 실행, Orchestrator 연동 | P0 |
 | **BI Query Planner** | 자연어 → SQL, 차트 생성 | P0 |
 | **MCP ToolHub** | Excel, GDrive, Jira 연동 | P1 |
 | **Learning Pipeline** | 피드백 수집, Rule 자동 추출 | P1 |
-| **Chat Interface** | Intent 분류, Slot 추출, Slack Bot | P1 |
+| **Chat Interface** | V7 Intent 체계 (14개 Intent), Slot 추출, Orchestrator 연동, Slack Bot | P1 |
 | **Admin Dashboard** | 사용자 관리, 커넥터 설정, 모니터링 | P0 |
 
 #### 5.1.2 Data & Integration
@@ -366,12 +366,23 @@ AI Factory Decision Engine
 │   ├─ 5.4 Health Check (커넥터 상태 모니터링)
 │   └─ 5.5 Drift Detection (스키마 변경 감지)
 │
-└─ 6. Chat & Collaboration (대화 및 협업)
-    ├─ 6.1 Intent Classification (의도 분류)
-    ├─ 6.2 Slot Extraction (파라미터 추출)
-    ├─ 6.3 Multi-turn Dialog (연속 대화)
-    ├─ 6.4 Slack Bot (멘션, 알림)
-    └─ 6.5 Model Routing (비용 최적화)
+├─ 6. Chat & Collaboration (대화 및 협업)
+│   ├─ 6.1 V7 Intent Classification (14개 Intent 분류)
+│   │   ├─ 정보 조회: CHECK, TREND, COMPARE, RANK
+│   │   ├─ 분석: FIND_CAUSE, DETECT_ANOMALY, PREDICT, WHAT_IF
+│   │   ├─ 액션: REPORT, NOTIFY
+│   │   └─ 대화 제어: CONTINUE, CLARIFY, STOP, SYSTEM
+│   ├─ 6.2 Slot Extraction (17개 슬롯 타입)
+│   ├─ 6.3 Multi-turn Dialog (Context Manager)
+│   ├─ 6.4 Slack Bot (멘션, 알림)
+│   └─ 6.5 Model Routing (Haiku/Sonnet/Opus)
+│
+└─ 7. Orchestrator (플랜 생성 및 실행)
+    ├─ 7.1 Plan Generator (Intent→실행 플랜)
+    ├─ 7.2 Node Executor (15개 노드 타입 실행)
+    ├─ 7.3 Response Generator (응답 포맷팅)
+    ├─ 7.4 Context Manager (대화 컨텍스트)
+    └─ 7.5 Slot Filler (슬롯 채움 및 확인)
 ```
 
 ### 6.2 주요 기능 상세
@@ -402,21 +413,31 @@ AI Factory Decision Engine
 **개요**: 다단계 워크플로우를 DSL로 정의하고 자동 실행
 
 **핵심 기능**:
-- **12가지 노드 타입**: DATA, BI, JUDGMENT, MCP, ACTION, APPROVAL, WAIT, SWITCH, PARALLEL, COMPENSATION, DEPLOY, ROLLBACK, SIMULATE
+- **15가지 노드 타입**:
+  - P0 (핵심): DATA, JUDGMENT, CODE, SWITCH, ACTION
+  - P1 (확장): BI, MCP, TRIGGER, WAIT, APPROVAL
+  - P2 (고급): PARALLEL, COMPENSATION, DEPLOY, ROLLBACK, SIMULATE
 - **상태 영속화**: 장애 복구 및 재개 지원
 - **Circuit Breaker**: 외부 서비스 장애 시 Fallback
 - **Visual Editor**: 드래그 앤 드롭 워크플로우 구성
 
 **사용 예시**:
 ```
-RCA Workflow (불량 근본 원인 분석):
-  1. DATA 노드: MES에서 생산 이력 조회
-  2. BI 노드: 유사 불량 패턴 분석
-  3. JUDGMENT 노드: 원인 추정 판단
-  4. MCP 노드: Excel 설비 이력 조회
-  5. ACTION 노드: Slack 알림 + Jira 이슈 생성
+RCA Workflow (불량 근본 원인 분석) - V7 Intent: FIND_CAUSE:
+  1. TRIGGER 노드: 이상 감지 이벤트 트리거
+  2. DATA 노드: MES에서 생산 이력 조회
+  3. CODE 노드: 데이터 전처리 및 통계 계산
+  4. JUDGMENT 노드: LLM 기반 원인 추정 판단
+  5. SWITCH 노드: 심각도에 따른 분기
+  6. BI 노드: 유사 불량 패턴 시각화
+  7. ACTION 노드: Slack 알림 + Jira 이슈 생성
 → 전체 실행 시간: 45초
 ```
+
+**15개 노드 타입 우선순위**:
+- **P0 (핵심)**: DATA, JUDGMENT, CODE, SWITCH, ACTION - 모든 워크플로우 필수
+- **P1 (확장)**: BI, MCP, TRIGGER, WAIT, APPROVAL - 비즈니스 확장
+- **P2 (고급)**: PARALLEL, COMPENSATION, DEPLOY, ROLLBACK, SIMULATE - 엔터프라이즈
 
 #### 6.2.3 Natural Language BI
 
@@ -701,3 +722,4 @@ RCA Workflow (불량 근본 원인 분석):
 |------|------|--------|----------|
 | 1.0 | 2025-10-01 | Product Team | 초안 작성 |
 | 2.0 | 2025-11-26 | AI Factory Team | Enhanced 버전 (시장 분석, 페르소나, 비즈니스 모델 추가) |
+| 3.0 | 2025-12-16 | AI Factory Team | V7 Intent 체계 (14개 Intent) 반영, 노드 타입 12→15개 확장 (CODE, TRIGGER 추가), Orchestrator 아키텍처 추가, Chat Interface V7 업데이트 |

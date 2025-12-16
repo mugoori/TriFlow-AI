@@ -2,17 +2,15 @@
 Feedback Analyzer Service
 피드백 데이터를 분석하여 규칙 개선점을 도출하고 새로운 규칙을 제안
 """
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import desc
 
 from app.models import FeedbackLog, ProposedRule, Ruleset, Tenant
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -353,7 +351,7 @@ if requires_validation {{
         proposal = ProposedRule(
             proposal_id=uuid4(),
             tenant_id=tenant_id,
-            rule_name=f"agent_quality_check",
+            rule_name="agent_quality_check",
             rule_description=f"에이전트 응답 품질 검증 규칙 (피드백 {pattern.frequency}건 분석)",
             rhai_script=rhai_script,
             source_type="feedback_analysis",

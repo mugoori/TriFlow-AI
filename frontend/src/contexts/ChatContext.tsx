@@ -2,11 +2,20 @@
  * ChatContext
  * 채팅 상태를 전역으로 관리하여 탭 이동 시에도 유지
  * SSE 스트리밍 지원
+ * 워크플로우 프리뷰 패널 상태 관리
  */
 
-import { createContext, useContext, useState, useCallback, useRef, ReactNode, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
 import type { ChatMessage, SSEEvent, StreamingState, ConversationMessage } from '../types/agent';
 import { agentService } from '../services/agentService';
+import type { WorkflowDSL } from '../components/workflow/WorkflowPreviewPanel';
+
+// 워크플로우 프리뷰 상태
+interface PendingWorkflow {
+  dsl: WorkflowDSL;
+  workflowId?: string;
+  workflowName?: string;
+}
 
 interface ChatContextType {
   messages: ChatMessage[];
@@ -16,6 +25,14 @@ interface ChatContextType {
   sendMessageStream: (content: string) => void;
   cancelStream: () => void;
   clearMessages: () => void;
+  // 워크플로우 프리뷰 관련
+  pendingWorkflow: PendingWorkflow | null;
+  isWorkflowPanelOpen: boolean;
+  setPendingWorkflow: (
+    workflow: PendingWorkflow | null | ((prev: PendingWorkflow | null) => PendingWorkflow | null)
+  ) => void;
+  setWorkflowPanelOpen: (open: boolean) => void;
+  clearPendingWorkflow: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -27,6 +44,40 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     isStreaming: false,
   });
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 워크플로우 프리뷰 상태
+  const [pendingWorkflow, setPendingWorkflowState] = useState<PendingWorkflow | null>(null);
+  const [isWorkflowPanelOpen, setWorkflowPanelOpenState] = useState(false);
+
+  // 워크플로우 상태 설정 함수 (functional updater 지원)
+  const setPendingWorkflow = useCallback((
+    workflowOrUpdater: PendingWorkflow | null | ((prev: PendingWorkflow | null) => PendingWorkflow | null)
+  ) => {
+    if (typeof workflowOrUpdater === 'function') {
+      setPendingWorkflowState((prev) => {
+        const result = workflowOrUpdater(prev);
+        // 새로운 워크플로우가 설정되면 패널 열기
+        if (result && !prev) {
+          setWorkflowPanelOpenState(true);
+        }
+        return result;
+      });
+    } else {
+      setPendingWorkflowState(workflowOrUpdater);
+      if (workflowOrUpdater) {
+        setWorkflowPanelOpenState(true);
+      }
+    }
+  }, []);
+
+  const setWorkflowPanelOpen = useCallback((open: boolean) => {
+    setWorkflowPanelOpenState(open);
+  }, []);
+
+  const clearPendingWorkflow = useCallback(() => {
+    setPendingWorkflowState(null);
+    setWorkflowPanelOpenState(false);
+  }, []);
 
   // 대화 이력을 API 형식으로 변환하는 헬퍼 함수
   const getConversationHistory = useCallback((currentMessages: ChatMessage[]): ConversationMessage[] => {
@@ -175,6 +226,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setStreaming({ isStreaming: false });
           break;
 
+        case 'workflow':
+          // 워크플로우 생성 이벤트 처리
+          if (event.workflow?.dsl) {
+            setPendingWorkflow({
+              dsl: event.workflow.dsl as WorkflowDSL,
+              workflowId: event.workflow.workflowId,
+              workflowName: event.workflow.workflowName,
+            });
+          }
+          break;
+
         case 'error':
           setMessages((prev) =>
             prev.map((msg) =>
@@ -239,6 +301,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         sendMessageStream,
         cancelStream,
         clearMessages,
+        // 워크플로우 프리뷰 관련
+        pendingWorkflow,
+        isWorkflowPanelOpen,
+        setPendingWorkflow,
+        setWorkflowPanelOpen,
+        clearPendingWorkflow,
       }}
     >
       {children}

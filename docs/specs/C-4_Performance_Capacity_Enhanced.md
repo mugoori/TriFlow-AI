@@ -2,9 +2,9 @@
 
 ## 문서 정보
 - **문서 ID**: C-4
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - A-2 System Requirements Spec (NFR-PERF-*)
   - B-1 System Architecture
@@ -37,6 +37,8 @@
 | **BI** (SQL 실행) | `bi_query_duration_ms` | 500ms | 1500ms | 2500ms | < 1500ms | P95 > 2000ms |
 | **Workflow** (Simple, 3~5 노드) | `workflow_duration_s` | 5s | 10s | 15s | < 10s | P95 > 12s |
 | **Workflow** (Complex, 11~20 노드) | `workflow_duration_s` | 30s | 60s | 90s | < 60s | P95 > 75s |
+| **V7 Intent Router** | `intent_classification_ms` | 100ms | 300ms | 500ms | < 300ms | P95 > 400ms |
+| **Orchestrator** (Plan 생성) | `orchestrator_plan_ms` | 200ms | 500ms | 800ms | < 500ms | P95 > 700ms |
 | **MCP** 호출 | `mcp_call_duration_ms` | 1000ms | 3000ms | 5000ms | < 3000ms | P95 > 4000ms |
 
 #### 1.1.2 처리량 (Throughput)
@@ -44,7 +46,9 @@
 | 서비스 | 메트릭 | 목표 TPS | 최대 TPS | 동시 요청 | 알람 임계값 |
 |--------|--------|----------|---------|-----------|------------|
 | **Judgment** | `judgment_requests_total` | 50 | 200 | 100 | 요청 큐 > 50 |
-| **Workflow** | `workflow_executions_total` | 20 | 80 | 50 | 인스턴스 대기 > 20 |
+| **Workflow** (15 노드) | `workflow_executions_total` | 20 | 80 | 50 | 인스턴스 대기 > 20 |
+| **V7 Intent Router** | `intent_classifications_total` | 100 | 400 | 150 | 분류 대기 > 100 |
+| **Orchestrator** | `orchestrator_plans_total` | 80 | 300 | 120 | Plan 대기 > 80 |
 | **BI** | `bi_queries_total` | 10 | 40 | 30 | 쿼리 대기 > 10 |
 | **MCP Hub** | `mcp_calls_total` | 30 | 100 | 80 | 호출 대기 > 30 |
 | **Chat** | `chat_messages_total` | 40 | 150 | 100 | 세션 대기 > 40 |
@@ -214,12 +218,14 @@ SHOW max_connections;
 | 서비스 | Replicas | CPU (각) | 메모리 (각) | 총 TPS |
 |--------|---------|---------|------------|--------|
 | Judgment | 3 | 2 vCPU | 2GB | 150 |
-| Workflow | 2 | 2 vCPU | 1GB | 40 |
+| Workflow (15 노드) | 2 | 2 vCPU | 1GB | 40 |
+| **V7 Intent Router** | 2 | 1 vCPU | 512MB | 200 |
+| **Orchestrator** | 2 | 1 vCPU | 1GB | 160 |
 | BI | 2 | 2 vCPU | 2GB | 30 |
 | MCP Hub | 2 | 1 vCPU | 1GB | 80 |
 | Chat | 2 | 1 vCPU | 1GB | 120 |
 
-**총 리소스**: 24 vCPU, 20GB RAM
+**총 리소스**: 28 vCPU, 23GB RAM
 
 #### 3.1.2 데이터베이스 용량
 
@@ -516,14 +522,23 @@ Total Tokens: ~80 (68% 감소)
 
 | 모델 | 입력 비용 (1M 토큰) | 출력 비용 (1M 토큰) | 평균 응답 시간 | 용도 |
 |------|-------------------|-------------------|--------------|------|
-| GPT-4o-mini | $0.15 | $0.6 | 0.8초 | Intent 분류, 간단한 판단 |
-| GPT-4o | $2.5 | $10 | 2.0초 | BI 플래너, 중간 복잡도 |
-| GPT-4 | $30 | $60 | 4.0초 | 복잡한 RCA, 고품질 판단 |
+| **Claude Haiku** | $0.25 | $1.25 | 0.5초 | V7 Intent 분류, 간단한 판단 |
+| **Claude Sonnet** | $3.0 | $15.0 | 1.5초 | Orchestrator Plan, BI 플래너 |
+| **Claude Opus** | $15.0 | $75.0 | 3.0초 | 복잡한 RCA, 고품질 판단 |
 
-**전략**:
-- 80% 요청: GPT-4o-mini (저비용)
-- 15% 요청: GPT-4o (균형)
-- 5% 요청: GPT-4 (고품질)
+**V7 Intent별 모델 할당 전략**:
+| V7 Intent | 기본 모델 | 복잡도 높을 때 | 토큰 한도 |
+|-----------|----------|---------------|----------|
+| CHECK, TREND | Claude Haiku | Haiku | 500 |
+| COMPARE, RANK | Claude Haiku | Sonnet | 800 |
+| FIND_CAUSE, DETECT_ANOMALY | Claude Sonnet | Opus | 1,500 |
+| PREDICT, WHAT_IF | Claude Sonnet | Opus | 2,000 |
+| REPORT, NOTIFY | Claude Sonnet | Sonnet | 1,200 |
+
+**비용 최적화 전략**:
+- 70% 요청: Claude Haiku (저비용, V7 Intent 분류용)
+- 25% 요청: Claude Sonnet (Orchestrator Plan, 분석)
+- 5% 요청: Claude Opus (복잡한 RCA, 고품질 판단)
 
 ---
 
@@ -637,3 +652,4 @@ groups:
 |------|------|--------|----------|
 | 1.0 | 2025-10-25 | DevOps Team | 초안 작성 |
 | 2.0 | 2025-11-26 | DevOps Team | Enhanced 버전 (용량 계획, 최적화 가이드 추가) |
+| 3.0 | 2025-12-16 | DevOps Team | V7 Intent + Orchestrator 성능 계획 추가: V7 Intent Router SLO (P95 300ms), Orchestrator SLO (P95 500ms), 15노드 Workflow 처리량, Claude 모델 계열 (Haiku/Sonnet/Opus) 비용 최적화 전략, V7 Intent별 모델 할당 매트릭스 |

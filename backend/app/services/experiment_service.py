@@ -3,7 +3,6 @@ Experiment Service
 A/B 테스트 실험 관리 서비스
 """
 import hashlib
-import random
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from uuid import UUID

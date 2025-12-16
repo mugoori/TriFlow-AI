@@ -130,7 +130,15 @@ class PIIMaskingMiddleware(BaseHTTPMiddleware):
             if not body:
                 return request
 
-            body_str = body.decode("utf-8")
+            # UTF-8 디코딩 시도, 실패하면 다른 인코딩 시도
+            try:
+                body_str = body.decode("utf-8")
+            except UnicodeDecodeError:
+                # Windows 콘솔에서 한글이 CP949로 인코딩될 수 있음
+                try:
+                    body_str = body.decode("cp949")
+                except UnicodeDecodeError:
+                    body_str = body.decode("utf-8", errors="replace")
             body_json = json.loads(body_str)
 
             # 마스킹 적용

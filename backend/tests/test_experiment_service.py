@@ -3,18 +3,14 @@ Experiment Service 테스트
 A/B 테스트 실험 관리 서비스 테스트
 """
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
-from datetime import datetime
 
 from app.services.experiment_service import ExperimentService
 from app.models import (
     Experiment,
     ExperimentVariant,
     ExperimentAssignment,
-    ExperimentMetric,
-    Ruleset,
-    Tenant,
 )
 
 

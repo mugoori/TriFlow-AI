@@ -1,8 +1,17 @@
 # B-6. AI / Agent Architecture & Prompt Spec
 
+## 문서 정보
+- **문서 ID**: B-6
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
+- **관련 문서**: A-1, B-2, B-3-1, B-5, E-3
+
+---
+
 ## 1. Agent 역할 정의
 
-### 1.1 Agent 아키텍처 개요
+### 1.1 Agent 아키텍처 개요 (V7 Intent + Orchestrator)
 ```mermaid
 graph TB
     subgraph "User Interface Layer"
@@ -11,9 +20,14 @@ graph TB
         WEBHOOK[Webhook]
     end
 
-    subgraph "Agent Orchestration Layer"
-        META[Meta Agent<br/>조정자]
-        INTENT[Intent Router]
+    subgraph "Intent Classification Layer"
+        INTENT[Intent Router<br/>V7 Intent 체계]
+        SLOT[Slot Filler<br/>엔티티 추출]
+    end
+
+    subgraph "Orchestration Layer"
+        ORCH[Orchestrator<br/>Plan Generator]
+        EXEC[Node Executor<br/>15 Node Types]
     end
 
     subgraph "Domain Agents"
@@ -26,24 +40,30 @@ graph TB
     subgraph "Core Services"
         JUD[Judgment Engine]
         BI[BI Service]
-        WF[Workflow Engine]
+        WF[Workflow Engine<br/>15 Nodes]
         MCP[MCP ToolHub]
+        DATA[Data Layer]
+        RULE[Rule Engine]
     end
 
     subgraph "Knowledge Layer"
         RAG[RAG Engine]
-        RULE[Rule Engine]
         VEC[(Vector DB)]
     end
 
-    CHAT --> META
-    UI --> META
-    WEBHOOK --> META
-    META --> INTENT
-    INTENT --> QA
-    INTENT --> EQUIP
-    INTENT --> PROD
-    INTENT --> LEARN
+    CHAT --> INTENT
+    UI --> INTENT
+    WEBHOOK --> INTENT
+    INTENT --> SLOT
+    SLOT --> ORCH
+    ORCH --> EXEC
+    EXEC --> QA
+    EXEC --> EQUIP
+    EXEC --> PROD
+    EXEC --> DATA
+    EXEC --> RULE
+    EXEC --> JUD
+    EXEC --> BI
     QA --> JUD
     EQUIP --> JUD
     PROD --> BI
@@ -53,7 +73,36 @@ graph TB
     RAG --> VEC
 ```
 
-### 1.2 Agent 상세 정의
+### 1.2 V7 Intent-Orchestrator 파이프라인
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Intent Router → Orchestrator Pipeline                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  [사용자 발화] → [Intent Router] → [Slot Filler] → [Orchestrator]           │
+│                        │                │              │                     │
+│                   V7 Intent        Entity 추출     Plan Generation          │
+│                   (14개)           (Slot)         (Node Sequence)           │
+│                        │                │              │                     │
+│                        ▼                ▼              ▼                     │
+│              ┌─────────────────────────────────────────────────┐            │
+│              │  IntentResult + Slots → Execution Plan → Response │            │
+│              └─────────────────────────────────────────────────┘            │
+│                                                                             │
+│  Route Targets:                                                             │
+│  - DATA_LAYER: CHECK, TREND                                                │
+│  - JUDGMENT_ENGINE: COMPARE, RANK, FIND_CAUSE, PREDICT, WHAT_IF            │
+│  - RULE_ENGINE: DETECT_ANOMALY                                             │
+│  - BI_GUIDE: REPORT                                                        │
+│  - WORKFLOW_GUIDE: NOTIFY                                                  │
+│  - CONTEXT_DEPENDENT: CONTINUE, STOP                                       │
+│  - ASK_BACK: CLARIFY                                                       │
+│  - DIRECT_RESPONSE: SYSTEM                                                 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1.3 Agent 상세 정의
 
 #### 품질 Agent (Quality Agent)
 | 항목 | 내용 |
@@ -105,7 +154,7 @@ graph TB
 | **주요 로직** | 패턴 마이닝, 충돌 감지, 품질 검증 |
 | **LLM 역할** | Rule 텍스트 생성, Few-shot 예시 큐레이션 |
 
-### 1.3 Agent 간 상호작용 구조
+### 1.4 Agent 간 상호작용 구조
 
 #### 메시지 포맷 (Inter-Agent Protocol)
 ```json
@@ -192,122 +241,184 @@ graph TB
 
 ---
 
-## 2. Intent 분류 체계
+## 2. Intent 분류 체계 (V7)
 
-### 2.1 Intent 전체 목록
+> **버전 3.0 업데이트**: Legacy Intent 체계에서 V7 Intent 체계로 전환. 14개 V7 Intent + 15개 Legacy Intent 하위호환 지원.
 
-#### 품질/판단 관련 Intent
-| Intent ID | Intent Name | 설명 | 예시 발화 |
-|-----------|-------------|------|----------|
-| `quality_check` | 품질 상태 확인 | 라인/제품 품질 현황 조회 | "L01 품질 상태 어때?", "오늘 불량률 확인해줘" |
-| `defect_analysis` | 불량 원인 분석 | 불량 발생 원인 심층 분석 | "왜 불량이 늘었어?", "불량 원인 분석해줘" |
-| `ccp_status` | CCP 상태 확인 | HACCP CCP 포인트 상태 | "CCP 이상 없어?", "온도 CCP 확인" |
-| `quality_trend` | 품질 추이 조회 | 기간별 품질 변화 추이 | "이번 주 불량 추이 보여줘", "월간 품질 리포트" |
-| `quality_compare` | 품질 비교 | 라인/기간/제품 간 비교 | "L01이랑 L02 불량률 비교해줘" |
-| `quality_alert_config` | 품질 알림 설정 | 알림 기준/채널 설정 | "불량률 3% 넘으면 알려줘" |
+### 2.1 V7 Intent 전체 목록 (14개)
 
-#### 설비 관련 Intent
-| Intent ID | Intent Name | 설명 | 예시 발화 |
-|-----------|-------------|------|----------|
-| `equipment_status` | 설비 상태 확인 | 설비 가동/이상 현황 | "E001 설비 상태 확인", "라인 설비 정상이야?" |
-| `equipment_anomaly` | 설비 이상 탐지 | 이상 징후 분석 | "진동 이상 없어?", "설비 이상 감지해줘" |
-| `maintenance_plan` | 정비 계획 조회 | 예정된 정비 일정 | "이번 달 정비 일정 알려줘" |
-| `maintenance_history` | 정비 이력 조회 | 과거 정비 기록 | "E001 정비 이력 보여줘" |
-| `predictive_maintenance` | 예지보전 분석 | 고장 예측/권장 시점 | "설비 언제 정비해야 해?" |
+#### 2.1.1 정보 조회 (Information) - 4개
+| V7 Intent | 설명 | 라우팅 대상 | 대표 키워드 | 예시 발화 |
+|-----------|------|------------|------------|----------|
+| `CHECK` | 단순 현재 상태/수치 조회 | DATA_LAYER | 얼마, 어때, 확인, 현황, 상태 | "오늘 생산량 얼마야?", "불량률 어때?" |
+| `TREND` | 시간에 따른 변화/추이 조회 | DATA_LAYER | 추이, 변화, 월별, 주별, 일별 | "이번 주 불량률 추이", "월별 생산량 변화" |
+| `COMPARE` | 두 개 이상 대상 비교 | JUDGMENT_ENGINE | 비교, 차이, vs, 뭐가 나아 | "1호기랑 2호기 비교", "오늘이랑 어제 차이" |
+| `RANK` | 순위/최대/최소 조회 | JUDGMENT_ENGINE | 제일, 가장, 최고, 최저, 순위, top | "제일 문제인 설비", "불량 많은 순서대로" |
 
-#### 생산/일정 관련 Intent
-| Intent ID | Intent Name | 설명 | 예시 발화 |
-|-----------|-------------|------|----------|
-| `production_status` | 생산 현황 확인 | 실시간 생산 상태 | "오늘 생산량 얼마야?", "L01 가동률 확인" |
-| `production_plan` | 생산 계획 조회 | 생산 일정/계획 | "내일 생산 계획 뭐야?" |
-| `inventory_status` | 재고 현황 확인 | 재고 수준/안전재고 | "A제품 재고 얼마나 있어?" |
-| `schedule_optimize` | 일정 최적화 | 생산 일정 조정 제안 | "납기 맞추려면 일정 어떻게 해야 해?" |
-| `bottleneck_analysis` | 병목 분석 | 생산 병목 구간 분석 | "어디가 병목이야?" |
+#### 2.1.2 분석 (Analysis) - 4개
+| V7 Intent | 설명 | 라우팅 대상 | 대표 키워드 | 예시 발화 |
+|-----------|------|------------|------------|----------|
+| `FIND_CAUSE` | 원인 분석 (왜?) | JUDGMENT_ENGINE | 왜, 원인, 때문, 이유 | "왜 불량이 늘었어?", "생산량 떨어진 원인" |
+| `DETECT_ANOMALY` | 이상/문제 탐지 | RULE_ENGINE | 이상, 문제, 경고, 비정상, 위험 | "뭔가 이상한 거 없어?", "경고 뜬 설비 있어?" |
+| `PREDICT` | 미래 예측/전망 | JUDGMENT_ENGINE | 예상, 예측, 전망, 가능해, 될까 | "납기 맞출 수 있어?", "오늘 목표 달성 가능해?" |
+| `WHAT_IF` | 가정/시뮬레이션 | JUDGMENT_ENGINE | 하면, 만약, 가정, 시뮬, 늘리면 | "1호기 멈추면 어떻게 돼?", "생산량 10% 늘리면?" |
 
-#### BI/분석 관련 Intent
-| Intent ID | Intent Name | 설명 | 예시 발화 |
-|-----------|-------------|------|----------|
-| `bi_summary` | 요약 리포트 | 종합 현황 요약 | "지난주 요약해줘", "일일 리포트" |
-| `bi_chart` | 차트 조회 | 특정 지표 시각화 | "불량 추이 차트 보여줘" |
-| `bi_compare` | 비교 분석 | 다차원 비교 | "전주 대비 어때?", "라인별 비교" |
-| `bi_drill_down` | 상세 분석 | 특정 항목 drill-down | "L01 불량 상세히 봐줘" |
-| `bi_export` | 데이터 내보내기 | CSV/Excel 다운로드 | "데이터 엑셀로 줘" |
-| `kpi_status` | KPI 현황 | 핵심 지표 조회 | "OEE 얼마야?", "수율 현황" |
+#### 2.1.3 액션 (Action) - 2개
+| V7 Intent | 설명 | 라우팅 대상 | 대표 키워드 | 예시 발화 |
+|-----------|------|------------|------------|----------|
+| `REPORT` | 보고서/차트/시각화 생성 | BI_GUIDE | 리포트, 보고서, 차트, 그래프, 시각화 | "일일 리포트 만들어줘", "생산 추이 차트" |
+| `NOTIFY` | 알림/워크플로우 설정 | WORKFLOW_GUIDE | 알려줘, 알림, 넘으면, 되면, 슬랙 | "온도 60도 넘으면 알려줘", "매일 아침 현황 보내줘" |
 
-#### 워크플로우/자동화 관련 Intent
-| Intent ID | Intent Name | 설명 | 예시 발화 |
-|-----------|-------------|------|----------|
-| `workflow_create` | 워크플로우 생성 | 새 자동화 규칙 생성 | "온도 60도 넘으면 알림 보내줘" |
-| `workflow_edit` | 워크플로우 수정 | 기존 규칙 수정 | "알림 조건 바꿔줘" |
-| `workflow_status` | 워크플로우 상태 | 실행 중인 WF 확인 | "지금 돌고 있는 워크플로우 뭐야?" |
-| `workflow_history` | 실행 이력 조회 | WF 실행 로그 | "어제 알림 몇 번 갔어?" |
-| `approval_pending` | 승인 대기 확인 | 내 승인 대기 건 | "승인할 거 있어?" |
-| `approval_action` | 승인/반려 | 승인 처리 | "이거 승인해줘", "반려할게" |
+#### 2.1.4 대화 제어 (Conversation) - 4개
+| V7 Intent | 설명 | 라우팅 대상 | 대표 키워드 | 예시 발화 |
+|-----------|------|------------|------------|----------|
+| `CONTINUE` | 대화 계속 (응, 더 자세히) | CONTEXT_DEPENDENT | 응, 어, 그래, 더, 자세히, 아까 | "응", "더 자세히", "그래서?" |
+| `CLARIFY` | 명확화 필요 (모호한 발화) | ASK_BACK | (낮은 confidence로 판단) | "확인해줘", "어떻게 된 거야?", "괜찮아?" |
+| `STOP` | 중단/취소 | CONTEXT_DEPENDENT | 그만, 됐어, 취소, 멈춰, 중단 | "그만", "됐어", "취소해" |
+| `SYSTEM` | 인사, 도움말, 범위 외 질문 | DIRECT_RESPONSE | 안녕, 반가워, 도움말, 뭘 할 수, 기능 | "안녕", "뭘 할 수 있어?", "도움말" |
 
-#### 학습/Rule 관련 Intent
-| Intent ID | Intent Name | 설명 | 예시 발화 |
-|-----------|-------------|------|----------|
-| `rule_suggest` | Rule 후보 조회 | 추천 Rule 확인 | "새로운 룰 후보 있어?" |
-| `rule_approve` | Rule 승인 | Rule 배포 승인 | "이 룰 적용해줘" |
-| `feedback_give` | 피드백 제출 | 판단 결과 피드백 | "이 결과 맞아", "이건 틀렸어" |
-| `prompt_update` | 프롬프트 업데이트 | 프롬프트 튜닝 제안 | "이런 질문 잘 못 알아듣네" |
+### 2.2 Legacy Intent → V7 Intent 매핑
 
-#### 시스템/관리 관련 Intent
-| Intent ID | Intent Name | 설명 | 예시 발화 |
-|-----------|-------------|------|----------|
-| `system_status` | 시스템 상태 | 서비스 상태 확인 | "시스템 정상이야?" |
-| `connector_status` | 커넥터 상태 | 연동 상태 확인 | "ERP 연결 돼있어?" |
-| `user_setting` | 사용자 설정 | 개인 설정 변경 | "알림 채널 바꿔줘" |
-| `help` | 도움말 | 사용법 안내 | "뭘 할 수 있어?", "도움말" |
-| `greeting` | 인사 | 인사/잡담 | "안녕", "고마워" |
-| `unknown` | 미분류 | 분류 불가 | (fallback) |
+> **하위호환성**: 기존 시스템에서 사용하던 Legacy Intent를 V7 Intent로 자동 변환
 
-### 2.2 Slot 정의
+| Legacy Intent | V7 Intent | 비고 |
+|---------------|-----------|------|
+| `production_status` | CHECK | 생산 현황 조회 |
+| `quality_status` | CHECK | 품질 현황 조회 |
+| `quality_check` | CHECK | 품질 상태 확인 |
+| `inventory_status` | CHECK | 재고 현황 조회 |
+| `equipment_status` | CHECK | 설비 상태 확인 |
+| `ccp_status` | CHECK | CCP 상태 확인 |
+| `kpi_status` | CHECK | KPI 현황 조회 |
+| `realtime_check` | CHECK | 실시간 현황 |
+| `sensor_check` | CHECK | 센서 상태 확인 |
+| `trend_analysis` | TREND | 추이 분석 |
+| `quality_trend` | TREND | 품질 추이 조회 |
+| `quality_compare` | COMPARE | 품질 비교 |
+| `bi_compare` | COMPARE | BI 비교 분석 |
+| `defect_analysis` | FIND_CAUSE | 불량 원인 분석 |
+| `production_analysis` | FIND_CAUSE | 생산 원인 분석 |
+| `bottleneck_analysis` | FIND_CAUSE | 병목 원인 분석 |
+| `threshold_alert` | DETECT_ANOMALY | 임계값 알림 |
+| `equipment_anomaly` | DETECT_ANOMALY | 설비 이상 탐지 |
+| `predictive_maintenance` | PREDICT | 예지보전 분석 |
+| `schedule_optimize` | PREDICT | 일정 최적화 |
+| `bi_chart` | REPORT | 차트 조회 |
+| `bi_report` | REPORT | BI 리포트 |
+| `bi_summary` | REPORT | 요약 리포트 |
+| `bi_export` | REPORT | 데이터 내보내기 |
+| `workflow_create` | NOTIFY | 워크플로우 생성 |
+| `quality_alert_config` | NOTIFY | 품질 알림 설정 |
+| `greeting` | SYSTEM | 인사 |
+| `help` | SYSTEM | 도움말 |
+| `unknown` | CLARIFY | 미분류 |
 
-| Slot Name | 타입 | 필수 여부 | 설명 | 예시 값 |
-|-----------|------|----------|------|--------|
-| `line` | string | 조건부 | 라인 코드 | L01, L02, LINE_A |
-| `equipment` | string | 조건부 | 설비 코드 | E001, EQ_MIXER_01 |
-| `product` | string | 조건부 | 제품 코드 | PRD001, A제품 |
-| `date` | date | 선택 | 특정 일자 | 2025-01-15, 어제, 오늘 |
-| `date_range` | object | 선택 | 기간 범위 | {start: "2025-01-01", end: "2025-01-15"} |
-| `time_range` | enum | 선택 | 상대적 기간 | yesterday, last_week, last_month, last_7d |
-| `shift` | enum | 선택 | 교대조 | D(주간), N(야간), A(오전), B(오후) |
-| `metric` | string | 조건부 | KPI/지표명 | defect_rate, oee, yield |
-| `threshold` | number | 조건부 | 임계값 | 0.03, 60, 95 |
-| `channel` | enum | 선택 | 알림 채널 | slack, email, sms |
-| `comparison_target` | string | 조건부 | 비교 대상 | L02, last_week, target |
-| `action_type` | enum | 조건부 | 조치 유형 | approve, reject, stop, restart |
-| `workflow_id` | string | 조건부 | 워크플로우 ID | wf_defect_alert_v1 |
-| `format` | enum | 선택 | 출력 형식 | chart, table, card, csv |
+### 2.3 V7 Slot 정의
 
-### 2.3 Intent-Slot 매핑
+| Slot Name | 타입 | 설명 | 관련 Intent | 예시 값 |
+|-----------|------|------|-------------|--------|
+| **기본 Slot** | | | | |
+| `metric` | string | 측정 지표 | CHECK, TREND, COMPARE, RANK | production, defect_rate, efficiency, quality |
+| `target` | string | 대상 (설비, 라인 등) | CHECK, TREND, COMPARE | facility_001, line_A, process_002 |
+| `period` | string | 기간 | CHECK, TREND | today, yesterday, this_week, this_month, monthly |
+| **비교/순위 Slot** | | | | |
+| `targets` | array | 비교 대상 목록 | COMPARE | ["facility_001", "facility_002"] |
+| `periods` | array | 비교 기간 목록 | COMPARE | ["today", "yesterday"] |
+| `order` | enum | 정렬 순서 | RANK | desc, asc |
+| `top_n` | integer | 상위/하위 N개 | RANK | 1, 3, 5, 10 |
+| **분석 Slot** | | | | |
+| `direction` | enum | 변화 방향 | FIND_CAUSE | increase, decrease |
+| `condition` | string | 조건 | WHAT_IF, NOTIFY | "temperature > 60", "defect_rate > 3%" |
+| **액션 Slot** | | | | |
+| `action` | enum | 수행할 액션 | NOTIFY | alert, slack, email, webhook |
+| `schedule` | string | 스케줄 | NOTIFY | daily_morning, every_hour, "0 9 * * *" |
+| `report_type` | enum | 보고서 유형 | REPORT | daily, weekly, monthly, custom |
+| `chart_type` | enum | 차트 유형 | REPORT | trend, bar, pie, table, graph |
+| **레거시 호환 Slot** | | | | |
+| `date` | string | 특정 날짜 | CHECK, TREND | today, yesterday, 2025-12-15 |
+| `facility` | string | 설비 코드 | CHECK, COMPARE | 001, 002, all |
+| `defect_type` | enum | 불량 유형 | FIND_CAUSE | 외관, 치수, 기능 |
+| `process` | string | 공정 코드 | CHECK, FIND_CAUSE | 001~008 |
+| `lot` | string | LOT 번호 | FIND_CAUSE | L2401, L2512 |
 
-| Intent | 필수 Slot | 선택 Slot | 기본값 |
-|--------|----------|----------|--------|
-| `quality_check` | - | line, product, shift, date | line=전체, date=today |
-| `defect_analysis` | line OR product | date_range, shift | date_range=last_7d |
-| `bi_summary` | - | date_range, line, format | date_range=last_week |
-| `workflow_create` | metric, threshold | line, channel, action_type | channel=slack |
-| `equipment_status` | equipment OR line | - | - |
-| `approval_action` | action_type | workflow_id | - |
+### 2.4 V7 Intent-Slot 매핑
+
+| V7 Intent | 필수 Slot | 선택 Slot | 기본값 |
+|-----------|----------|----------|--------|
+| `CHECK` | - | metric, target, period, date | period=today |
+| `TREND` | metric OR target | period, targets | period=this_week |
+| `COMPARE` | targets OR periods | metric, target | - |
+| `RANK` | metric | target, order, top_n | order=desc, top_n=5 |
+| `FIND_CAUSE` | - | metric, target, direction, period | period=recent |
+| `DETECT_ANOMALY` | - | target, metric | target=all |
+| `PREDICT` | metric | target, period | - |
+| `WHAT_IF` | condition | target, metric | - |
+| `REPORT` | - | report_type, chart_type, metric, period | report_type=daily |
+| `NOTIFY` | condition | action, schedule, target | action=slack |
+| `CONTINUE` | - | - | (컨텍스트 의존) |
+| `CLARIFY` | - | - | (확인 질문 생성) |
+| `STOP` | - | - | - |
+| `SYSTEM` | - | - | - |
+
+### 2.5 V7 Intent → Route Target → Node Type 매핑
+
+| V7 Intent | Route Target | 사용 Node 타입 (우선순위별) |
+|-----------|--------------|--------------------------|
+| CHECK | DATA_LAYER | DATA, CODE |
+| TREND | DATA_LAYER | DATA, CODE |
+| COMPARE | JUDGMENT_ENGINE | DATA, JUDGMENT, CODE |
+| RANK | JUDGMENT_ENGINE | DATA, JUDGMENT, CODE |
+| FIND_CAUSE | JUDGMENT_ENGINE | DATA, JUDGMENT, CODE |
+| DETECT_ANOMALY | RULE_ENGINE | DATA, CODE, SWITCH |
+| PREDICT | JUDGMENT_ENGINE | DATA, JUDGMENT, CODE |
+| WHAT_IF | JUDGMENT_ENGINE | DATA, JUDGMENT, CODE, SIMULATE |
+| REPORT | BI_GUIDE | DATA, BI, CODE |
+| NOTIFY | WORKFLOW_GUIDE | TRIGGER, DATA, JUDGMENT, ACTION, WAIT |
+| CONTINUE | CONTEXT_DEPENDENT | (이전 컨텍스트 기반) |
+| CLARIFY | ASK_BACK | - |
+| STOP | CONTEXT_DEPENDENT | - |
+| SYSTEM | DIRECT_RESPONSE | - |
 
 ---
 
 ## 3. LLM/모델 구조
 
+> **버전 3.0 업데이트**: Claude 모델 계열 (Haiku/Sonnet/Opus)로 표준화
+
 ### 3.1 모델 라우팅 정책
 
-#### 작업별 모델 할당 테이블
+#### 작업별 모델 할당 테이블 (Claude 계열)
 | 작업 유형 | 기본 모델 | 대체 모델 | 토큰 한도 | 온도 | 전환 조건 |
 |----------|----------|----------|----------|------|----------|
-| Intent/Slot 추출 | gpt-4.1-mini | claude-haiku | 1,000 | 0.1 | 비용 80%↑, 지연>1s, 실패>1% |
-| Judgment 보완 | gpt-4.1 | gpt-4.1-mini | 2,000 | 0.3 | 모델 장애, 비용 급증 시 |
-| BI Planner | gpt-4.1-mini | gpt-4.1 | 1,500 | 0.2 | 복잡 쿼리 시 업그레이드 |
-| Workflow Planner | gpt-4.1-mini | gpt-4.1 | 1,500 | 0.1 | 검증 실패 시 업그레이드 |
-| Rule Extraction | gpt-4.1 | gpt-4.1-mini | 2,000 | 0.2 | 비용/지연 이슈 시 |
-| Explanation 생성 | gpt-4.1-mini | gpt-4.1 | 1,000 | 0.5 | 품질 요구 시 업그레이드 |
-| 다국어 번역 | gpt-4.1-mini | - | 500 | 0.1 | - |
+| Intent/Slot 추출 | claude-haiku | claude-sonnet | 1,500 | 0.1 | 비용 80%↑, 지연>1s, 실패>1% |
+| V7 Intent 분류 | claude-haiku | claude-sonnet | 1,000 | 0.1 | 복잡 발화 시 업그레이드 |
+| Orchestrator Plan | claude-sonnet | claude-haiku | 2,000 | 0.2 | 단순 쿼리 시 다운그레이드 |
+| Judgment 보완 | claude-sonnet | claude-haiku | 2,500 | 0.3 | 모델 장애, 비용 급증 시 |
+| BI Planner | claude-haiku | claude-sonnet | 1,500 | 0.2 | 복잡 쿼리 시 업그레이드 |
+| Workflow Planner | claude-sonnet | claude-haiku | 2,000 | 0.1 | 검증 실패 시 업그레이드 |
+| Rule Extraction | claude-sonnet | claude-haiku | 2,500 | 0.2 | 비용/지연 이슈 시 |
+| CODE 노드 생성 | claude-sonnet | claude-opus | 3,000 | 0.1 | 복잡 코드 시 업그레이드 |
+| Explanation 생성 | claude-haiku | claude-sonnet | 1,500 | 0.5 | 품질 요구 시 업그레이드 |
+| 다국어 번역 | claude-haiku | - | 500 | 0.1 | - |
+
+#### Claude 모델 특성
+| 모델 | 용도 | 강점 | 비용 수준 |
+|------|------|------|----------|
+| claude-haiku | 빠른 분류/추출 | 속도, 비용 효율 | 저비용 |
+| claude-sonnet | 균형 잡힌 분석 | 정확도-비용 균형 | 중비용 |
+| claude-opus | 복잡한 추론 | 복잡한 판단, 코드 생성 | 고비용 |
+
+#### V7 Intent별 모델 할당
+| V7 Intent | 기본 모델 | 복잡도 높음 시 |
+|-----------|----------|---------------|
+| CHECK, TREND | claude-haiku | - |
+| COMPARE, RANK | claude-haiku | claude-sonnet |
+| FIND_CAUSE, PREDICT | claude-sonnet | claude-opus |
+| DETECT_ANOMALY | claude-haiku | claude-sonnet |
+| WHAT_IF | claude-sonnet | claude-opus |
+| REPORT, NOTIFY | claude-sonnet | - |
+| CONTINUE, STOP | claude-haiku | - |
+| CLARIFY, SYSTEM | claude-haiku | - |
 
 #### 모델 전환 알고리즘
 ```python
@@ -316,7 +427,7 @@ def select_model(task_type: str, context: dict) -> ModelConfig:
 
     # 비용 체크
     if daily_cost_usage > budget_threshold * 0.8:
-        return downgrade_model(base_config)
+        return downgrade_model(base_config)  # sonnet → haiku
 
     # 지연 체크
     if recent_p95_latency > latency_threshold:
@@ -325,13 +436,20 @@ def select_model(task_type: str, context: dict) -> ModelConfig:
     # 실패율 체크
     if recent_failure_rate > failure_threshold:
         if is_parsing_failure:
-            return upgrade_model(base_config)  # 품질 문제면 업그레이드
+            return upgrade_model(base_config)  # haiku → sonnet → opus
         else:
-            return switch_to_fallback(base_config)  # 서비스 문제면 대체
+            return switch_to_fallback(base_config)
 
-    # 복잡도 체크
-    if context.get('complexity') == 'high':
-        return upgrade_model(base_config)
+    # V7 Intent 복잡도 체크
+    v7_intent = context.get('v7_intent')
+    if v7_intent in ['FIND_CAUSE', 'WHAT_IF', 'PREDICT']:
+        if context.get('complexity') == 'high':
+            return upgrade_model(base_config)  # sonnet → opus
+
+    # CODE 노드 복잡도 체크
+    if context.get('node_type') == 'CODE':
+        if context.get('code_complexity') == 'high':
+            return ModelConfig(model='claude-opus')
 
     return base_config
 ```
@@ -495,18 +613,22 @@ global_rules:
   safety: "위험한 조치(라인 정지 등)는 반드시 확인 요청"
 ```
 
-### 4.2 Intent Router 프롬프트 (전문)
+### 4.2 Intent Router 프롬프트 (V7 체계)
+
+> **버전 3.0 업데이트**: V7 Intent 체계 (14개) + Legacy Intent 하위호환
 
 ```
 [SYSTEM]
 당신은 제조업 AI 플랫폼의 Intent Router입니다.
-사용자 발화를 분석하여 의도(Intent)와 필요한 파라미터(Slot)를 추출합니다.
+사용자 발화를 분석하여 V7 Intent와 필요한 Slot을 추출합니다.
 
 ## 출력 형식
 반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요.
 {
-  "intent": "intent_id",
+  "v7_intent": "V7_INTENT_ID",
+  "legacy_intent": "legacy_intent_id 또는 null",
   "confidence": 0.0~1.0,
+  "route_to": "라우팅 대상",
   "slots": {
     "slot_name": "value"
   },
@@ -514,148 +636,194 @@ global_rules:
   "reason": "분류 근거 (내부용)"
 }
 
-## Intent 목록
-### 품질 관련
-- quality_check: 품질/불량 현황 확인 ("불량률 어때?", "품질 상태")
-- defect_analysis: 불량 원인 분석 ("왜 불량이 늘었어?", "원인 분석")
-- ccp_status: CCP 상태 확인 ("CCP 이상 없어?", "온도 CCP")
-- quality_trend: 품질 추이 조회 ("불량 추이", "품질 변화")
-- quality_compare: 품질 비교 ("L01 L02 비교", "전주 대비")
-- quality_alert_config: 품질 알림 설정 ("불량 3% 넘으면 알려줘")
+## V7 Intent 목록 (14개)
 
-### 설비 관련
-- equipment_status: 설비 상태 확인 ("설비 상태", "E001 정상?")
-- equipment_anomaly: 설비 이상 탐지 ("진동 이상", "설비 이상 감지")
-- maintenance_plan: 정비 계획 조회 ("정비 일정", "언제 정비?")
-- maintenance_history: 정비 이력 조회 ("정비 이력", "수리 기록")
-- predictive_maintenance: 예지보전 ("언제 고장?", "잔여 수명")
+### 정보 조회 (Information) - 4개
+- CHECK: 단순 현재 상태/수치 조회 → route_to: DATA_LAYER
+  키워드: 얼마, 어때, 확인, 현황, 상태, 몇
+  예시: "오늘 생산량 얼마야?", "불량률 어때?", "1호기 상태 확인"
 
-### 생산 관련
-- production_status: 생산 현황 ("생산량", "가동률", "오늘 실적")
-- production_plan: 생산 계획 ("생산 계획", "내일 일정")
-- inventory_status: 재고 현황 ("재고 얼마?", "안전재고")
-- schedule_optimize: 일정 최적화 ("일정 조정", "납기 맞추려면")
-- bottleneck_analysis: 병목 분석 ("병목 어디?", "지연 원인")
+- TREND: 시간에 따른 변화/추이 조회 → route_to: DATA_LAYER
+  키워드: 추이, 변화, 변하, 월별, 주별, 일별
+  예시: "이번 주 불량률 추이", "월별 생산량 변화"
 
-### BI/분석 관련
-- bi_summary: 요약 리포트 ("요약해줘", "리포트", "전체 현황")
-- bi_chart: 차트 조회 ("차트 보여줘", "그래프")
-- bi_compare: 비교 분석 ("비교해줘", "대비")
-- bi_drill_down: 상세 분석 ("자세히", "상세하게")
-- bi_export: 데이터 내보내기 ("엑셀로", "CSV", "다운로드")
-- kpi_status: KPI 현황 ("OEE", "수율", "KPI")
+- COMPARE: 두 개 이상 대상 비교 → route_to: JUDGMENT_ENGINE
+  키워드: 비교, 차이, vs, 뭐가 나아, 어디가
+  예시: "1호기랑 2호기 비교", "오늘이랑 어제 차이"
 
-### 워크플로우 관련
-- workflow_create: 워크플로우 생성 ("~하면 알려줘", "자동화 만들어줘")
-- workflow_edit: 워크플로우 수정 ("조건 바꿔줘", "알림 수정")
-- workflow_status: 워크플로우 상태 ("실행 중인 거", "돌고 있는 거")
-- workflow_history: 실행 이력 ("실행 이력", "알림 몇 번")
-- approval_pending: 승인 대기 ("승인할 거 있어?", "대기 건")
-- approval_action: 승인/반려 ("승인해줘", "반려", "거절")
+- RANK: 순위/최대/최소 조회 → route_to: JUDGMENT_ENGINE
+  키워드: 제일, 가장, 최고, 최저, 순서, 순위, top
+  예시: "제일 문제인 설비", "불량 많은 순서대로"
 
-### 학습/Rule 관련
-- rule_suggest: Rule 후보 조회 ("새 룰", "추천 룰")
-- rule_approve: Rule 승인 ("룰 적용", "룰 승인")
-- feedback_give: 피드백 제출 ("맞아", "틀렸어", "좋아요")
-- prompt_update: 프롬프트 업데이트 요청 ("잘 못 알아듣네")
+### 분석 (Analysis) - 4개
+- FIND_CAUSE: 원인 분석 (왜?) → route_to: JUDGMENT_ENGINE
+  키워드: 왜, 원인, 때문, 이유
+  예시: "왜 불량이 늘었어?", "생산량 떨어진 원인"
 
-### 시스템 관련
-- system_status: 시스템 상태 ("시스템 상태", "서비스 정상?")
-- connector_status: 커넥터 상태 ("ERP 연결", "MES 상태")
-- user_setting: 사용자 설정 ("설정 변경", "알림 채널")
-- help: 도움말 ("도움말", "뭘 할 수 있어?", "사용법")
-- greeting: 인사 ("안녕", "고마워", "수고해")
-- unknown: 미분류 (위 어느 것에도 해당하지 않을 때)
+- DETECT_ANOMALY: 이상/문제 탐지 → route_to: RULE_ENGINE
+  키워드: 이상, 문제, 경고, 비정상, 위험
+  예시: "뭔가 이상한 거 없어?", "경고 뜬 설비 있어?"
 
-## Slot 추출 규칙
-- line: 라인 코드 (L01, L02, LINE_A 등). "1라인"→"L01"
-- equipment: 설비 코드 (E001, EQ001 등)
-- product: 제품 코드/이름 (PRD001, A제품 등)
-- date: 특정 날짜. "오늘"→today, "어제"→yesterday, "2025-01-15"
-- time_range: 상대 기간. "지난주"→last_week, "최근 7일"→last_7d, "이번 달"→this_month
-- shift: 교대조. "주간"→D, "야간"→N, "오전"→A, "오후"→B
-- metric: 지표명. "불량률"→defect_rate, "OEE"→oee, "가동률"→availability
-- threshold: 숫자 임계값. "3%"→0.03, "60도"→60
-- channel: 알림 채널. "슬랙"→slack, "메일"→email, "문자"→sms
-- format: 출력 형식. "차트"→chart, "표"→table, "엑셀"→csv
+- PREDICT: 미래 예측/전망 → route_to: JUDGMENT_ENGINE
+  키워드: 예상, 예측, 전망, 가능해, 될까, 맞출 수
+  예시: "납기 맞출 수 있어?", "오늘 목표 달성 가능해?"
+
+- WHAT_IF: 가정/시뮬레이션 → route_to: JUDGMENT_ENGINE
+  키워드: 하면, 만약, 가정, 시뮬, 늘리면, 줄이면
+  예시: "1호기 멈추면 어떻게 돼?", "생산량 10% 늘리면?"
+
+### 액션 (Action) - 2개
+- REPORT: 보고서/차트/시각화 생성 → route_to: BI_GUIDE
+  키워드: 리포트, 보고서, 차트, 그래프, 시각화, 만들어
+  예시: "일일 리포트 만들어줘", "생산 추이 차트"
+
+- NOTIFY: 알림/워크플로우 설정 → route_to: WORKFLOW_GUIDE
+  키워드: 알려줘, 알림, 넘으면, 되면, 보내줘, 슬랙
+  예시: "온도 60도 넘으면 알려줘", "매일 아침 현황 보내줘"
+
+### 대화 제어 (Conversation) - 4개
+- CONTINUE: 대화 계속 → route_to: CONTEXT_DEPENDENT
+  키워드: 응, 어, 그래, 더, 자세히, 그래서, 아까
+  예시: "응", "더 자세히", "그래서?"
+
+- CLARIFY: 명확화 필요 → route_to: ASK_BACK
+  조건: confidence < 0.7 이거나 모호한 발화
+  예시: "확인해줘", "어떻게 된 거야?", "괜찮아?"
+
+- STOP: 중단/취소 → route_to: CONTEXT_DEPENDENT
+  키워드: 그만, 됐어, 취소, 멈춰, 중단
+  예시: "그만", "됐어", "취소해"
+
+- SYSTEM: 인사, 도움말, 범위 외 → route_to: DIRECT_RESPONSE
+  키워드: 안녕, 반가워, 도움말, 뭘 할 수, 기능
+  예시: "안녕", "뭘 할 수 있어?", "도움말"
+
+## Slot 추출 규칙 (V7)
+
+### 기본 Slot
+- metric: 측정 지표. "생산량"→production, "불량률"→defect_rate, "효율"→efficiency
+- target: 대상. "1호기"→facility_001, "A라인"→line_A
+- period: 기간. "오늘"→today, "이번주"→this_week, "월별"→monthly
+
+### 비교/순위 Slot
+- targets: 비교 대상 목록. ["facility_001", "facility_002"]
+- periods: 비교 기간 목록. ["today", "yesterday"]
+- order: 정렬. "많은"→desc, "적은"→asc
+- top_n: 개수. "top 5"→5, "제일"→1
+
+### 분석 Slot
+- direction: 방향. "늘었"→increase, "줄었"→decrease
+- condition: 조건. "온도 > 60", "불량률 > 3%"
+
+### 액션 Slot
+- action: 알림 채널. "슬랙"→slack, "메일"→email
+- schedule: 스케줄. "매일 아침"→daily_morning
+- report_type: 보고서 유형. "일일"→daily, "주간"→weekly
+- chart_type: 차트 유형. "추이"→trend, "막대"→bar
 
 ## 분류 지침
-1. confidence가 0.7 미만이면 가장 가능성 높은 intent를 반환하되, ask_back에 확인 질문 포함
-2. 필수 slot이 누락되면 ask_back에 해당 정보 요청
-3. 여러 intent가 혼합된 경우 (예: 불량 확인 + 원인 분석) 주된 intent 선택, reason에 복합 의도 기록
-4. 모호한 표현은 문맥과 이전 대화를 고려하여 해석
+1. V7 Intent 키워드 매칭 우선 적용
+2. confidence가 0.7 미만이면 CLARIFY로 분류, ask_back에 확인 질문 포함
+3. 복합 의도 시 주된 Intent 선택 (예: "왜 불량이 늘었어?" → FIND_CAUSE)
+4. legacy_intent는 하위호환용으로 함께 반환
 
-## Few-shot 예시
+## Few-shot 예시 (V7)
+
+사용자: "오늘 생산량 얼마야?"
+{
+  "v7_intent": "CHECK",
+  "legacy_intent": "production_status",
+  "confidence": 0.95,
+  "route_to": "DATA_LAYER",
+  "slots": {"metric": "production", "period": "today"},
+  "ask_back": null,
+  "reason": "현재 상태 조회 - CHECK"
+}
 
 사용자: "L01 불량률 왜 올랐어?"
 {
-  "intent": "defect_analysis",
+  "v7_intent": "FIND_CAUSE",
+  "legacy_intent": "defect_analysis",
   "confidence": 0.95,
-  "slots": {"line": "L01", "metric": "defect_rate"},
+  "route_to": "JUDGMENT_ENGINE",
+  "slots": {"target": "line_L01", "metric": "defect_rate", "direction": "increase"},
   "ask_back": null,
-  "reason": "불량률 상승 원인을 묻는 분석 요청"
+  "reason": "원인 분석 요청 - FIND_CAUSE"
 }
 
-사용자: "지난주 품질 어땠어?"
+사용자: "1호기랑 2호기 비교해줘"
 {
-  "intent": "quality_check",
-  "confidence": 0.88,
-  "slots": {"time_range": "last_week"},
+  "v7_intent": "COMPARE",
+  "legacy_intent": "quality_compare",
+  "confidence": 0.92,
+  "route_to": "JUDGMENT_ENGINE",
+  "slots": {"targets": ["facility_001", "facility_002"]},
   "ask_back": null,
-  "reason": "기간 지정 품질 현황 조회"
+  "reason": "두 대상 비교 - COMPARE"
+}
+
+사용자: "제일 문제인 설비 뭐야?"
+{
+  "v7_intent": "RANK",
+  "legacy_intent": null,
+  "confidence": 0.90,
+  "route_to": "JUDGMENT_ENGINE",
+  "slots": {"order": "desc", "top_n": 1, "metric": "issue_count"},
+  "ask_back": null,
+  "reason": "최상위 항목 조회 - RANK"
 }
 
 사용자: "온도 60도 넘으면 알려줘"
 {
-  "intent": "workflow_create",
-  "confidence": 0.92,
-  "slots": {"metric": "temperature", "threshold": 60, "channel": "slack"},
+  "v7_intent": "NOTIFY",
+  "legacy_intent": "workflow_create",
+  "confidence": 0.93,
+  "route_to": "WORKFLOW_GUIDE",
+  "slots": {"condition": "temperature > 60", "action": "slack"},
   "ask_back": null,
-  "reason": "조건부 알림 워크플로우 생성 요청"
+  "reason": "조건부 알림 설정 - NOTIFY"
 }
 
-사용자: "설비 상태 확인해줘"
+사용자: "1호기 멈추면 어떻게 돼?"
 {
-  "intent": "equipment_status",
-  "confidence": 0.75,
+  "v7_intent": "WHAT_IF",
+  "legacy_intent": null,
+  "confidence": 0.88,
+  "route_to": "JUDGMENT_ENGINE",
+  "slots": {"target": "facility_001", "condition": "stop"},
+  "ask_back": null,
+  "reason": "가정 시나리오 - WHAT_IF"
+}
+
+사용자: "확인해줘"
+{
+  "v7_intent": "CLARIFY",
+  "legacy_intent": "unknown",
+  "confidence": 0.45,
+  "route_to": "ASK_BACK",
   "slots": {},
-  "ask_back": "어떤 설비 또는 라인의 상태를 확인할까요?",
-  "reason": "설비 지정 없음, 확인 필요"
-}
-
-사용자: "생산량이랑 불량 같이 보여줘"
-{
-  "intent": "bi_summary",
-  "confidence": 0.85,
-  "slots": {"metric": ["production_qty", "defect_rate"]},
-  "ask_back": null,
-  "reason": "복합 지표 조회, bi_summary로 처리"
+  "ask_back": "무엇을 확인해 드릴까요? 생산, 품질, 설비 중 어느 것이 궁금하신가요?",
+  "reason": "모호한 요청 - CLARIFY"
 }
 
 사용자: "안녕"
 {
-  "intent": "greeting",
+  "v7_intent": "SYSTEM",
+  "legacy_intent": "greeting",
   "confidence": 0.99,
+  "route_to": "DIRECT_RESPONSE",
   "slots": {},
   "ask_back": null,
-  "reason": "인사말"
-}
-
-사용자: "이거 승인"
-{
-  "intent": "approval_action",
-  "confidence": 0.80,
-  "slots": {"action_type": "approve"},
-  "ask_back": "어떤 항목을 승인할까요? 최근 승인 대기 건을 확인해드릴까요?",
-  "reason": "승인 대상 불명확"
+  "reason": "인사말 - SYSTEM"
 }
 
 [USER]
 {user_message}
 
 [CONTEXT]
-- 현재 세션의 이전 intent: {previous_intents}
-- 사용자 최근 조회 라인: {recent_lines}
+- 현재 세션의 이전 V7 Intent: {previous_v7_intents}
+- 이전 route_to: {previous_route}
+- 사용자 최근 조회 대상: {recent_targets}
 - 사용자 역할: {user_role}
 ```
 
@@ -937,7 +1105,9 @@ AAS 데이터:
 - 최근 조회 기간: {recent_time_range}
 ```
 
-### 4.5 Workflow Planner 프롬프트 (전문)
+### 4.5 Workflow Planner 프롬프트 (V7 + 15 Nodes)
+
+> **버전 3.0 업데이트**: 15개 노드 타입 지원 (P0/P1/P2 우선순위별)
 
 ```
 [SYSTEM]
@@ -965,9 +1135,11 @@ AAS 데이터:
   "confidence": 0.0~1.0
 }
 
-## 노드 타입 정의
+## 노드 타입 정의 (15개)
 
-### DATA - 데이터 조회
+### P0 핵심 노드 (5개)
+
+#### DATA - 데이터 조회
 {
   "id": "data_xxx",
   "type": "DATA",
@@ -979,7 +1151,7 @@ AAS 데이터:
   }
 }
 
-### JUDGMENT - 판단 실행
+#### JUDGMENT - 판단 실행
 {
   "id": "judge_xxx",
   "type": "JUDGMENT",
@@ -992,14 +1164,29 @@ AAS 데이터:
   }
 }
 
-### SWITCH - 조건 분기
+#### CODE - 코드 실행 (신규)
+{
+  "id": "code_xxx",
+  "type": "CODE",
+  "config": {
+    "code_type": "transform|calculate|validate|format|custom",
+    "sandbox_enabled": true,
+    "timeout_seconds": 30,
+    "allowed_imports": ["pandas", "numpy", "datetime", "json", "statistics"]
+  },
+  "code": "Python 코드 문자열",
+  "input": {"from": "이전노드ID"},
+  "output_schema": {"type": "object", "properties": {...}}
+}
+
+#### SWITCH - 조건 분기
 {
   "id": "switch_xxx",
   "type": "SWITCH",
   "condition": "judge_xxx.result == 'warning'"
 }
 
-### ACTION - 알림/실행
+#### ACTION - 알림/실행
 {
   "id": "action_xxx",
   "type": "ACTION",
@@ -1011,16 +1198,47 @@ AAS 데이터:
   }
 }
 
-### APPROVAL - 승인 대기
+### P1 확장 노드 (5개)
+
+#### BI - 분석 실행
 {
-  "id": "approval_xxx",
-  "type": "APPROVAL",
-  "approvers": ["role:operator", "user:xxx"],
-  "timeout_minutes": 60,
-  "on_timeout": "reject|approve|escalate"
+  "id": "bi_xxx",
+  "type": "BI",
+  "plan_type": "summary|trend|comparison",
+  "params": {...}
 }
 
-### WAIT - 대기
+#### MCP - 외부 도구 호출
+{
+  "id": "mcp_xxx",
+  "type": "MCP",
+  "server": "excel|erp|mes",
+  "tool": "tool_name",
+  "args": {...}
+}
+
+#### TRIGGER - 워크플로우 트리거 (신규)
+{
+  "id": "trigger_xxx",
+  "type": "TRIGGER",
+  "config": {
+    "trigger_type": "schedule|event|condition|webhook|manual",
+    "schedule_config": {
+      "cron": "0 8 * * *",
+      "timezone": "Asia/Seoul"
+    },
+    "event_config": {
+      "event_source": "mes|sensor|erp",
+      "event_type": "defect_detected|threshold_exceeded"
+    },
+    "condition_config": {
+      "expression": "temperature > 60 AND humidity > 80",
+      "check_interval_seconds": 60
+    }
+  }
+}
+
+#### WAIT - 대기
 {
   "id": "wait_xxx",
   "type": "WAIT",
@@ -1030,7 +1248,18 @@ AAS 데이터:
   }
 }
 
-### PARALLEL - 병렬 실행
+#### APPROVAL - 승인 대기
+{
+  "id": "approval_xxx",
+  "type": "APPROVAL",
+  "approvers": ["role:operator", "user:xxx"],
+  "timeout_minutes": 60,
+  "on_timeout": "reject|approve|escalate"
+}
+
+### P2 고급 노드 (5개)
+
+#### PARALLEL - 병렬 실행
 {
   "id": "parallel_xxx",
   "type": "PARALLEL",
@@ -1038,20 +1267,35 @@ AAS 데이터:
   "join": "all|any"
 }
 
-### MCP - 외부 도구 호출
+#### COMPENSATION - 보상 처리
 {
-  "id": "mcp_xxx",
-  "type": "MCP",
-  "server": "excel|erp|mes",
-  "tool": "tool_name",
-  "args": {...}
+  "id": "compensation_xxx",
+  "type": "COMPENSATION",
+  "on_error": "rollback|retry|skip",
+  "rollback_steps": ["step1", "step2"]
 }
 
-### BI - 분석 실행
+#### DEPLOY - 배포
 {
-  "id": "bi_xxx",
-  "type": "BI",
-  "plan_type": "summary|trend|comparison",
+  "id": "deploy_xxx",
+  "type": "DEPLOY",
+  "target": "production|staging|canary",
+  "params": {...}
+}
+
+#### ROLLBACK - 롤백
+{
+  "id": "rollback_xxx",
+  "type": "ROLLBACK",
+  "target_version": "v1.0.0",
+  "reason": "롤백 사유"
+}
+
+#### SIMULATE - 시뮬레이션
+{
+  "id": "simulate_xxx",
+  "type": "SIMULATE",
+  "scenario": "what_if 시나리오",
   "params": {...}
 }
 
@@ -1716,21 +1960,82 @@ CREATE INDEX ON ai_audit_logs (actor_id);
 
 ## 8. 추적성 체크리스트
 
-### Agent/AI ↔ 요구사항
+### Agent/AI ↔ 요구사항 (V7 업데이트)
 | AI 컴포넌트 | 관련 요구사항 | 테스트 | 모니터링 |
 |------------|--------------|--------|----------|
-| Intent Router | CHAT-FR-010~040 | TC-CHAT-* | Intent 정확도, 지연 |
+| Intent Router (V7) | CHAT-FR-010~040 | TC-CHAT-*, TC-V7-* | V7 Intent 정확도, Route 정확도 |
+| Orchestrator | ORCH-FR-010~050 | TC-ORCH-* | Plan 생성 시간, 노드 실행 성공률 |
+| Node Executor (15 Nodes) | WF-FR-001~009 | TC-NODE-* | 노드별 실행 시간, 오류율 |
 | Judgment + LLM | JUD-FR-010~070 | TC-JUD-* | 파싱 실패율, 지연, 정확도 |
 | BI Planner | BI-FR-010~050 | TC-BI-* | Plan 생성 시간, 품질 |
 | Learning Agent | LRN-FR-010~050 | TC-LRN-* | Rule 승인율, 품질 개선 |
 | RAG Pipeline | JUD-FR-050 (Explanation) | TC-RAG-* | 검색 정확도, 지연 |
 
-### Prompt/Rule ↔ 데이터/테스트
+### V7 Intent → 요구사항 매핑
+| V7 Intent | 관련 요구사항 | Route Target | 테스트 케이스 |
+|-----------|--------------|--------------|--------------|
+| CHECK | CHAT-FR-010 | DATA_LAYER | TC-V7-CHECK-* |
+| TREND | CHAT-FR-011 | DATA_LAYER | TC-V7-TREND-* |
+| COMPARE | CHAT-FR-012 | JUDGMENT_ENGINE | TC-V7-COMPARE-* |
+| RANK | CHAT-FR-013 | JUDGMENT_ENGINE | TC-V7-RANK-* |
+| FIND_CAUSE | CHAT-FR-020 | JUDGMENT_ENGINE | TC-V7-CAUSE-* |
+| DETECT_ANOMALY | CHAT-FR-021 | RULE_ENGINE | TC-V7-ANOMALY-* |
+| PREDICT | CHAT-FR-022 | JUDGMENT_ENGINE | TC-V7-PREDICT-* |
+| WHAT_IF | CHAT-FR-023 | JUDGMENT_ENGINE | TC-V7-WHATIF-* |
+| REPORT | CHAT-FR-030 | BI_GUIDE | TC-V7-REPORT-* |
+| NOTIFY | CHAT-FR-031 | WORKFLOW_GUIDE | TC-V7-NOTIFY-* |
+| CONTINUE | CHAT-FR-040 | CONTEXT_DEPENDENT | TC-V7-CONV-* |
+| CLARIFY | CHAT-FR-041 | ASK_BACK | TC-V7-CLARIFY-* |
+| STOP | CHAT-FR-042 | CONTEXT_DEPENDENT | TC-V7-STOP-* |
+| SYSTEM | CHAT-FR-043 | DIRECT_RESPONSE | TC-V7-SYSTEM-* |
+
+### Prompt/Rule ↔ 데이터/테스트 (V7 업데이트)
 | 산출물 | 저장 위치 | 버전 관리 | 테스트 |
 |--------|----------|----------|--------|
-| Intent Prompt | prompt_templates | version + locale | TC-CHAT-010~030 |
+| V7 Intent Prompt | prompt_templates | v3.0 | TC-V7-INTENT-* |
+| Intent Prompt (Legacy) | prompt_templates | version + locale | TC-CHAT-010~030 |
+| Orchestrator Plan Prompt | prompt_templates | v3.0 | TC-ORCH-PLAN-* |
 | Judgment Prompt | prompt_templates | version | TC-JUD-020 |
 | BI Planner Prompt | prompt_templates | version | TC-BI-010~030 |
-| Workflow Planner Prompt | prompt_templates | version | TC-WF-010 |
+| Workflow Planner Prompt (15 Nodes) | prompt_templates | v3.0 | TC-WF-010~015 |
+| CODE Node Generator Prompt | prompt_templates | v3.0 | TC-NODE-CODE-* |
 | Rule Scripts | rule_scripts | version | TC-RULE-*, Zwave |
-| Few-shot Examples | prompt_template_bodies | prompt 버전에 포함 | Intent 정확도 |
+| Few-shot Examples (V7) | prompt_template_bodies | prompt 버전에 포함 | V7 Intent 정확도 |
+
+### 노드 타입 ↔ 테스트
+| 노드 타입 | 우선순위 | 관련 요구사항 | 테스트 케이스 |
+|----------|---------|--------------|--------------|
+| DATA | P0 | WF-FR-001 | TC-NODE-DATA-* |
+| JUDGMENT | P0 | WF-FR-002 | TC-NODE-JUDGMENT-* |
+| CODE | P0 | WF-FR-007 | TC-NODE-CODE-* |
+| SWITCH | P0 | WF-FR-003 | TC-NODE-SWITCH-* |
+| ACTION | P0 | WF-FR-004 | TC-NODE-ACTION-* |
+| BI | P1 | WF-FR-005 | TC-NODE-BI-* |
+| MCP | P1 | WF-FR-006 | TC-NODE-MCP-* |
+| TRIGGER | P1 | WF-FR-008 | TC-NODE-TRIGGER-* |
+| WAIT | P1 | WF-FR-009 | TC-NODE-WAIT-* |
+| APPROVAL | P1 | WF-FR-004 | TC-NODE-APPROVAL-* |
+| PARALLEL | P2 | WF-FR-010 | TC-NODE-PARALLEL-* |
+| COMPENSATION | P2 | WF-FR-011 | TC-NODE-COMP-* |
+| DEPLOY | P2 | WF-FR-012 | TC-NODE-DEPLOY-* |
+| ROLLBACK | P2 | WF-FR-013 | TC-NODE-ROLLBACK-* |
+| SIMULATE | P2 | WF-FR-014 | TC-NODE-SIMULATE-* |
+
+---
+
+## 9. 문서 변경 이력
+
+| 버전 | 날짜 | 작성자 | 변경 내용 |
+|------|------|--------|----------|
+| 1.0 | 2025-01-15 | 설계팀 | 초기 버전 (Legacy Intent 체계) |
+| 2.0 | 2025-06-01 | 설계팀 | Workflow Planner, Learning Pipeline 추가 |
+| 3.0 | 2025-12-16 | 설계팀 | V7 Intent 체계 전환, 15개 노드 타입 지원, Orchestrator 연동, Claude 모델 표준화 |
+
+### 버전 3.0 주요 변경사항
+1. **V7 Intent 체계 전환**: 기존 Legacy Intent (~30개) → V7 Intent (14개) + Legacy 하위호환
+2. **Intent Router 프롬프트 업데이트**: V7 Intent 분류, route_to 필드 추가
+3. **15개 노드 타입 지원**: P0 (5개) + P1 (5개) + P2 (5개)
+   - 신규 노드: CODE (코드 실행), TRIGGER (워크플로우 트리거)
+4. **Orchestrator 연동**: Intent → Route → Plan → Execute 파이프라인
+5. **Claude 모델 표준화**: Haiku/Sonnet/Opus 계열로 모델 라우팅 정책 변경
+6. **추적성 체크리스트 확장**: V7 Intent-요구사항 매핑, 노드-테스트 매핑 추가

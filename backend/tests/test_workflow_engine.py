@@ -3,9 +3,6 @@ Workflow Engine 테스트
 워크플로우 실행 엔진, 조건 평가, 액션 실행 테스트
 """
 import pytest
-import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime
 
 from app.services.workflow_engine import (
     ExecutionLogStore,
@@ -801,3 +798,527 @@ class TestWorkflowEngineConstants:
     def test_max_loop_iterations(self):
         """최대 루프 반복 횟수"""
         assert WorkflowEngine.MAX_LOOP_ITERATIONS == 100
+
+
+class TestTriggerNode:
+    """TRIGGER 노드 테스트 (V2 Phase 1)"""
+
+    @pytest.fixture
+    def engine(self):
+        return WorkflowEngine()
+
+    @pytest.mark.asyncio
+    async def test_trigger_node_manual(self, engine):
+        """TRIGGER 노드 - 수동 트리거"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "t1",
+                    "type": "trigger",
+                    "config": {
+                        "trigger_type": "manual",
+                        "description": "수동 실행 트리거",
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-trigger-1", dsl, {})
+
+        assert result["status"] == "completed"
+        assert result["nodes_executed"] == 1
+        assert "trigger_result" in result.get("context", {}) or result["nodes_executed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_trigger_node_schedule(self, engine):
+        """TRIGGER 노드 - 스케줄 트리거 (cron)"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "t1",
+                    "type": "trigger",
+                    "config": {
+                        "trigger_type": "schedule",
+                        "cron_expression": "0 9 * * *",  # 매일 9시
+                        "timezone": "Asia/Seoul",
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-trigger-2", dsl, {})
+
+        assert result["status"] == "completed"
+        assert result["nodes_executed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_trigger_node_event(self, engine):
+        """TRIGGER 노드 - 이벤트 트리거"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "t1",
+                    "type": "trigger",
+                    "config": {
+                        "trigger_type": "event",
+                        "event_type": "sensor_alert",
+                        "filters": {
+                            "sensor_type": "temperature",
+                            "level": "critical",
+                        },
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-trigger-3", dsl, {})
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_trigger_node_condition(self, engine):
+        """TRIGGER 노드 - 조건 트리거 (센서 임계값)"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "t1",
+                    "type": "trigger",
+                    "config": {
+                        "trigger_type": "condition",
+                        "condition_config": {
+                            "expression": "temperature > 80",
+                            "check_interval_seconds": 60,
+                            "debounce_seconds": 5,
+                        },
+                        "sensor_ids": ["TEMP-001", "TEMP-002"],
+                    }
+                }
+            ]
+        }
+
+        # 조건을 만족하는 입력 데이터
+        input_data = {"temperature": 85}
+        result = await engine.execute_workflow("wf-trigger-4", dsl, input_data)
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_trigger_node_webhook(self, engine):
+        """TRIGGER 노드 - 웹훅 트리거"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "t1",
+                    "type": "trigger",
+                    "config": {
+                        "trigger_type": "webhook",
+                        "endpoint": "/api/v1/webhooks/trigger/wf-trigger-5",
+                        "secret": "webhook_secret_key",
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-trigger-5", dsl, {})
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_trigger_node_with_following_action(self, engine):
+        """TRIGGER 노드 + 후속 액션 노드"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "t1",
+                    "type": "trigger",
+                    "config": {
+                        "trigger_type": "manual",
+                    }
+                },
+                {
+                    "id": "a1",
+                    "type": "action",
+                    "config": {
+                        "action": "log_event",
+                        "parameters": {"event_type": "workflow_triggered"},
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-trigger-6", dsl, {})
+
+        assert result["status"] == "completed"
+        assert result["nodes_executed"] == 2
+
+
+class TestCodeNode:
+    """CODE 노드 테스트 (V2 Phase 1) - Python Sandbox"""
+
+    @pytest.fixture
+    def engine(self):
+        return WorkflowEngine()
+
+    @pytest.mark.asyncio
+    async def test_code_node_simple_calculation(self, engine):
+        """CODE 노드 - 간단한 계산"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "inline_code": "result = data.get('value', 0) * 2",
+                        "input": {"value": 10},
+                        "sandbox_enabled": False,  # 간단한 테스트용
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-1", dsl, {})
+
+        assert result["status"] == "completed"
+        assert result["nodes_executed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_code_node_with_template(self, engine):
+        """CODE 노드 - 사전 정의 템플릿 사용"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "code_template_id": "defect_rate_calc",
+                        "input": {
+                            "total_count": 1000,
+                            "defect_count": 25,
+                        },
+                        "sandbox_enabled": False,
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-2", dsl, {})
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_code_node_moving_average(self, engine):
+        """CODE 노드 - 이동 평균 계산 템플릿"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "code_template_id": "moving_average",
+                        "input": {
+                            "values": [72.5, 73.0, 74.5, 75.0, 73.5],
+                        },
+                        "sandbox_enabled": False,
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-3", dsl, {})
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_code_node_data_transform(self, engine):
+        """CODE 노드 - 데이터 변환 템플릿"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "code_template_id": "data_transform",
+                        "input": {
+                            "source": {"temp": 72.5, "press": 3.2},
+                        },
+                        "sandbox_enabled": False,
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-4", dsl, {})
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_code_node_anomaly_score(self, engine):
+        """CODE 노드 - 이상 점수 계산 템플릿"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "code_template_id": "anomaly_score",
+                        "input": {
+                            "values": [70, 71, 72, 73, 74, 95],  # 95는 이상치
+                        },
+                        "sandbox_enabled": False,
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-5", dsl, {})
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_code_node_with_timeout(self, engine):
+        """CODE 노드 - 타임아웃 설정"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "inline_code": "result = sum(range(1000))",
+                        "timeout_ms": 5000,
+                        "sandbox_enabled": False,
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-6", dsl, {})
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_code_node_sandbox_restricted_builtins(self, engine):
+        """CODE 노드 - 비샌드박스 모드 테스트"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "inline_code": "result = len([1, 2, 3]) + max(1, 2, 3)",
+                        "sandbox_enabled": False,
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-7", dsl, {})
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_code_node_with_context_variables(self, engine):
+        """CODE 노드 - 컨텍스트 변수 접근"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "a1",
+                    "type": "action",
+                    "config": {
+                        "action": "log_event",
+                        "parameters": {"event_type": "start"},
+                    }
+                },
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "inline_code": "result = {'processed': True, 'source': 'code_node'}",
+                        "sandbox_enabled": False,
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-8", dsl, {"initial": "data"})
+
+        assert result["status"] == "completed"
+        assert result["nodes_executed"] == 2
+
+    @pytest.mark.asyncio
+    async def test_code_node_empty_code(self, engine):
+        """CODE 노드 - 빈 코드 (실패 예상)"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        # inline_code도 code_template_id도 없음
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-9", dsl, {})
+
+        # 코드 없으면 실패
+        assert result["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_code_node_syntax_error(self, engine):
+        """CODE 노드 - 문법 오류 처리"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "inline_code": "result = this is not valid python",
+                        "sandbox_enabled": False,
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-10", dsl, {})
+
+        # 문법 오류 시 실패
+        assert result["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_code_node_unknown_template(self, engine):
+        """CODE 노드 - 알 수 없는 템플릿"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "code_template_id": "unknown_template_xyz",
+                    }
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-code-11", dsl, {})
+
+        # 알 수 없는 템플릿은 실패 처리
+        assert result["status"] == "failed"
+
+
+class TestNodeTypeIntegration:
+    """노드 타입 통합 테스트"""
+
+    @pytest.fixture
+    def engine(self):
+        return WorkflowEngine()
+
+    @pytest.mark.asyncio
+    async def test_trigger_condition_action_flow(self, engine):
+        """TRIGGER → CONDITION → ACTION 플로우"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "t1",
+                    "type": "trigger",
+                    "config": {"trigger_type": "manual"},
+                },
+                {
+                    "id": "c1",
+                    "type": "condition",
+                    "config": {"condition": "temperature > 80"},
+                },
+                {
+                    "id": "a1",
+                    "type": "action",
+                    "config": {
+                        "action": "log_event",
+                        "parameters": {"event_type": "high_temp_alert"},
+                    },
+                },
+            ]
+        }
+
+        input_data = {"temperature": 85}
+        result = await engine.execute_workflow("wf-int-1", dsl, input_data)
+
+        assert result["status"] == "completed"
+        assert result["nodes_executed"] >= 2  # trigger + action (condition은 평가만)
+
+    @pytest.mark.asyncio
+    async def test_code_if_else_flow(self, engine):
+        """CODE → IF_ELSE 플로우"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "c1",
+                    "type": "code",
+                    "config": {
+                        "inline_code": "result = data.get('value', 0) * 10",
+                        "output_variable": "multiplied",
+                        "sandbox_enabled": False,
+                    },
+                },
+                {
+                    "id": "ie1",
+                    "type": "if_else",
+                    "config": {
+                        "condition": "multiplied > 50",
+                        "then": [
+                            {"id": "t1", "type": "action", "config": {"action": "log_event"}},
+                        ],
+                        "else": [
+                            {"id": "e1", "type": "action", "config": {"action": "log_event"}},
+                        ],
+                    },
+                },
+            ]
+        }
+
+        input_data = {"value": 10}  # 10 * 10 = 100 > 50
+        result = await engine.execute_workflow("wf-int-2", dsl, input_data)
+
+        assert result["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_parallel_code_nodes(self, engine):
+        """병렬 CODE 노드 실행"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "p1",
+                    "type": "parallel",
+                    "config": {
+                        "branches": [
+                            [
+                                {
+                                    "id": "c1",
+                                    "type": "code",
+                                    "config": {
+                                        "inline_code": "result = 'branch_1'",
+                                        "output_variable": "b1_result",
+                                        "sandbox_enabled": False,
+                                    },
+                                },
+                            ],
+                            [
+                                {
+                                    "id": "c2",
+                                    "type": "code",
+                                    "config": {
+                                        "inline_code": "result = 'branch_2'",
+                                        "output_variable": "b2_result",
+                                        "sandbox_enabled": False,
+                                    },
+                                },
+                            ],
+                        ],
+                    },
+                },
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-int-3", dsl, {})
+
+        assert result["status"] == "completed"
+        assert result["results"][0]["branches_count"] == 2

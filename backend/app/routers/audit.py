@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 from app.auth.dependencies import get_current_user
-from app.services.rbac_service import require_admin, check_permission
+from app.services.rbac_service import check_permission
 from app.services.audit_service import get_audit_logs, get_audit_stats
 from app.schemas.audit import (
     AuditLogResponse,

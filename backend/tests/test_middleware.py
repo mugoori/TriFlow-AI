@@ -4,10 +4,9 @@ PII 마스킹 미들웨어 및 Audit 미들웨어 테스트
 """
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.testclient import TestClient
 
 from app.middleware.pii_masking import (
     PIIMaskingFilter,

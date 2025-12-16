@@ -416,7 +416,7 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
                               e.stopPropagation();
                               handleEdit(ruleset);
                             }}
-                            className="w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
                           >
                             <Edit className="w-4 h-4" />
                             편집
@@ -426,7 +426,7 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
                               e.stopPropagation();
                               handleToggleActive(ruleset);
                             }}
-                            className="w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
                           >
                             {ruleset.is_active ? (
                               <>

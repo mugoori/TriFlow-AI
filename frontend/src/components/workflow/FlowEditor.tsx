@@ -70,24 +70,31 @@ type NodeExecutionStatus = 'idle' | 'executing' | 'completed' | 'failed' | 'skip
 // 노드 타입 (trigger 포함)
 type NodeType = WorkflowNode['type'] | 'trigger';
 
+// 브랜치 타입 (중첩 노드 추적용)
+type BranchType = 'then' | 'else' | 'loop' | 'parallel';
+
 // 커스텀 노드 데이터 타입 (index signature 추가)
 interface CustomNodeData {
   label: string;
   nodeType: NodeType;
   config: Record<string, unknown>;
   executionStatus?: NodeExecutionStatus;
+  // 중첩 노드 메타데이터
+  _parentId?: string;
+  _branchType?: BranchType;
+  _depth?: number;
   [key: string]: unknown;
 }
 
 // ============ Constants ============
 
 const nodeTypeColors: Record<string, { bg: string; border: string; text: string }> = {
-  condition: { bg: 'bg-yellow-50 dark:bg-yellow-900/30', border: 'border-yellow-400', text: 'text-yellow-700 dark:text-yellow-400' },
-  action: { bg: 'bg-blue-50 dark:bg-blue-900/30', border: 'border-blue-400', text: 'text-blue-700 dark:text-blue-400' },
-  if_else: { bg: 'bg-purple-50 dark:bg-purple-900/30', border: 'border-purple-400', text: 'text-purple-700 dark:text-purple-400' },
-  loop: { bg: 'bg-green-50 dark:bg-green-900/30', border: 'border-green-400', text: 'text-green-700 dark:text-green-400' },
-  parallel: { bg: 'bg-orange-50 dark:bg-orange-900/30', border: 'border-orange-400', text: 'text-orange-700 dark:text-orange-400' },
-  trigger: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', border: 'border-emerald-400', text: 'text-emerald-700 dark:text-emerald-400' },
+  condition: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', border: 'border-yellow-600', text: 'text-yellow-900 dark:text-yellow-200' },
+  action: { bg: 'bg-blue-100 dark:bg-blue-900/30', border: 'border-blue-600', text: 'text-blue-900 dark:text-blue-200' },
+  if_else: { bg: 'bg-purple-100 dark:bg-purple-900/30', border: 'border-purple-600', text: 'text-purple-900 dark:text-purple-200' },
+  loop: { bg: 'bg-green-100 dark:bg-green-900/30', border: 'border-green-600', text: 'text-green-900 dark:text-green-200' },
+  parallel: { bg: 'bg-orange-100 dark:bg-orange-900/30', border: 'border-orange-600', text: 'text-orange-900 dark:text-orange-200' },
+  trigger: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', border: 'border-emerald-600', text: 'text-emerald-900 dark:text-emerald-200' },
 };
 
 const nodeTypeLabels: Record<string, string> = {
@@ -110,18 +117,31 @@ const nodeTypeIcons: Record<string, typeof AlertTriangle> = {
 
 // 액션 한글 이름 매핑
 const actionLabels: Record<string, string> = {
+  // 알림 관련
   send_slack_notification: 'Slack 알림',
+  slack_notification: 'Slack 알림',
   send_email: '이메일 발송',
+  email: '이메일 발송',
   send_sms: 'SMS 발송',
+  sms: 'SMS 발송',
+  // 데이터 관련
   save_to_database: 'DB 저장',
   export_to_csv: 'CSV 내보내기',
   log_event: '로그 기록',
+  log: '로그 기록',
+  // 제어 관련
   stop_production_line: '라인 정지',
+  stop_line: '라인 정지',
   adjust_sensor_threshold: '임계값 조정',
   trigger_maintenance: '유지보수 요청',
+  maintenance: '유지보수 요청',
+  // 분석 관련
   calculate_defect_rate: '불량률 계산',
   analyze_sensor_trend: '추세 분석',
   predict_equipment_failure: '고장 예측',
+  // 기타 (AI 생성 DSL 호환)
+  call_api: 'API 호출',
+  webhook: '웹훅 호출',
 };
 
 // 실행 상태별 스타일
@@ -149,10 +169,22 @@ function CustomNode({ data, selected }: { data: CustomNodeData; selected?: boole
     switch (data.nodeType) {
       case 'condition':
         return (config.condition as string) || '조건 미설정';
-      case 'action':
-        return actionLabels[(config.action as string) || ''] || (config.action as string) || '액션 미설정';
-      case 'if_else':
-        return (config.condition as string) || 'If/Else';
+      case 'action': {
+        // action_type 또는 action 키 모두 지원 (AI 생성 DSL 호환)
+        const actionKey = (config.action_type as string) || (config.action as string) || '';
+        return actionLabels[actionKey] || actionKey || '액션 미설정';
+      }
+      case 'if_else': {
+        const cond = config.condition;
+        if (typeof cond === 'string') return cond || 'If/Else';
+        if (cond && typeof cond === 'object') {
+          const { field, operator, value } = cond as { field?: string; operator?: string; value?: unknown };
+          if (field && operator && value !== undefined) {
+            return `${field} ${operator} ${value}`;
+          }
+        }
+        return 'If/Else';
+      }
       case 'loop': {
         const loopType = config.loop_type as string;
         if (loopType === 'for') return `${config.count || 1}회 반복`;
@@ -692,7 +724,154 @@ function SimulationModal({ isOpen, onClose, onRun }: SimulationModalProps) {
 
 // ============ DSL Conversion ============
 
-// Flow 노드/엣지 → DSL 변환
+// 평탄화된 노드 정보
+interface FlattenedNode {
+  node: WorkflowNode;
+  parentId?: string;
+  branchType?: BranchType;
+  depth: number;
+  siblingIndex: number;  // 같은 브랜치 내 순서
+}
+
+/**
+ * 중첩된 DSL 노드를 평탄화하여 모든 노드를 배열로 추출
+ */
+function flattenNodes(
+  nodes: WorkflowNode[],
+  parentId?: string,
+  branchType?: BranchType,
+  depth = 0
+): FlattenedNode[] {
+  const result: FlattenedNode[] = [];
+
+  nodes.forEach((node, siblingIndex) => {
+    result.push({ node, parentId, branchType, depth, siblingIndex });
+
+    // then_nodes 재귀 처리
+    if (node.then_nodes?.length) {
+      result.push(...flattenNodes(node.then_nodes, node.id, 'then', depth + 1));
+    }
+    // else_nodes 재귀 처리
+    if (node.else_nodes?.length) {
+      result.push(...flattenNodes(node.else_nodes, node.id, 'else', depth + 1));
+    }
+    // loop_nodes 재귀 처리 (loop 노드 내부)
+    if (node.loop_nodes?.length) {
+      result.push(...flattenNodes(node.loop_nodes, node.id, 'loop', depth + 1));
+    }
+    // parallel_nodes 재귀 처리
+    if (node.parallel_nodes?.length) {
+      result.push(...flattenNodes(node.parallel_nodes, node.id, 'parallel', depth + 1));
+    }
+  });
+
+  return result;
+}
+
+/**
+ * 평탄화된 노드의 위치를 계산
+ */
+function calculateNodePosition(
+  flatNode: FlattenedNode,
+  globalIndex: number,
+  allFlatNodes: FlattenedNode[]
+): { x: number; y: number } {
+  const baseX = 250;
+  const baseY = 120;
+  const nodeHeight = 100;
+  const branchOffsetX = 250; // then/else 브랜치 간격
+  const depthOffsetX = 80;   // 깊이당 X 오프셋
+
+  let x = baseX;
+  let y = baseY;
+
+  // 부모 노드가 있는 경우 부모의 Y 위치 기준으로 계산
+  if (flatNode.parentId) {
+    const parentIdx = allFlatNodes.findIndex(f => f.node.id === flatNode.parentId);
+    if (parentIdx >= 0) {
+      y = baseY + (parentIdx + 1) * nodeHeight + (flatNode.siblingIndex * nodeHeight);
+    } else {
+      y = baseY + globalIndex * nodeHeight;
+    }
+  } else {
+    // 최상위 노드
+    y = baseY + globalIndex * nodeHeight;
+  }
+
+  // 브랜치에 따른 X 오프셋
+  if (flatNode.branchType === 'then') {
+    x = baseX - branchOffsetX + (flatNode.depth * depthOffsetX);
+  } else if (flatNode.branchType === 'else') {
+    x = baseX + branchOffsetX + (flatNode.depth * depthOffsetX);
+  } else if (flatNode.branchType === 'loop') {
+    x = baseX + (flatNode.depth * depthOffsetX);
+  } else if (flatNode.branchType === 'parallel') {
+    // 병렬 브랜치는 수평으로 펼침
+    x = baseX + (flatNode.siblingIndex * 200) - 100;
+  } else {
+    // 최상위 노드
+    x = baseX;
+  }
+
+  return { x, y };
+}
+
+/**
+ * 중첩 노드 간 엣지 생성
+ */
+function createEdgesForNestedNodes(flatNodes: FlattenedNode[]): Edge[] {
+  const edges: Edge[] = [];
+  const processedEdges = new Set<string>();
+
+  for (const flatNode of flatNodes) {
+    const { node, parentId, branchType } = flatNode;
+
+    // 부모 → 자식 연결 (브랜치 타입에 따른 핸들 ID 사용)
+    if (parentId && branchType) {
+      const edgeId = `${parentId}-${branchType}-${node.id}`;
+      if (!processedEdges.has(edgeId)) {
+        processedEdges.add(edgeId);
+        edges.push({
+          id: edgeId,
+          source: parentId,
+          sourceHandle: branchType === 'then' || branchType === 'else' ? branchType : undefined,
+          target: node.id,
+          style: {
+            stroke: branchType === 'then' ? '#22c55e' :
+                    branchType === 'else' ? '#ef4444' :
+                    branchType === 'loop' ? '#16a34a' :
+                    branchType === 'parallel' ? '#f97316' : '#94a3b8',
+            strokeWidth: 2,
+          },
+          markerEnd: { type: MarkerType.ArrowClosed },
+          label: branchType === 'then' ? 'True' : branchType === 'else' ? 'False' : undefined,
+          labelStyle: { fontSize: 10, fontWeight: 500 },
+        });
+      }
+    }
+
+    // 기존 next 배열 처리
+    if (node.next?.length) {
+      for (const nextId of node.next) {
+        const edgeId = `${node.id}-next-${nextId}`;
+        if (!processedEdges.has(edgeId)) {
+          processedEdges.add(edgeId);
+          edges.push({
+            id: edgeId,
+            source: node.id,
+            target: nextId,
+            style: { strokeWidth: 2, stroke: '#94a3b8' },
+            markerEnd: { type: MarkerType.ArrowClosed },
+          });
+        }
+      }
+    }
+  }
+
+  return edges;
+}
+
+// Flow 노드/엣지 → DSL 변환 (중첩 구조 복원)
 function flowToDSL(
   nodes: Node<CustomNodeData>[],
   edges: Edge[],
@@ -700,22 +879,100 @@ function flowToDSL(
   workflowDescription: string,
   triggerType: 'manual' | 'event' | 'schedule'
 ): WorkflowDSL {
-  // 트리거 노드 제외한 노드만 추출
+  // 트리거 노드 제외
   const workflowNodes = nodes.filter(n => n.data.nodeType !== 'trigger');
 
-  // 노드 ID → 다음 노드 ID 매핑 생성
+  // 노드 ID → 다음 노드 ID 매핑 (next 엣지만)
   const nextMap: Record<string, string[]> = {};
   edges.forEach(edge => {
+    // then/else 브랜치 엣지는 next에 포함하지 않음
+    if (edge.id.includes('-then-') || edge.id.includes('-else-') ||
+        edge.id.includes('-loop-') || edge.id.includes('-parallel-')) {
+      return;
+    }
     if (!nextMap[edge.source]) nextMap[edge.source] = [];
-    nextMap[edge.source].push(edge.target);
+    if (!nextMap[edge.source].includes(edge.target)) {
+      nextMap[edge.source].push(edge.target);
+    }
   });
 
-  const dslNodes: WorkflowNode[] = workflowNodes.map(node => ({
-    id: node.id,
-    type: node.data.nodeType as WorkflowNode['type'],
-    config: node.data.config,
-    next: nextMap[node.id] || [],
-  }));
+  // 부모-자식 관계 맵 구축
+  const childrenMap: Record<string, { then: string[]; else: string[]; loop: string[]; parallel: string[] }> = {};
+
+  for (const node of workflowNodes) {
+    const parentId = node.data._parentId;
+    const branchType = node.data._branchType;
+
+    if (parentId && branchType) {
+      if (!childrenMap[parentId]) {
+        childrenMap[parentId] = { then: [], else: [], loop: [], parallel: [] };
+      }
+      childrenMap[parentId][branchType].push(node.id);
+    }
+  }
+
+  // 재귀적으로 DSL 노드 구축
+  function buildDslNode(flowNode: Node<CustomNodeData>): WorkflowNode {
+    const children = childrenMap[flowNode.id];
+
+    // 액션 노드의 경우 config 역정규화 (FlowEditor 형식 → AI DSL 형식)
+    let dslConfig = flowNode.data.config;
+    if (flowNode.data.nodeType === 'action') {
+      const flowConfig = flowNode.data.config as Record<string, unknown>;
+      const action = flowConfig.action as string;
+      const parameters = (flowConfig.parameters as Record<string, unknown>) || {};
+      dslConfig = {
+        action_type: action,
+        ...parameters,  // parameters를 최상위로 펼침
+      };
+    }
+
+    const dslNode: WorkflowNode = {
+      id: flowNode.id,
+      type: flowNode.data.nodeType as WorkflowNode['type'],
+      config: dslConfig,
+      next: nextMap[flowNode.id] || [],
+    };
+
+    // then_nodes 추가
+    if (children?.then.length) {
+      dslNode.then_nodes = children.then
+        .map(id => workflowNodes.find(n => n.id === id))
+        .filter(Boolean)
+        .map(n => buildDslNode(n as Node<CustomNodeData>));
+    }
+
+    // else_nodes 추가
+    if (children?.else.length) {
+      dslNode.else_nodes = children.else
+        .map(id => workflowNodes.find(n => n.id === id))
+        .filter(Boolean)
+        .map(n => buildDslNode(n as Node<CustomNodeData>));
+    }
+
+    // loop_nodes 추가
+    if (children?.loop.length) {
+      dslNode.loop_nodes = children.loop
+        .map(id => workflowNodes.find(n => n.id === id))
+        .filter(Boolean)
+        .map(n => buildDslNode(n as Node<CustomNodeData>));
+    }
+
+    // parallel_nodes 추가
+    if (children?.parallel.length) {
+      dslNode.parallel_nodes = children.parallel
+        .map(id => workflowNodes.find(n => n.id === id))
+        .filter(Boolean)
+        .map(n => buildDslNode(n as Node<CustomNodeData>));
+    }
+
+    return dslNode;
+  }
+
+  // 최상위 노드만 DSL로 변환 (부모가 없는 노드)
+  const rootNodes = workflowNodes
+    .filter(n => !n.data._parentId)
+    .map(n => buildDslNode(n));
 
   return {
     name: workflowName,
@@ -724,17 +981,17 @@ function flowToDSL(
       type: triggerType,
       config: {},
     },
-    nodes: dslNodes,
+    nodes: rootNodes,
   };
 }
 
-// DSL → Flow 노드/엣지 변환
+// DSL → Flow 노드/엣지 변환 (중첩 구조 지원)
 function dslToFlow(dsl: WorkflowDSL): { nodes: Node<CustomNodeData>[]; edges: Edge[] } {
-  const nodes: Node<CustomNodeData>[] = [];
+  const flowNodes: Node<CustomNodeData>[] = [];
   const edges: Edge[] = [];
 
-  // 트리거 노드 추가
-  nodes.push({
+  // 1. 트리거 노드 추가
+  flowNodes.push({
     id: 'trigger',
     type: 'custom',
     position: { x: 250, y: 0 },
@@ -745,41 +1002,68 @@ function dslToFlow(dsl: WorkflowDSL): { nodes: Node<CustomNodeData>[]; edges: Ed
     },
   });
 
-  // 워크플로우 노드 추가
-  dsl.nodes.forEach((node, index) => {
-    nodes.push({
-      id: node.id,
-      type: 'custom',
-      position: { x: 250, y: 100 + index * 120 },
-      data: {
-        label: node.id,
-        nodeType: node.type,
-        config: node.config,
-      },
-    });
+  // 2. 모든 중첩 노드를 평탄화
+  const flatNodes = flattenNodes(dsl.nodes);
 
-    // 엣지 생성
-    node.next.forEach(nextId => {
-      edges.push({
-        id: `${node.id}-${nextId}`,
-        source: node.id,
-        target: nextId,
-        markerEnd: { type: MarkerType.ArrowClosed },
-      });
+  // 3. 각 노드를 ReactFlow 노드로 변환
+  flatNodes.forEach((flatNode, index) => {
+    const position = calculateNodePosition(flatNode, index, flatNodes);
+
+    // 액션 노드의 경우 config 정규화 (AI 생성 DSL → FlowEditor 형식)
+    let normalizedConfig = flatNode.node.config;
+    if (flatNode.node.type === 'action') {
+      const rawConfig = flatNode.node.config as Record<string, unknown>;
+      const actionType = (rawConfig.action_type as string) || (rawConfig.action as string) || '';
+
+      // 이미 parameters가 있으면 그대로 사용, 없으면 나머지 키들을 parameters로 변환
+      let parameters: Record<string, unknown>;
+      if (rawConfig.parameters && typeof rawConfig.parameters === 'object') {
+        // 백엔드 DSL 형식: { action_type, parameters: {...} }
+        parameters = rawConfig.parameters as Record<string, unknown>;
+      } else {
+        // 레거시/간단 형식: { action_type, channel, message, ... }
+        const { action_type: _at, action: _a, parameters: _p, ...rest } = rawConfig;
+        parameters = rest;
+      }
+
+      normalizedConfig = {
+        action: actionType,
+        parameters,
+      };
+    }
+
+    flowNodes.push({
+      id: flatNode.node.id,
+      type: 'custom',
+      position,
+      data: {
+        label: flatNode.node.id,
+        nodeType: flatNode.node.type,
+        config: normalizedConfig,
+        // 메타데이터 (부모-자식 관계 추적용)
+        _parentId: flatNode.parentId,
+        _branchType: flatNode.branchType,
+        _depth: flatNode.depth,
+      },
     });
   });
 
-  // 트리거 → 첫 번째 노드 연결
-  if (dsl.nodes.length > 0) {
+  // 4. 엣지 생성
+  edges.push(...createEdgesForNestedNodes(flatNodes));
+
+  // 5. 트리거 → 첫 번째 최상위 노드 연결
+  const firstRootNode = flatNodes.find(f => !f.parentId);
+  if (firstRootNode) {
     edges.push({
-      id: `trigger-${dsl.nodes[0].id}`,
+      id: `trigger-${firstRootNode.node.id}`,
       source: 'trigger',
-      target: dsl.nodes[0].id,
+      target: firstRootNode.node.id,
+      style: { strokeWidth: 2, stroke: '#94a3b8' },
       markerEnd: { type: MarkerType.ArrowClosed },
     });
   }
 
-  return { nodes, edges };
+  return { nodes: flowNodes, edges };
 }
 
 // ============ Main Component ============
@@ -1112,7 +1396,7 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
             <select
               value={triggerType}
               onChange={(e) => setTriggerType(e.target.value as 'manual' | 'event' | 'schedule')}
-              className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+              className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100"
             >
               <option value="manual">수동 실행</option>
               <option value="event">이벤트 기반</option>

@@ -13,7 +13,7 @@ from sqlalchemy import desc
 
 from app.database import get_db
 from app.models import ProposedRule, Tenant
-from app.services.feedback_analyzer import FeedbackAnalyzer, run_feedback_analysis
+from app.services.feedback_analyzer import FeedbackAnalyzer
 
 import logging
 logger = logging.getLogger(__name__)

@@ -2,11 +2,12 @@
 
 ## 문서 정보
 - **문서 ID**: D-4
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - A-3 Use Case & User Story
+  - B-3-3 V7 Intent Router 설계
   - B-4 API Interface Spec
   - D-2 Monitoring & Logging
 
@@ -539,3 +540,4 @@
 |------|------|--------|----------|
 | 1.0 | 2025-11-08 | Product Team | 초안 작성 |
 | 2.0 | 2025-11-26 | Product Team | Enhanced 버전 (스크린샷, FAQ, 트러블슈팅 추가) |
+| 3.0 | 2025-12-16 | Product Team | V7 Intent + Orchestrator 가이드 추가: V7 Intent 자연어 질의 가이드, Orchestrator Plan 실행 현황 조회, 관리자용 Intent 통계 대시보드, Claude 모델 비용 관리 메뉴 |

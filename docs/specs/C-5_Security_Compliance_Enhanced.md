@@ -2,12 +2,14 @@
 
 ## 문서 정보
 - **문서 ID**: C-5
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - A-2 System Requirements (SEC-FR-*, NFR-SEC-*)
   - B-1 System Architecture (보안 아키텍처)
+  - B-3-3 V7 Intent Router 설계
+  - B-3-4 Orchestrator 설계
   - C-3 Test Plan (보안 테스트)
   - D-3 Operation Runbook (보안 사고 대응)
 
@@ -17,9 +19,10 @@
 3. [데이터 보안 (Encryption & PII)](#3-데이터-보안-encryption--pii)
 4. [네트워크 보안](#4-네트워크-보안)
 5. [애플리케이션 보안](#5-애플리케이션-보안)
-6. [감사 및 로깅](#6-감사-및-로깅)
-7. [규제 준수 (Compliance)](#7-규제-준수-compliance)
-8. [보안 사고 대응](#8-보안-사고-대응)
+6. [V7 Intent Router & Orchestrator 보안](#6-v7-intent-router--orchestrator-보안)
+7. [감사 및 로깅](#7-감사-및-로깅)
+8. [규제 준수 (Compliance)](#8-규제-준수-compliance)
+9. [보안 사고 대응](#9-보안-사고-대응)
 
 ---
 
@@ -178,6 +181,11 @@ async def verify_token(
 | **Judgment 실행** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **BI 분석 생성** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **BI 분석 조회** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **V7 Intent 실행** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Orchestrator Plan 조회** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Orchestrator Plan 생성** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **15 노드 Workflow 생성** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **P2 노드 사용 (DEPLOY, ROLLBACK)** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | **사용자 관리** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **감사 로그 조회** | ✅ | ✅ | 제한적 | 제한적 | 제한적 | 제한적 |
 
@@ -532,11 +540,288 @@ function SafeHTMLResult({ htmlContent }: { htmlContent: string }) {
 
 ---
 
-## 6. 감사 및 로깅
+## 6. V7 Intent Router & Orchestrator 보안
 
-### 6.1 감사 로그 (Audit Log)
+### 6.1 V7 Intent 분류 보안
 
-#### 6.1.1 로깅 대상
+#### 6.1.1 Intent 입력 검증
+
+**V7 Intent 체계 (14개)**:
+
+| 카테고리 | V7 Intent | Route Target | 보안 수준 |
+|----------|-----------|--------------|----------|
+| **정보 조회** | CHECK, TREND, COMPARE, RANK | DATA_LAYER, JUDGMENT_ENGINE | 낮음 (읽기 전용) |
+| **분석** | FIND_CAUSE, DETECT_ANOMALY, PREDICT, WHAT_IF | JUDGMENT_ENGINE, RULE_ENGINE | 중간 (분석 권한 필요) |
+| **액션** | REPORT, NOTIFY | BI_GUIDE, WORKFLOW_GUIDE | 높음 (생성/실행 권한 필요) |
+| **대화 제어** | CONTINUE, CLARIFY, STOP, SYSTEM | CONTEXT_DEPENDENT, ASK_BACK, DIRECT_RESPONSE | 낮음 (시스템 제어) |
+
+**Intent 입력 검증**:
+```python
+from pydantic import BaseModel, Field, validator
+from enum import Enum
+from typing import Optional, Dict, Any
+
+class V7Intent(str, Enum):
+    """V7 Intent 체계 (14개)"""
+    # 정보 조회
+    CHECK = "CHECK"
+    TREND = "TREND"
+    COMPARE = "COMPARE"
+    RANK = "RANK"
+    # 분석
+    FIND_CAUSE = "FIND_CAUSE"
+    DETECT_ANOMALY = "DETECT_ANOMALY"
+    PREDICT = "PREDICT"
+    WHAT_IF = "WHAT_IF"
+    # 액션
+    REPORT = "REPORT"
+    NOTIFY = "NOTIFY"
+    # 대화 제어
+    CONTINUE = "CONTINUE"
+    CLARIFY = "CLARIFY"
+    STOP = "STOP"
+    SYSTEM = "SYSTEM"
+
+class IntentRequest(BaseModel):
+    """Intent 분류 요청 검증"""
+    utterance: str = Field(..., min_length=1, max_length=500)
+    context: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    tenant_id: str = Field(..., regex=r'^[a-f0-9-]{36}$')
+
+    @validator('utterance')
+    def sanitize_utterance(cls, v):
+        """발화 입력 정제 (Injection 방지)"""
+        import re
+        # 위험 패턴 필터링
+        dangerous_patterns = [
+            r'<script>.*</script>',  # XSS
+            r'{{.*}}',  # Template injection
+            r'\$\{.*\}',  # Expression injection
+        ]
+        for pattern in dangerous_patterns:
+            v = re.sub(pattern, '', v, flags=re.IGNORECASE)
+        return v.strip()
+
+    @validator('context')
+    def validate_context_size(cls, v):
+        """컨텍스트 크기 제한 (DoS 방지)"""
+        import json
+        if len(json.dumps(v)) > 10000:  # 10KB 제한
+            raise ValueError('Context too large (max 10KB)')
+        return v
+```
+
+#### 6.1.2 LLM 호출 보안 (Claude 모델)
+
+**Claude API 호출 보안**:
+```python
+import anthropic
+from typing import Optional
+
+class SecureLLMClient:
+    """Claude 모델 보안 클라이언트"""
+
+    # API Key 환경변수에서 로드 (코드에 하드코딩 금지)
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+    # 모델별 토큰 한도
+    MODEL_TOKEN_LIMITS = {
+        "claude-3-haiku-20240307": 500,   # Intent 분류용
+        "claude-3-5-sonnet-20241022": 1500,  # Plan 생성용
+        "claude-3-opus-20240229": 3000,   # 복잡한 분석용
+    }
+
+    def __init__(self):
+        self.client = anthropic.Anthropic(api_key=self.ANTHROPIC_API_KEY)
+
+    async def call_with_pii_masking(
+        self,
+        prompt: str,
+        model: str = "claude-3-haiku-20240307",
+        max_tokens: Optional[int] = None
+    ) -> str:
+        """PII 마스킹 후 Claude 호출"""
+        from security.pii_gateway import PIIMaskingGateway
+
+        # 1. PII 마스킹
+        pii_gateway = PIIMaskingGateway()
+        masked_prompt = pii_gateway.mask(prompt)
+
+        # 2. 토큰 한도 적용
+        token_limit = max_tokens or self.MODEL_TOKEN_LIMITS.get(model, 500)
+
+        # 3. Claude API 호출
+        response = self.client.messages.create(
+            model=model,
+            max_tokens=token_limit,
+            messages=[{"role": "user", "content": masked_prompt}]
+        )
+
+        # 4. 응답 검증 (유해 콘텐츠 필터링)
+        return self._validate_response(response.content[0].text)
+
+    def _validate_response(self, response: str) -> str:
+        """LLM 응답 검증"""
+        # 유해 콘텐츠 필터링
+        if self._contains_harmful_content(response):
+            return "[응답이 보안 정책에 의해 필터링되었습니다]"
+        return response
+```
+
+**V7 Intent별 Claude 모델 할당**:
+
+| V7 Intent | 기본 모델 | 복잡도 높을 때 | 토큰 한도 | 보안 수준 |
+|-----------|----------|--------------|----------|----------|
+| CHECK, TREND | Claude Haiku | Haiku | 500 | 낮음 |
+| COMPARE, RANK | Claude Haiku | Sonnet | 800 | 낮음 |
+| FIND_CAUSE, DETECT_ANOMALY | Claude Sonnet | Opus | 1,500 | 중간 |
+| PREDICT, WHAT_IF | Claude Sonnet | Opus | 2,000 | 중간 |
+| REPORT, NOTIFY | Claude Sonnet | Sonnet | 1,200 | 높음 |
+| CONTINUE, CLARIFY, STOP, SYSTEM | Claude Haiku | Haiku | 300 | 낮음 |
+
+### 6.2 Orchestrator Plan 보안
+
+#### 6.2.1 Plan 생성 권한 검증
+
+**Route Target별 노드 접근 제어**:
+```python
+from typing import List, Dict
+
+class OrchestratorSecurityPolicy:
+    """Orchestrator Plan 보안 정책"""
+
+    # Route Target → 허용 노드 타입 매핑
+    ROUTE_TO_NODE_MAP: Dict[str, List[str]] = {
+        "DATA_LAYER": ["DATA", "CODE"],
+        "JUDGMENT_ENGINE": ["DATA", "JUDGMENT", "CODE"],
+        "RULE_ENGINE": ["DATA", "CODE", "SWITCH"],
+        "BI_GUIDE": ["DATA", "BI", "CODE"],
+        "WORKFLOW_GUIDE": ["TRIGGER", "DATA", "JUDGMENT", "ACTION", "WAIT"],
+        "CONTEXT_DEPENDENT": [],
+        "ASK_BACK": [],
+        "DIRECT_RESPONSE": [],
+    }
+
+    # 노드 타입별 권한 요구 수준
+    NODE_PERMISSION_LEVEL: Dict[str, str] = {
+        # P0 (핵심) - 5개
+        "DATA": "viewer",
+        "JUDGMENT": "viewer",
+        "CODE": "analyst",
+        "SWITCH": "analyst",
+        "ACTION": "operator",
+        # P1 (확장) - 5개
+        "BI": "analyst",
+        "MCP": "analyst",
+        "TRIGGER": "manager",
+        "WAIT": "operator",
+        "APPROVAL": "approver",
+        # P2 (고급) - 5개
+        "PARALLEL": "manager",
+        "COMPENSATION": "manager",
+        "DEPLOY": "admin",
+        "ROLLBACK": "admin",
+        "SIMULATE": "analyst",
+    }
+
+    @classmethod
+    def validate_plan_nodes(
+        cls,
+        route_target: str,
+        plan_nodes: List[str],
+        user_role: str
+    ) -> bool:
+        """Plan 노드 접근 권한 검증"""
+        allowed_nodes = cls.ROUTE_TO_NODE_MAP.get(route_target, [])
+
+        for node_type in plan_nodes:
+            # 1. Route에서 허용하는 노드인지 확인
+            if node_type not in allowed_nodes:
+                raise SecurityError(f"Node {node_type} not allowed for route {route_target}")
+
+            # 2. 사용자 권한 수준 확인
+            required_level = cls.NODE_PERMISSION_LEVEL.get(node_type, "admin")
+            if not cls._has_permission(user_role, required_level):
+                raise SecurityError(f"Insufficient permission for node {node_type}")
+
+        return True
+```
+
+#### 6.2.2 15 노드 타입 보안 분류
+
+**노드 타입별 보안 정책**:
+
+| 우선순위 | 노드 타입 | 보안 수준 | 감사 로깅 | 승인 필요 |
+|---------|----------|----------|----------|----------|
+| **P0 (핵심)** | DATA | 낮음 | 선택적 | ❌ |
+| P0 | JUDGMENT | 중간 | 필수 | ❌ |
+| P0 | CODE | 중간 | 필수 | ❌ |
+| P0 | SWITCH | 낮음 | 선택적 | ❌ |
+| P0 | ACTION | 높음 | 필수 | ✅ (외부 연동) |
+| **P1 (확장)** | BI | 중간 | 필수 | ❌ |
+| P1 | MCP | 중간 | 필수 | ❌ |
+| P1 | TRIGGER | 높음 | 필수 | ✅ (스케줄 생성) |
+| P1 | WAIT | 낮음 | 선택적 | ❌ |
+| P1 | APPROVAL | 높음 | 필수 | ✅ (승인 흐름) |
+| **P2 (고급)** | PARALLEL | 중간 | 필수 | ❌ |
+| P2 | COMPENSATION | 높음 | 필수 | ✅ (롤백 연관) |
+| P2 | DEPLOY | 최고 | 필수 | ✅ (운영 배포) |
+| P2 | ROLLBACK | 최고 | 필수 | ✅ (운영 롤백) |
+| P2 | SIMULATE | 중간 | 필수 | ❌ |
+
+### 6.3 Legacy Intent 매핑 보안
+
+**하위 호환 Intent 변환 보안**:
+```python
+class LegacyIntentSecurityMapper:
+    """Legacy Intent → V7 Intent 보안 매핑"""
+
+    # Legacy Intent → V7 Intent 매핑 (15개)
+    LEGACY_INTENT_MAP = {
+        "production_status": "CHECK",
+        "quality_status": "CHECK",
+        "inventory_status": "CHECK",
+        "defect_analysis": "FIND_CAUSE",
+        "trend_analysis": "TREND",
+        "production_analysis": "FIND_CAUSE",
+        "realtime_check": "CHECK",
+        "threshold_alert": "DETECT_ANOMALY",
+        "sensor_check": "CHECK",
+        "bi_chart": "REPORT",
+        "bi_report": "REPORT",
+        "workflow_create": "NOTIFY",
+        "greeting": "SYSTEM",
+        "help": "SYSTEM",
+        "unknown": "CLARIFY",
+    }
+
+    @classmethod
+    def convert_with_audit(cls, legacy_intent: str, user_id: str) -> str:
+        """Legacy Intent 변환 및 감사 로그"""
+        v7_intent = cls.LEGACY_INTENT_MAP.get(legacy_intent, legacy_intent)
+
+        # 변환 감사 로그
+        if legacy_intent != v7_intent:
+            audit_logger.info(
+                "Legacy intent converted",
+                extra={
+                    "legacy_intent": legacy_intent,
+                    "v7_intent": v7_intent,
+                    "user_id": user_id,
+                    "conversion_type": "legacy_to_v7"
+                }
+            )
+
+        return v7_intent
+```
+
+---
+
+## 7. 감사 및 로깅
+
+### 7.1 감사 로그 (Audit Log)
+
+#### 7.1.1 로깅 대상
 
 **모든 변경 작업 로깅**:
 
@@ -580,7 +865,7 @@ CREATE POLICY audit_logs_insert_only ON audit.audit_logs
   WITH CHECK (true);  -- 쓰기만 허용
 ```
 
-#### 6.1.2 감사 로그 보존
+#### 7.1.2 감사 로그 보존
 
 **보존 기간**:
 - **Hot Storage** (PostgreSQL): 90일
@@ -609,11 +894,11 @@ psql -h $DB_HOST -U postgres -d factory_ai -c "
 
 ---
 
-## 7. 규제 준수 (Compliance)
+## 8. 규제 준수 (Compliance)
 
-### 7.1 HACCP / ISO 22000 준수
+### 8.1 HACCP / ISO 22000 준수
 
-#### 7.1.1 CCP (Critical Control Point) 기록
+#### 8.1.1 CCP (Critical Control Point) 기록
 
 **요구사항**:
 - 모든 CCP 판단 로그 2년 보존
@@ -646,9 +931,9 @@ CREATE POLICY ccp_logs_append_only ON core.ccp_logs
   WITH CHECK (true);  -- 쓰기만 허용 (삭제/수정 불가)
 ```
 
-### 7.2 GDPR / 개인정보보호법 준수
+### 8.2 GDPR / 개인정보보호법 준수
 
-#### 7.2.1 개인정보 처리 원칙
+#### 8.2.1 개인정보 처리 원칙
 
 | 원칙 | 구현 |
 |------|------|
@@ -658,7 +943,7 @@ CREATE POLICY ccp_logs_append_only ON core.ccp_logs
 | **안전한 보관** | AES-256 암호화, 접근 제어 (RBAC) |
 | **열람/정정/삭제 권리** | API 제공 (GET /users/me, DELETE /users/me) |
 
-#### 7.2.2 개인정보 삭제 요청 처리
+#### 8.2.2 개인정보 삭제 요청 처리
 
 ```python
 @app.delete("/api/v1/users/me")
@@ -705,15 +990,15 @@ async def anonymize_user_data(user_id: str):
 
 ---
 
-## 8. 보안 사고 대응
+## 9. 보안 사고 대응
 
-### 8.1 사고 대응 프로세스
+### 9.1 사고 대응 프로세스
 
 ```
 [탐지] → [분류] → [격리] → [조사] → [복구] → [사후 분석]
 ```
 
-#### 8.1.1 탐지 (Detection)
+#### 9.1.1 탐지 (Detection)
 
 **자동 탐지**:
 - 비정상 로그인 시도 (5회 연속 실패)
@@ -723,7 +1008,7 @@ async def anonymize_user_data(user_id: str):
 
 **알람 발송**: Slack, PagerDuty
 
-#### 8.1.2 분류 및 격리
+#### 9.1.2 분류 및 격리
 
 **심각도 분류**:
 
@@ -739,7 +1024,7 @@ async def anonymize_user_data(user_id: str):
 - 의심 IP 차단 (WAF/Security Group)
 - 영향받은 서비스 격리 (Network Policy)
 
-#### 8.1.3 조사 및 복구
+#### 9.1.3 조사 및 복구
 
 **조사**:
 1. 로그 분석 (audit_logs, access_logs, application_logs)
@@ -753,7 +1038,7 @@ async def anonymize_user_data(user_id: str):
 3. 권한 리셋
 4. 데이터 복원 (백업)
 
-#### 8.1.4 사후 분석 (Post-Mortem)
+#### 9.1.4 사후 분석 (Post-Mortem)
 
 **보고서 작성**:
 - 사고 개요 (언제, 무엇, 어떻게)
@@ -774,9 +1059,11 @@ async def anonymize_user_data(user_id: str):
 2. **데이터 보안**: TLS 1.2+, AES-256, PII 마스킹 (5가지 패턴)
 3. **네트워크 보안**: VPC 3계층 분리, Security Group, WAF
 4. **애플리케이션 보안**: OWASP Top 10 대응, Secure Coding
-5. **감사 로깅**: 모든 변경 기록, 2년 보존, 불변성 보장
-6. **규제 준수**: HACCP/ISO (CCP 로그), GDPR (개인정보 삭제)
-7. **사고 대응**: 탐지 → 격리 → 복구 프로세스
+5. **V7 Intent Router 보안**: 14개 V7 Intent 입력 검증, Claude 모델 토큰 한도 적용
+6. **Orchestrator 보안**: Route Target별 노드 접근 제어, 15노드 타입별 보안 등급 (P0/P1/P2)
+7. **감사 로깅**: 모든 변경 기록, 2년 보존, 불변성 보장, Legacy Intent 변환 감사
+8. **규제 준수**: HACCP/ISO (CCP 로그), GDPR (개인정보 삭제)
+9. **사고 대응**: 탐지 → 격리 → 복구 프로세스
 
 ### 다음 단계
 1. 보안 스캔 도구 설치 (OWASP ZAP, Bandit)
@@ -791,3 +1078,4 @@ async def anonymize_user_data(user_id: str):
 |------|------|--------|----------|
 | 1.0 | 2025-10-28 | Security Team | 초안 작성 |
 | 2.0 | 2025-11-26 | Security Team | Enhanced 버전 (OWASP 대응, PII 마스킹, 사고 대응 추가) |
+| 3.0 | 2025-12-16 | Security Team | V7 Intent + Orchestrator 보안 설계 추가: V7 Intent 입력 검증, Claude 모델 PII 마스킹 및 토큰 한도, Orchestrator Plan 권한 검증, 15노드 타입별 보안 정책 (P0/P1/P2), Legacy Intent 변환 감사, 권한 매트릭스 확장 |

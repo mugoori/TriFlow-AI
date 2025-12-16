@@ -4,7 +4,7 @@ Redis 기반 슬라이딩 윈도우 Rate Limiter
 """
 import time
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse

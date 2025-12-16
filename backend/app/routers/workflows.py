@@ -26,10 +26,20 @@ class WorkflowTrigger(BaseModel):
 
 
 class WorkflowNode(BaseModel):
+    """워크플로우 노드 (재귀적 구조 지원)"""
     id: str
-    type: str = Field(..., description="노드 타입 (condition, action)")
+    type: str = Field(..., description="노드 타입 (condition, action, if_else, loop, parallel)")
     config: Dict[str, Any]
     next: List[str] = Field(default_factory=list)
+    # 중첩 노드 지원 (if_else, loop, parallel용)
+    then_nodes: Optional[List["WorkflowNode"]] = None
+    else_nodes: Optional[List["WorkflowNode"]] = None
+    loop_nodes: Optional[List["WorkflowNode"]] = None
+    parallel_nodes: Optional[List["WorkflowNode"]] = None
+
+
+# Pydantic v2에서 자기 참조 모델을 위한 재구축
+WorkflowNode.model_rebuild()
 
 
 class WorkflowDSL(BaseModel):
@@ -405,11 +415,13 @@ async def create_workflow(
         db.refresh(tenant)
 
     # 새 워크플로우 생성
+    dsl_dict = workflow.dsl_definition.model_dump(exclude_none=False)
+
     new_workflow = Workflow(
         tenant_id=tenant.tenant_id,
         name=workflow.name,
         description=workflow.description,
-        dsl_definition=workflow.dsl_definition.model_dump(),
+        dsl_definition=dsl_dict,
         version="1.0.0",
         is_active=True,
     )
@@ -458,7 +470,7 @@ async def update_workflow(
         workflow.is_active = update_data.is_active
     if update_data.dsl_definition is not None:
         # DSL 업데이트 시 name, description도 함께 업데이트
-        dsl_dict = update_data.dsl_definition.model_dump()
+        dsl_dict = update_data.dsl_definition.model_dump(exclude_none=False)
 
         # JSONB 필드 업데이트를 위해 새 dict로 복사하여 할당
         new_dsl = copy.deepcopy(dsl_dict)

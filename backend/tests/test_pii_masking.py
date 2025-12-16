@@ -2,7 +2,6 @@
 PII 마스킹 유틸리티 테스트
 pii_patterns.py의 패턴 매칭 및 마스킹 함수 테스트
 """
-import pytest
 from app.utils.pii_patterns import (
     PIIPatterns,
     mask_pii,

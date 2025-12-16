@@ -9,7 +9,7 @@ import logging
 from functools import partial
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException, status, Request, Header
+from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse, JSONResponse
 
 from app.services.agent_orchestrator import orchestrator
@@ -220,11 +220,38 @@ async def stream_chat_response(
 
         # Step 5: 도구 호출 정보
         tool_calls = result.get("tool_calls", [])
+        logger.info(f"[SSE Debug] tool_calls count: {len(tool_calls)}")
         if tool_calls:
             yield f"data: {json.dumps({'type': 'tools', 'tool_calls': [{'tool': tc['tool'], 'input': tc['input']} for tc in tool_calls]})}\n\n"
 
+            # Step 5.5: 워크플로우 생성 이벤트 감지
+            for tc in tool_calls:
+                tool_name = tc.get("tool", "")
+                tool_result = tc.get("result", {})
+                logger.info(f"[SSE Debug] Tool: {tool_name}, result type: {type(tool_result)}, result keys: {tool_result.keys() if isinstance(tool_result, dict) else 'N/A'}")
+
+                # create_workflow 또는 create_complex_workflow 도구 호출 시 workflow 이벤트 전송
+                if tool_name in ["create_workflow", "create_complex_workflow"] and isinstance(tool_result, dict):
+                    logger.info(f"[SSE Debug] Workflow tool detected! success={tool_result.get('success')}, has_dsl={bool(tool_result.get('dsl'))}")
+                    if tool_result.get("success"):
+                        workflow_dsl = tool_result.get("dsl")
+                        if workflow_dsl:
+                            workflow_event = {
+                                "type": "workflow",
+                                "workflow": {
+                                    "dsl": workflow_dsl,
+                                    "workflowId": tool_result.get("workflow_id"),
+                                    "workflowName": tool_result.get("name"),
+                                },
+                            }
+                            yield f"data: {json.dumps(workflow_event)}\n\n"
+                            logger.info(f"[SSE Debug] Workflow event emitted: name={tool_result.get('name')}")
+
         # Step 6: 완료 이벤트
         yield f"data: {json.dumps({'type': 'done', 'agent_name': target_agent_name, 'iterations': result.get('iterations', 1)})}\n\n"
+
+        # SSE 스트림 명시적 종료 (Tauri WebView 호환성)
+        yield "data: [DONE]\n\n"
 
     except Exception as e:
         logger.error(f"Streaming error: {e}", exc_info=True)
@@ -276,8 +303,11 @@ async def chat_stream(request: AgentRequest):
         ),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Nginx 버퍼링 비활성화
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
         },
     )

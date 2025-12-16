@@ -4,7 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
+    <title>TriFlow AI</title>
+    <!-- 다크모드 깜빡임(FOUC) 방지: React 로드 전에 테마 적용 -->
+    <script>
+      (function() {
+        var saved = localStorage.getItem('triflow-settings');
+        var theme = 'system';
+        if (saved) {
+          try { theme = JSON.parse(saved).theme || 'system'; } catch(e) {}
+        }
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (theme === 'dark' || (theme === 'system' && prefersDark)) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
 
   <body>

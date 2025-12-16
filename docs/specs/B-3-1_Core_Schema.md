@@ -1,10 +1,15 @@
 # B-3-1. Core Schema Design
 
 **문서 ID**: B-3-1
-**버전**: 2.0
-**최종 수정일**: 2025-01-26
+**버전**: 2.1
+**최종 수정일**: 2025-12-16
 **작성자**: AI Factory Development Team
 **관련 문서**: A-2 (요구사항), B-1 (아키텍처), B-4 (API), B-5 (워크플로우), B-6 (AI/프롬프트)
+
+> **v2.1 변경사항** (2025-12-16):
+> - `workflow_steps.node_type`: CODE, TRIGGER 노드 타입 추가 (13개 → 15개)
+> - `intent_logs.predicted_intent`: V7 Intent 체계 반영 (14개 V7 + 15개 Legacy = 29개)
+> - `intent_logs.extracted_slots`: V7 확장 슬롯 구조 문서화
 
 ---
 
@@ -273,7 +278,8 @@ CREATE TABLE workflow_steps (
   node_id text NOT NULL,
   node_type text NOT NULL CHECK (node_type IN (
     'DATA','BI','JUDGMENT','MCP','ACTION','APPROVAL','WAIT',
-    'SWITCH','PARALLEL','COMPENSATION','DEPLOY','ROLLBACK','SIMULATE'
+    'SWITCH','PARALLEL','COMPENSATION','DEPLOY','ROLLBACK','SIMULATE',
+    'CODE','TRIGGER'
   )),
   config jsonb NOT NULL,
   timeout_seconds int NOT NULL DEFAULT 60,
@@ -286,8 +292,8 @@ CREATE TABLE workflow_steps (
 CREATE INDEX idx_workflow_steps_workflow ON workflow_steps (workflow_id, step_order);
 CREATE INDEX idx_workflow_steps_type ON workflow_steps (node_type);
 
-COMMENT ON TABLE workflow_steps IS '워크플로우 단계 정규화 (B-5 13가지 노드 타입)';
-COMMENT ON COLUMN workflow_steps.node_type IS 'B-5 정의 13가지: DATA, BI, JUDGMENT, MCP, ACTION, APPROVAL, WAIT, SWITCH, PARALLEL, COMPENSATION, DEPLOY, ROLLBACK, SIMULATE';
+COMMENT ON TABLE workflow_steps IS '워크플로우 단계 정규화 (15가지 노드 타입)';
+COMMENT ON COLUMN workflow_steps.node_type IS '노드 타입 15가지: DATA, BI, JUDGMENT, MCP, ACTION, APPROVAL, WAIT, SWITCH, PARALLEL, COMPENSATION, DEPLOY, ROLLBACK, SIMULATE, CODE, TRIGGER (V7 확장: CODE-코드실행, TRIGGER-워크플로우트리거)';
 ```
 
 **retry_policy JSONB 구조**:
@@ -1103,19 +1109,44 @@ CREATE INDEX idx_intent_logs_tenant ON intent_logs (tenant_id, created_at DESC);
 CREATE INDEX idx_intent_logs_intent ON intent_logs (predicted_intent);
 
 COMMENT ON TABLE intent_logs IS '사용자 의도 분석 로그';
-COMMENT ON COLUMN intent_logs.predicted_intent IS '예측된 의도: query_defect_rate, run_workflow, check_oee 등';
+COMMENT ON COLUMN intent_logs.predicted_intent IS '예측된 의도 (V7 체계): CHECK, TREND, COMPARE, RANK, FIND_CAUSE, DETECT_ANOMALY, PREDICT, WHAT_IF, REPORT, NOTIFY, CONTINUE, CLARIFY, STOP, SYSTEM + Legacy 호환: production_status, quality_status, inventory_status, defect_analysis, trend_analysis, production_analysis, realtime_check, threshold_alert, sensor_check, bi_chart, bi_report, workflow_create, greeting, help, unknown';
 ```
 
-**extracted_slots JSONB 구조**:
+**extracted_slots JSONB 구조** (V7 확장):
 ```json
 {
+  // 기본 슬롯
+  "metric": "production|defect_rate|efficiency|quality|operation_rate|inventory|temperature|status",
+  "target": "facility_001|line_A|process_002",
+  "period": "today|yesterday|this_week|this_month|monthly",
+  "date": "2025-01-26",
+
+  // 비교 분석용 (COMPARE Intent)
+  "targets": ["facility_001", "facility_002"],
+  "periods": ["today", "yesterday"],
+
+  // 순위 조회용 (RANK Intent)
+  "order": "desc|asc",
+  "top_n": 5,
+
+  // 원인 분석용 (FIND_CAUSE Intent)
+  "direction": "increase|decrease",
+
+  // 조건/알림용 (WHAT_IF, NOTIFY Intent)
+  "condition": "temperature > 60",
+  "action": "alert|slack|email|webhook",
+  "schedule": "daily_morning|every_hour|0 9 * * *",
+
+  // 보고서용 (REPORT Intent)
+  "report_type": "daily|weekly|monthly|custom",
+  "chart_type": "trend|bar|pie|table|graph",
+
+  // Legacy 호환
   "line_code": "L01",
-  "date_range": {
-    "start": "2025-01-20",
-    "end": "2025-01-26"
-  },
-  "kpi": "defect_rate",
-  "threshold": 0.05
+  "facility": "001",
+  "defect_type": "외관|치수|기능",
+  "process": "001",
+  "lot": "L2512"
 }
 ```
 

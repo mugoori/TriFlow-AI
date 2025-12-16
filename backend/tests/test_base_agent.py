@@ -3,10 +3,10 @@ Base Agent 테스트
 base_agent.py의 BaseAgent 클래스 테스트
 """
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 from typing import Any, Dict, List
 
-from anthropic.types import Message, TextBlock, ToolUseBlock, ContentBlock
+from anthropic.types import Message, TextBlock, ToolUseBlock
 
 from app.agents.base_agent import BaseAgent
 

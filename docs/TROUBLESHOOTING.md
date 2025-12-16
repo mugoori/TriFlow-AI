@@ -41,6 +41,33 @@
 
 #### 🎨 Frontend (Tauri/React)
 
+**[2025-12-11] Tauri SSE 스트리밍 ERR_INCOMPLETE_CHUNKED_ENCODING (4차 수정 완료)**
+- **에러**: `ERR_INCOMPLETE_CHUNKED_ENCODING`, `error decoding response body`
+- **발생 위치**: `frontend/src/services/agentService.ts` - chatStream 함수
+- **증상**:
+  - curl 테스트는 정상 작동
+  - Tauri 앱에서만 스트리밍 실패
+  - "의도 분석중" 표시 후 즉시 에러 발생
+- **시도한 해결책**:
+  1. 백엔드 `data: [DONE]` 시그널 추가 (결과: 실패)
+  2. StreamingResponse 헤더 개선 (결과: 실패)
+  3. Tauri HTTP 플러그인 적용 (결과: 부분 성공 - URL 권한 후 `error decoding response body`)
+  4. **Tauri에서 비스트리밍 API 사용** (결과: 성공)
+- **근본 원인 (RCA)**:
+  - Windows WebView2가 SSE/chunked encoding을 완벽히 지원하지 않음
+  - Tauri HTTP 플러그인도 SSE (`text/event-stream`) 응답 파싱을 지원하지 않음
+- **최종 해결책**:
+  - Tauri 환경에서는 `/api/v1/agents/chat` (비스트리밍 API) 사용
+  - 브라우저에서는 기존 SSE 스트리밍 유지
+  - 수정 파일:
+    - `frontend/src-tauri/Cargo.toml` - `tauri-plugin-http = "2"` 추가
+    - `frontend/src-tauri/src/lib.rs` - `.plugin(tauri_plugin_http::init())` 추가
+    - `frontend/src-tauri/capabilities/default.json` - `http:default`, `http:allow-fetch` 권한 추가
+    - `frontend/src/services/agentService.ts` - 환경별 분기 처리 (Tauri: 비스트리밍, 브라우저: SSE)
+- **참고 링크**:
+  - https://v2.tauri.app/plugin/http-client/
+  - https://github.com/nicholasking900816/tauri-plugin-websocket/issues/3 (유사 이슈)
+
 **[2025-11-27] Tauri 빌드 시 TypeScript 컴파일 오류**
 - **에러**: `Cannot find module '@/components/ui/alert'`, `Cannot find module '@/components/ui/table'`
 - **해결책**: shadcn/ui의 alert.tsx, table.tsx 컴포넌트 수동 생성

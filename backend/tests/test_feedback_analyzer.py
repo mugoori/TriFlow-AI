@@ -12,7 +12,7 @@ from app.services.feedback_analyzer import (
     FeedbackAnalyzer,
     run_feedback_analysis,
 )
-from app.models import FeedbackLog, ProposedRule, Ruleset, Tenant
+from app.models import FeedbackLog, ProposedRule, Tenant
 
 
 class TestFeedbackPattern:

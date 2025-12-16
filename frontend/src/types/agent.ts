@@ -41,7 +41,30 @@ export interface AgentRequest {
 }
 
 // SSE Streaming Event Types
-export type SSEEventType = 'start' | 'routing' | 'routed' | 'processing' | 'content' | 'tools' | 'done' | 'error';
+export type SSEEventType = 'start' | 'routing' | 'routed' | 'processing' | 'content' | 'tools' | 'workflow' | 'done' | 'error';
+
+// 워크플로우 노드 타입 (재귀적 정의)
+export interface WorkflowNode {
+  id: string;
+  type: 'condition' | 'action' | 'if_else' | 'loop' | 'parallel';
+  config: Record<string, unknown>;
+  next?: string[];
+  then_nodes?: WorkflowNode[];
+  else_nodes?: WorkflowNode[];
+  loop_nodes?: WorkflowNode[];
+  parallel_nodes?: WorkflowNode[];
+}
+
+// 워크플로우 DSL 타입 (SSE 이벤트용)
+export interface WorkflowDSL {
+  name?: string;
+  description?: string;
+  trigger: {
+    type: 'event' | 'schedule' | 'manual';
+    config?: Record<string, unknown>;
+  };
+  nodes: WorkflowNode[];
+}
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -51,6 +74,12 @@ export interface SSEEvent {
   tool_calls?: Array<{ tool: string; input: Record<string, any> }>;
   agent_name?: string;
   iterations?: number;
+  // 워크플로우 이벤트 관련 필드
+  workflow?: {
+    dsl: WorkflowDSL;
+    workflowId?: string;
+    workflowName?: string;
+  };
 }
 
 export interface StreamingState {

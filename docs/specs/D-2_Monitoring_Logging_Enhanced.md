@@ -2,11 +2,13 @@
 
 ## 문서 정보
 - **문서 ID**: D-2
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - A-2 System Requirements (OBS-FR-*)
+  - B-3-3 V7 Intent Router 설계
+  - B-3-4 Orchestrator 설계
   - C-4 Performance & Capacity
   - C-5 Security & Compliance
   - D-1 DevOps & Infrastructure
@@ -28,6 +30,8 @@
 | 목표 | 설명 | 도구 |
 |------|------|------|
 | **서비스 상태 확인** | 각 서비스 정상 동작 여부 | Prometheus, Grafana |
+| **V7 Intent Router 추적** | Intent 분류 정확도, Latency | Prometheus, Custom Metrics |
+| **Orchestrator 추적** | Plan 생성 시간, 노드 실행률 | Prometheus, Custom Metrics |
 | **성능 추적** | 응답 시간, 처리량, 에러율 | Prometheus, Grafana |
 | **비즈니스 지표** | Judgment 정확도, 캐시 적중률 | Prometheus, Custom Metrics |
 | **로그 분석** | 에러 로그, 감사 로그 검색 | Loki, Grafana |
@@ -39,7 +43,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                   Application Services                  │
-│  (Judgment, Workflow, BI, Learning, MCP Hub, Chat)      │
+│  (Intent Router, Orchestrator, Judgment, Workflow, BI)  │
 └─────────────────────────────────────────────────────────┘
          │                  │                  │
          ▼ Metrics          ▼ Logs             ▼ Traces
@@ -581,12 +585,14 @@ increase(llm_cost_usd_total[1d])
 본 문서(D-2)는 **AI Factory Decision Engine** 의 모니터링 및 로깅 전략을 상세히 수립하였다.
 
 ### 주요 성과
-1. **메트릭 정의**: Judgment, Workflow, BI, LLM, Cache, Infrastructure (30+ 메트릭)
-2. **Prometheus 설정**: Scrape Config, Alert Rules
-3. **Loki 로깅**: 구조화 로그 (JSON), Promtail 수집
-4. **OpenTelemetry**: 분산 추적, Span 계측
-5. **알람**: 6가지 주요 알람 규칙, Alertmanager 라우팅
-6. **Grafana 대시보드**: Judgment Performance, Workflow Status, BI Analytics
+1. **V7 Intent Router 메트릭**: Intent 분류 정확도, Latency P95 (300ms), 14개 Intent별 분포
+2. **Orchestrator 메트릭**: Plan 생성 시간, Route Target별 노드 사용률, 15노드 타입 실행률
+3. **메트릭 정의**: Intent Router, Orchestrator, Judgment, Workflow, BI, LLM, Cache, Infrastructure (40+ 메트릭)
+4. **Prometheus 설정**: Scrape Config, Alert Rules (Intent Router, Orchestrator 추가)
+5. **Loki 로깅**: 구조화 로그 (JSON), V7 Intent 변환 로그, Promtail 수집
+6. **OpenTelemetry**: 분산 추적, Intent→Plan→Execute Span 계측
+7. **알람**: 10가지 주요 알람 규칙 (Intent Router Latency, Orchestrator Timeout 추가), Alertmanager 라우팅
+8. **Grafana 대시보드**: V7 Intent Performance, Orchestrator Status, Judgment Performance, Workflow Status
 
 ### 다음 단계
 1. Prometheus, Grafana, Loki 설치 (Helm)
@@ -601,3 +607,4 @@ increase(llm_cost_usd_total[1d])
 |------|------|--------|----------|
 | 1.0 | 2025-11-03 | DevOps Team | 초안 작성 |
 | 2.0 | 2025-11-26 | DevOps Team | Enhanced 버전 (메트릭, 알람 규칙, 대시보드 상세 추가) |
+| 3.0 | 2025-12-16 | DevOps Team | V7 Intent + Orchestrator 모니터링 추가: V7 Intent Router 메트릭 (14개 Intent 분포, Latency), Orchestrator 메트릭 (Plan 생성, 15노드 실행률), Intent→Plan→Execute 분산 추적, 알람 규칙 확장 |

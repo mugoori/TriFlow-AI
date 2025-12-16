@@ -14,6 +14,12 @@ from app.database import get_db_context
 from app.models.core import SensorData, Ruleset
 from app.tools.rhai import RhaiEngine
 from app.services.rag_service import get_rag_service
+from app.services.judgment_policy import (
+    get_hybrid_judgment_service,
+    JudgmentPolicy,
+    JudgmentResult,
+)
+from app.services.judgment_cache import get_judgment_cache
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +30,7 @@ class JudgmentAgent(BaseAgent):
     - 센서 데이터 조회 및 분석
     - Rhai 룰 엔진 실행
     - RAG 지식 검색
+    - 하이브리드 판단 정책 (스펙 B-6)
     """
 
     def __init__(self):
@@ -33,6 +40,8 @@ class JudgmentAgent(BaseAgent):
             max_tokens=4096,
         )
         self.rhai_engine = RhaiEngine()
+        self.hybrid_service = get_hybrid_judgment_service()
+        self.judgment_cache = get_judgment_cache()
 
     def get_system_prompt(self) -> str:
         """
@@ -187,6 +196,42 @@ class JudgmentAgent(BaseAgent):
                     "required": ["name", "condition_type", "sensor_type", "operator", "threshold_value", "action_type"],
                 },
             },
+            {
+                "name": "hybrid_judgment",
+                "description": "하이브리드 정책을 사용하여 센서 데이터를 판단합니다. 룰과 LLM을 조합하여 더 정확한 판단을 수행합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ruleset_id": {
+                            "type": "string",
+                            "description": "사용할 Ruleset ID (UUID)",
+                        },
+                        "input_data": {
+                            "type": "object",
+                            "description": "판단할 센서 데이터 (예: {temperature: 85, pressure: 120})",
+                        },
+                        "policy": {
+                            "type": "string",
+                            "enum": ["rule_only", "llm_only", "hybrid_weighted", "escalate"],
+                            "description": "판단 정책 (기본: hybrid_weighted)",
+                            "default": "hybrid_weighted",
+                        },
+                        "context": {
+                            "type": "object",
+                            "description": "추가 컨텍스트 정보 (라인 코드, 시간대 등)",
+                        },
+                    },
+                    "required": ["ruleset_id", "input_data"],
+                },
+            },
+            {
+                "name": "get_judgment_cache_stats",
+                "description": "판단 캐시 통계를 조회합니다 (캐시 히트율, 항목 수 등).",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
@@ -233,6 +278,17 @@ class JudgmentAgent(BaseAgent):
                 action_type=tool_input["action_type"],
                 action_message=tool_input.get("action_message"),
             )
+
+        elif tool_name == "hybrid_judgment":
+            return self._hybrid_judgment(
+                ruleset_id=tool_input["ruleset_id"],
+                input_data=tool_input["input_data"],
+                policy=tool_input.get("policy", "hybrid_weighted"),
+                context=tool_input.get("context"),
+            )
+
+        elif tool_name == "get_judgment_cache_stats":
+            return self._get_judgment_cache_stats()
 
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
@@ -711,3 +767,147 @@ if value {operator} {threshold_value} {{
 '''
 
         return script
+
+    def _hybrid_judgment(
+        self,
+        ruleset_id: str,
+        input_data: Dict[str, Any],
+        policy: str = "hybrid_weighted",
+        context: Dict[str, Any] = None,
+        tenant_id: UUID = None,
+    ) -> Dict[str, Any]:
+        """
+        하이브리드 정책 판단 실행
+
+        정책:
+        - rule_only: 룰만 사용 (속도 우선)
+        - llm_only: LLM만 사용 (유연성 우선)
+        - hybrid_weighted: 룰 + LLM 가중 조합 (기본)
+        - escalate: 룰 우선, 불확실 시 LLM으로 에스컬레이션
+        """
+        import asyncio
+
+        # tenant_id 기본값
+        if tenant_id is None:
+            from uuid import UUID as UUIDType
+            tenant_id = UUIDType("446e39b3-455e-4ca9-817a-4913921eb41d")
+
+        # 정책 매핑
+        policy_map = {
+            "rule_only": JudgmentPolicy.RULE_ONLY,
+            "llm_only": JudgmentPolicy.LLM_ONLY,
+            "hybrid_weighted": JudgmentPolicy.HYBRID_WEIGHTED,
+            "escalate": JudgmentPolicy.ESCALATE,
+        }
+        judgment_policy = policy_map.get(policy, JudgmentPolicy.HYBRID_WEIGHTED)
+
+        try:
+            # 동기 컨텍스트에서 비동기 호출
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        self.hybrid_service.execute(
+                            tenant_id=tenant_id,
+                            ruleset_id=UUID(ruleset_id),
+                            input_data=input_data,
+                            policy=judgment_policy,
+                            context=context,
+                        )
+                    )
+                    result = future.result()
+            else:
+                result = asyncio.run(
+                    self.hybrid_service.execute(
+                        tenant_id=tenant_id,
+                        ruleset_id=UUID(ruleset_id),
+                        input_data=input_data,
+                        policy=judgment_policy,
+                        context=context,
+                    )
+                )
+
+            logger.info(
+                f"Hybrid judgment completed: {result.decision} "
+                f"(confidence: {result.confidence}, source: {result.source})"
+            )
+
+            return {
+                "success": True,
+                "decision": result.decision,
+                "confidence": result.confidence,
+                "source": result.source,
+                "policy_used": result.policy_used.value,
+                "cached": result.cached,
+                "execution_time_ms": result.execution_time_ms,
+                "details": result.details,
+                "recommendation": self._get_recommendation_from_result(result),
+            }
+
+        except Exception as e:
+            logger.error(f"Hybrid judgment error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "decision": "UNKNOWN",
+                "confidence": 0.0,
+            }
+
+    def _get_judgment_cache_stats(self, tenant_id: UUID = None) -> Dict[str, Any]:
+        """
+        판단 캐시 통계 조회
+        """
+        import asyncio
+
+        if tenant_id is None:
+            from uuid import UUID as UUIDType
+            tenant_id = UUIDType("446e39b3-455e-4ca9-817a-4913921eb41d")
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        self.judgment_cache.get_stats(tenant_id)
+                    )
+                    stats = future.result()
+            else:
+                stats = asyncio.run(self.judgment_cache.get_stats(tenant_id))
+
+            return {
+                "success": True,
+                "stats": stats,
+            }
+
+        except Exception as e:
+            logger.error(f"Cache stats error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def _get_recommendation_from_result(self, result: JudgmentResult) -> str:
+        """
+        판단 결과에서 추천 조치 생성
+        """
+        decision = result.decision
+        confidence = result.confidence
+
+        if decision == "CRITICAL":
+            if confidence >= 0.8:
+                return "즉시 점검이 필요합니다. 생산 라인 정지를 고려하세요."
+            else:
+                return "위험 상황으로 판단되나 추가 확인이 필요합니다."
+        elif decision == "WARNING":
+            if confidence >= 0.8:
+                return "주의가 필요합니다. 센서 데이터를 계속 모니터링하세요."
+            else:
+                return "경고 수준으로 보이나 추가 데이터 확인을 권장합니다."
+        elif decision == "OK":
+            return "정상 상태입니다. 특별한 조치가 필요하지 않습니다."
+        else:
+            return "판단을 내리기 어렵습니다. 수동 확인이 필요합니다."

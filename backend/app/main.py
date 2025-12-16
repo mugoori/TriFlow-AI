@@ -462,6 +462,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register settings router: {e}")
 
+# BI 라우터 (비즈니스 인텔리전스)
+try:
+    from app.routers import bi
+    app.include_router(bi.router, prefix="/api/v1/bi", tags=["bi"])
+    logger.info("BI router registered")
+except Exception as e:
+    logger.error(f"Failed to register bi router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

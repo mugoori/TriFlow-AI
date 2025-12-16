@@ -3,7 +3,7 @@ Agent Orchestrator Service
 에이전트 체인 오케스트레이션 - MetaRouter → Sub-Agent 자동 연결
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from app.agents import (
     MetaRouterAgent,
@@ -40,6 +40,9 @@ class AgentOrchestrator:
             "bi": BIPlannerAgent(),
             "learning": LearningAgent(),
         }
+        # 세션별 pending_parameters 저장 (하이브리드 파라미터 수집용)
+        # 키: session_id, 값: {"parameters": [...], "workflow_context": {...}}
+        self._pending_parameters: Dict[str, Dict[str, Any]] = {}
         logger.info("AgentOrchestrator initialized with 5 agents")
 
     def get_agent_status(self) -> Dict[str, Any]:
@@ -109,9 +112,10 @@ class AgentOrchestrator:
                 original_message=message,
             )
 
-        # Step 3: general인 경우 MetaRouter 응답 반환
+        # Step 3: general인 경우 기본 응답 생성
+        general_response = self._generate_general_response(message, routing_info)
         return self._format_response(
-            result=routing_info,
+            result={"response": general_response},
             agent_name="MetaRouterAgent",
             routing_info=routing_info,
         )
@@ -178,8 +182,18 @@ class AgentOrchestrator:
         routing_info: Dict[str, Any],
         original_message: str,
     ) -> Dict[str, Any]:
-        """Sub-Agent 실행"""
+        """Sub-Agent 실행 (하이브리드 파라미터 수집 지원)"""
         agent = self.agents[target_agent]
+
+        # 세션 ID 추출 (없으면 기본값 사용)
+        session_id = context.get("session_id", "default")
+
+        # 1. Pending parameters가 있고, 사용자가 답변했다면 파싱
+        if session_id in self._pending_parameters:
+            parsed_params = self._parse_user_parameters(session_id, original_message)
+            if parsed_params:
+                context["parsed_parameters"] = parsed_params
+                logger.info(f"[Orchestrator] Parsed parameters: {parsed_params}")
 
         # 컨텍스트 병합 (원본 + 라우팅 컨텍스트)
         merged_context = {
@@ -191,19 +205,134 @@ class AgentOrchestrator:
         # 에이전트별 특수 처리
         tool_choice = self._get_tool_choice(target_agent, original_message)
 
-        logger.info(f"[Orchestrator] Executing {agent.name}")
+        # 복잡한 워크플로우는 iteration이 더 필요 (되묻기 + DSL 생성)
+        max_iter = 10 if target_agent == "workflow" else 5
+
+        logger.info(f"[Orchestrator] Executing {agent.name} (max_iterations={max_iter})")
 
         result = agent.run(
             user_message=message,
             context=merged_context,
-            max_iterations=5,
+            max_iterations=max_iter,
             tool_choice=tool_choice,
         )
 
+        # 2. 결과가 parameter_request Tool 호출인지 확인
+        if self._is_parameter_request(result):
+            return self._handle_parameter_request(session_id, result, agent.name, routing_info)
+
+        # 3. AI가 Tool 없이 텍스트로 되묻기를 생성한 경우 감지
+        # (예: "다음 정보를 알려주세요:\n1. **Slack 채널**: ...")
+        if target_agent == "workflow" and not result.get("tool_calls"):
+            text_params = self._detect_text_parameter_request(result.get("response", ""))
+            if text_params:
+                # 텍스트에서 추출한 파라미터 목록을 세션에 저장
+                self._pending_parameters[session_id] = {
+                    "parameters": text_params,
+                    "workflow_context": None,
+                }
+                logger.info(
+                    f"[Orchestrator] Detected text parameter request, stored {len(text_params)} params for session {session_id}"
+                )
+
+        # 4. 일반 응답
         return self._format_response(
             result=result,
             agent_name=agent.name,
             routing_info=routing_info,
+        )
+
+    def _generate_general_response(
+        self,
+        message: str,
+        routing_info: Dict[str, Any],
+    ) -> str:
+        """
+        일반 의도(general)에 대한 기본 응답 생성
+
+        Args:
+            message: 사용자 메시지
+            routing_info: 라우팅 정보
+
+        Returns:
+            친화적인 기본 응답 문자열
+        """
+        msg_lower = message.lower().strip()
+
+        # 인사말 패턴
+        greetings = ["안녕", "하이", "헬로", "hello", "hi", "반가", "좋은 아침", "좋은 저녁"]
+        if any(g in msg_lower for g in greetings):
+            return (
+                "안녕하세요! TriFlow AI입니다. 무엇을 도와드릴까요?\n\n"
+                "**사용 가능한 기능:**\n"
+                "- 센서 데이터 조회 및 분석\n"
+                "- 워크플로우 생성\n"
+                "- 데이터 시각화 (BI)\n"
+                "- 규칙 학습 및 개선"
+            )
+
+        # 감사 패턴
+        thanks_words = ["고마워", "감사", "thanks", "thank you", "땡큐", "ㄱㅅ", "고맙"]
+        if any(t in msg_lower for t in thanks_words):
+            return "천만에요! 다른 도움이 필요하시면 말씀해주세요."
+
+        # 작별 인사 패턴
+        bye_words = ["잘가", "바이", "bye", "안녕히", "다음에", "나중에", "수고"]
+        if any(b in msg_lower for b in bye_words):
+            return "안녕히 가세요! 다음에 또 찾아주세요."
+
+        # 도움말 패턴
+        help_words = ["도움", "help", "기능", "할 수 있", "뭘 해", "사용법"]
+        if any(h in msg_lower for h in help_words):
+            return (
+                "TriFlow AI는 제조 현장의 데이터를 분석하고 자동화하는 AI 어시스턴트입니다.\n\n"
+                "**주요 기능:**\n"
+                "1. **센서 데이터 분석** - \"LINE_A 온도 데이터 조회해줘\"\n"
+                "2. **워크플로우 생성** - \"온도 이상 시 알림 워크플로우 만들어줘\"\n"
+                "3. **데이터 시각화** - \"이번 주 생산량 차트 보여줘\"\n"
+                "4. **규칙 학습** - \"최근 알람 패턴 분석해줘\""
+            )
+
+        # 자기소개 패턴
+        intro_words = ["누구", "소개", "너는", "정체"]
+        if any(i in msg_lower for i in intro_words):
+            return (
+                "저는 **TriFlow AI**입니다. 제조 현장의 스마트 팩토리 데이터를 분석하고 "
+                "자동화를 지원하는 AI 어시스턴트입니다.\n\n"
+                "센서 데이터 조회, 워크플로우 자동화, 데이터 시각화 등을 도와드릴 수 있습니다."
+            )
+
+        # 긍정 확인 패턴 (짧은 단독 응답)
+        positive_words = ["응", "어", "네", "예", "그래", "ok", "ㅇㅋ", "좋아", "알겠어", "웅", "넵"]
+        if msg_lower in positive_words or (len(msg_lower) <= 4 and any(p == msg_lower for p in positive_words)):
+            return "네, 알겠습니다! 추가로 도움이 필요하시면 말씀해주세요."
+
+        # 부정 확인 패턴 (짧은 단독 응답)
+        negative_words = ["아니", "아뇨", "no", "놉", "ㄴㄴ", "아니요", "아니야"]
+        if msg_lower in negative_words or (len(msg_lower) <= 4 and any(n == msg_lower for n in negative_words)):
+            return "알겠습니다. 다른 질문이 있으시면 말씀해주세요."
+
+        # 범위 외 질문 패턴 (날씨, 시간 등)
+        offtopic_words = ["날씨", "시간", "weather", "time", "몇시", "몇 시"]
+        data_words = ["데이터", "센서", "생산", "워크플로우", "차트"]
+        if any(o in msg_lower for o in offtopic_words) and not any(d in msg_lower for d in data_words):
+            return (
+                "죄송합니다, 저는 제조 현장 데이터 분석 전문 AI라서 "
+                "일반 정보는 제공하기 어렵습니다.\n\n"
+                "**제가 도와드릴 수 있는 것:**\n"
+                "- 센서 데이터 조회 및 분석\n"
+                "- 워크플로우 생성\n"
+                "- 생산 데이터 시각화"
+            )
+
+        # 기본 응답 (특수문자 처리)
+        safe_message = message.replace("'", "").replace('"', "")[:50]
+        return (
+            f"'{safe_message}'에 대해 더 구체적으로 알려주시면 도움드릴 수 있습니다.\n\n"
+            "예시:\n"
+            "- \"LINE_A 온도 데이터 보여줘\"\n"
+            "- \"워크플로우 만들어줘\"\n"
+            "- \"이번 달 생산량 차트\""
         )
 
     def _get_tool_choice(
@@ -214,9 +343,24 @@ class AgentOrchestrator:
         """에이전트별 tool_choice 결정"""
         msg_lower = message.lower()
 
-        # Workflow: 워크플로우 생성 강제
+        # Workflow: 반드시 Tool을 호출하도록 강제
+        # - 파라미터 누락 시: request_parameters
+        # - 파라미터 완비 시: create_workflow 또는 create_complex_workflow
         if target_agent == "workflow":
-            return {"type": "tool", "name": "create_workflow"}
+            # 복잡한 워크플로우 패턴 감지
+            complex_patterns = [
+                "이면 ", "면 ", "일 때", "경우",  # 조건 분기
+                "그리고", "그러면", "또한", "동시에",  # 다중 액션
+                "80도", "90도", "이상이면", "넘으면",  # 다단계 조건 예시
+                "if ", "else", "and ", "or ",  # 영문 조건
+            ]
+            # 복잡 패턴이 2개 이상 매칭되면 complex_workflow 강제
+            match_count = sum(1 for p in complex_patterns if p in msg_lower)
+            if match_count >= 2:
+                return {"type": "tool", "name": "create_complex_workflow"}
+            # 그 외: AI가 Tool을 자율 선택하되 반드시 Tool 호출 필요
+            # "any"는 Anthropic API에서 "반드시 하나의 tool을 호출해야 함"을 의미
+            return {"type": "any"}
 
         # Learning: 룰셋 생성 요청 감지
         if target_agent == "learning":
@@ -229,6 +373,173 @@ class AgentOrchestrator:
                 return {"type": "tool", "name": "create_ruleset"}
 
         return None
+
+    def _is_parameter_request(self, result: Dict[str, Any]) -> bool:
+        """결과가 파라미터 요청인지 확인"""
+        for tc in result.get("tool_calls", []):
+            if tc.get("tool") == "request_parameters":
+                tool_result = tc.get("result", {})
+                if isinstance(tool_result, dict) and tool_result.get("type") == "parameter_request":
+                    return True
+        return False
+
+    def _handle_parameter_request(
+        self,
+        session_id: str,
+        result: Dict[str, Any],
+        agent_name: str,
+        routing_info: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """파라미터 요청 처리 - 세션에 저장하고 되묻기 메시지 반환"""
+        for tc in result.get("tool_calls", []):
+            if tc.get("tool") == "request_parameters":
+                tool_result = tc.get("result", {})
+                if isinstance(tool_result, dict) and tool_result.get("type") == "parameter_request":
+                    params = tool_result.get("parameters", [])
+                    workflow_context = tool_result.get("workflow_context")
+
+                    # 세션에 저장
+                    self._pending_parameters[session_id] = {
+                        "parameters": params,
+                        "workflow_context": workflow_context,
+                    }
+
+                    logger.info(
+                        f"[Orchestrator] Stored {len(params)} pending parameters for session {session_id}"
+                    )
+
+                    # 되묻기 메시지 반환
+                    message = tool_result.get("message", "추가 정보가 필요합니다.")
+                    return self._format_response(
+                        result={"response": message},
+                        agent_name=agent_name,
+                        routing_info=routing_info,
+                    )
+
+        return self._format_response(result, agent_name, routing_info)
+
+    def _parse_user_parameters(
+        self,
+        session_id: str,
+        user_message: str,
+    ) -> Optional[Dict[str, str]]:
+        """
+        사용자 답변에서 파라미터 파싱 (백엔드 로직)
+
+        사용자가 쉼표로 구분하여 답변한 경우:
+        - "prod-alerts, EQ_001, LINE_B"
+        - 순서대로 pending_parameters의 key에 매핑
+
+        Args:
+            session_id: 세션 ID
+            user_message: 사용자 답변 메시지
+
+        Returns:
+            파싱된 파라미터 딕셔너리 또는 None
+        """
+        pending = self._pending_parameters.get(session_id)
+        if not pending:
+            return None
+
+        params_info = pending.get("parameters", [])
+        if not params_info:
+            return None
+
+        # 쉼표로 분리
+        values = [v.strip() for v in user_message.split(",")]
+
+        # 순서대로 매핑
+        result = {}
+        for i, param_info in enumerate(params_info):
+            if i < len(values):
+                key = param_info["key"]
+                value = values[i]
+
+                # 채널 앞에 # 추가 (없는 경우)
+                if key == "channel" and value and not value.startswith("#"):
+                    value = f"#{value}"
+
+                result[key] = value
+                logger.info(f"[Orchestrator] Mapped param: {key} = '{value}'")
+
+        # 사용 후 삭제
+        del self._pending_parameters[session_id]
+        logger.info(f"[Orchestrator] Cleared pending parameters for session {session_id}")
+
+        return result if result else None
+
+    def _detect_text_parameter_request(
+        self,
+        response_text: str,
+    ) -> Optional[List[Dict[str, str]]]:
+        """
+        AI가 Tool 없이 텍스트로 되묻기를 생성한 경우 파라미터 목록 추출
+
+        패턴 감지:
+        - "다음 정보를 알려주세요:" 또는 유사 패턴
+        - 번호 매겨진 항목 (1. **라벨**: 설명)
+
+        Returns:
+            파라미터 목록 [{"key": ..., "label": ...}] 또는 None
+        """
+        import re
+
+        # 되묻기 패턴 감지
+        ask_patterns = [
+            r"다음 정보를 알려주세요",
+            r"다음 항목을 알려주세요",
+            r"아래 정보가 필요합니다",
+            r"Please provide the following",
+        ]
+
+        is_asking = any(re.search(p, response_text, re.IGNORECASE) for p in ask_patterns)
+        if not is_asking:
+            return None
+
+        # 번호 매겨진 항목에서 라벨 추출
+        # 패턴: "1. **Slack 채널**:" 또는 "2. **장비 ID**:" 등
+        item_pattern = r'\d+\.\s*\*\*([^*]+)\*\*'
+        matches = re.findall(item_pattern, response_text)
+
+        if not matches:
+            return None
+
+        # 라벨을 key로 변환
+        label_to_key = {
+            "Slack 채널": "channel",
+            "슬랙 채널": "channel",
+            "채널": "channel",
+            "장비 ID": "equipment_id",
+            "장비": "equipment_id",
+            "생산 라인": "line_code",
+            "생산 라인 코드": "line_code",
+            "라인 코드": "line_code",
+            "라인": "line_code",
+            "이메일": "to",
+            "수신자": "to",
+            "전화번호": "phone",
+            "센서": "sensor_id",
+            "센서 ID": "sensor_id",
+            "임계값": "threshold",
+            "테이블": "table",
+            "파일명": "filename",
+            "URL": "url",
+            "스케줄": "cron",
+        }
+
+        params = []
+        for label in matches:
+            label_clean = label.strip()
+            # 라벨에서 key 추출 (매핑 테이블 사용 또는 소문자 변환)
+            key = label_to_key.get(label_clean)
+            if not key:
+                # 매핑에 없으면 라벨을 snake_case로 변환
+                key = label_clean.lower().replace(" ", "_").replace("-", "_")
+
+            params.append({"key": key, "label": label_clean})
+
+        logger.info(f"[Orchestrator] Extracted {len(params)} params from text: {params}")
+        return params if params else None
 
     def _format_response(
         self,

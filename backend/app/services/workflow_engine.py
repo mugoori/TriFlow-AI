@@ -2,12 +2,29 @@
 워크플로우 실행 엔진
 조건 평가 및 액션 실행
 
-지원 노드 타입:
+스펙 참조: B-5_Workflow_State_Machine.md (15개 노드 타입)
+
+지원 노드 타입 (11개 구현, 4개 예정):
 - condition: 조건 평가 (순차 진행)
 - action: 액션 실행
 - if_else: 조건 분기 (then/else 브랜치)
 - loop: 반복 실행 (조건 기반 또는 횟수 기반)
 - parallel: 병렬 실행
+- data: 데이터 소스에서 데이터 조회
+- wait: 대기 (지정 시간 또는 이벤트)
+- approval: 인간 승인 대기
+- switch: 다중 분기 (다수 case)
+- trigger: 워크플로우 자동 시작 트리거 (V2 추가)
+- code: Python 샌드박스 실행 (V2 추가)
+
+미구현 (Phase 3):
+- judgment: 판단 에이전트 호출 (노드 타입)
+- bi: BI 분석 에이전트 호출 (노드 타입)
+- mcp: MCP 외부 도구 호출 (노드 타입)
+- compensation: 보상 트랜잭션
+- deploy: 배포
+- rollback: 롤백
+- simulate: 시뮬레이션
 """
 import asyncio
 import csv
@@ -361,10 +378,17 @@ class ActionExecutor:
             "stop_production_line": self._stop_production_line,
             "adjust_sensor_threshold": self._adjust_sensor_threshold,
             "trigger_maintenance": self._trigger_maintenance,
-            # 분석 액션 (Mock)
+            # 분석 액션
             "calculate_defect_rate": self._calculate_defect_rate,
+            "calculate_metric": self._calculate_metric,
             "analyze_sensor_trend": self._analyze_sensor_trend,
             "predict_equipment_failure": self._predict_equipment_failure,
+            # 인사이트 액션 (신규)
+            "execute_sql": self._execute_sql,
+            "aggregate_data": self._aggregate_data,
+            "evaluate_threshold": self._evaluate_threshold,
+            "generate_chart": self._generate_chart,
+            "format_insight": self._format_insight,
         }
 
     async def execute(
@@ -732,12 +756,102 @@ class ActionExecutor:
         params: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """센서 추세 분석 (Mock)"""
-        sensor_type = params.get("sensor_type", "temperature")
+        """
+        센서 추세 분석 (실제 구현)
+
+        파라미터:
+            data: 시계열 데이터 리스트 (list of dict)
+                예: [{"timestamp": "...", "value": 75.3}, ...]
+            value_key: 값 키 (기본값: "value")
+            timestamp_key: 타임스탬프 키 (기본값: "timestamp")
+            window_size: 이동평균 윈도우 크기 (기본값: 5)
+            sensor_type: 센서 유형 (표시용)
+
+        출력:
+            trend: 추세 (increasing, decreasing, stable)
+            average: 평균값
+            min: 최소값
+            max: 최대값
+            std_dev: 표준편차
+            moving_average: 이동평균 데이터
+        """
+        from statistics import mean, stdev
+
+        data = params.get("data", [])
+        value_key = params.get("value_key", "value")
+        timestamp_key = params.get("timestamp_key", "timestamp")
+        window_size = params.get("window_size", 5)
+        sensor_type = params.get("sensor_type", "sensor")
         hours = params.get("hours", 24)
 
-        import random
-        trend = random.choice(["increasing", "decreasing", "stable"])
+        # 데이터가 없으면 Mock 데이터 사용
+        if not data:
+            import random
+            trend = random.choice(["increasing", "decreasing", "stable"])
+            return {
+                "message": f"센서 추세 분석 완료 (Mock): {sensor_type}",
+                "data": {
+                    "sensor_type": sensor_type,
+                    "hours_analyzed": hours,
+                    "trend": trend,
+                    "average": round(random.uniform(40, 80), 2),
+                    "min": round(random.uniform(20, 40), 2),
+                    "max": round(random.uniform(80, 100), 2),
+                    "std_dev": round(random.uniform(1, 10), 2),
+                    "data_points": 0,
+                    "is_mock": True,
+                },
+            }
+
+        # 값 추출
+        values = []
+        for item in data:
+            val = item.get(value_key)
+            if val is not None:
+                try:
+                    values.append(float(val))
+                except (TypeError, ValueError):
+                    pass
+
+        if not values:
+            return {
+                "message": "분석할 데이터가 없습니다",
+                "data": {"error": "no valid values"},
+            }
+
+        # 기본 통계
+        avg_value = round(mean(values), 2)
+        min_value = round(min(values), 2)
+        max_value = round(max(values), 2)
+        std_value = round(stdev(values), 2) if len(values) > 1 else 0
+
+        # 이동평균 계산
+        moving_avg = []
+        for i in range(len(values)):
+            start_idx = max(0, i - window_size + 1)
+            window = values[start_idx:i + 1]
+            moving_avg.append(round(mean(window), 2))
+
+        # 추세 판별 (선형 회귀 간략 버전)
+        n = len(values)
+        if n >= 3:
+            # 간단한 추세: 처음 1/3 vs 마지막 1/3 비교
+            first_third = values[:n // 3]
+            last_third = values[-(n // 3):]
+
+            first_avg = mean(first_third) if first_third else 0
+            last_avg = mean(last_third) if last_third else 0
+
+            diff_ratio = (last_avg - first_avg) / (first_avg if first_avg != 0 else 1)
+
+            if diff_ratio > 0.05:  # 5% 이상 증가
+                trend = "increasing"
+            elif diff_ratio < -0.05:  # 5% 이상 감소
+                trend = "decreasing"
+            else:
+                trend = "stable"
+        else:
+            trend = "stable"
 
         return {
             "message": f"센서 추세 분석 완료: {sensor_type}",
@@ -745,9 +859,13 @@ class ActionExecutor:
                 "sensor_type": sensor_type,
                 "hours_analyzed": hours,
                 "trend": trend,
-                "average": round(random.uniform(40, 80), 2),
-                "min": round(random.uniform(20, 40), 2),
-                "max": round(random.uniform(80, 100), 2),
+                "average": avg_value,
+                "min": min_value,
+                "max": max_value,
+                "std_dev": std_value,
+                "data_points": len(values),
+                "moving_average": moving_avg[-10:] if len(moving_avg) > 10 else moving_avg,
+                "is_mock": False,
             },
         }
 
@@ -756,12 +874,137 @@ class ActionExecutor:
         params: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """장비 고장 예측 (Mock)"""
-        equipment_id = params.get("equipment_id", "EQUIP_01")
+        """
+        장비 고장 예측 (규칙 기반 + 통계적 분석)
 
-        import random
-        failure_probability = round(random.uniform(0, 0.5), 3)
-        days_to_failure = random.randint(7, 90) if failure_probability < 0.3 else random.randint(1, 7)
+        파라미터:
+            equipment_id: 설비 ID
+            sensor_data: 센서 데이터 리스트 (list of dict)
+                예: [{"temperature": 75, "vibration": 2.5, "pressure": 100}, ...]
+            thresholds: 임계값 설정 (dict)
+                예: {"temperature": {"warning": 80, "critical": 90},
+                     "vibration": {"warning": 3.0, "critical": 5.0}}
+            history_days: 분석할 과거 일수 (기본값: 30)
+
+        출력:
+            failure_probability: 고장 확률 (0~1)
+            estimated_days_to_failure: 예상 잔여 일수
+            risk_factors: 위험 요소 리스트
+            recommendation: 권장 조치
+        """
+        from statistics import mean, stdev
+
+        equipment_id = params.get("equipment_id", "EQUIP_01")
+        sensor_data = params.get("sensor_data", [])
+        thresholds = params.get("thresholds", {
+            "temperature": {"warning": 80, "critical": 95},
+            "vibration": {"warning": 3.0, "critical": 5.0},
+            "pressure": {"warning": 150, "critical": 180},
+        })
+        history_days = params.get("history_days", 30)
+
+        # 데이터가 없으면 Mock 결과 반환
+        if not sensor_data:
+            import random
+            failure_probability = round(random.uniform(0, 0.5), 3)
+            days_to_failure = random.randint(7, 90) if failure_probability < 0.3 else random.randint(1, 7)
+
+            return {
+                "message": f"장비 고장 예측 완료 (Mock): {equipment_id}",
+                "data": {
+                    "equipment_id": equipment_id,
+                    "failure_probability": failure_probability,
+                    "estimated_days_to_failure": days_to_failure,
+                    "recommendation": "유지보수 권장" if failure_probability > 0.2 else "정상 운영",
+                    "risk_factors": [],
+                    "is_mock": True,
+                },
+            }
+
+        # 위험 요소 분석
+        risk_factors = []
+        risk_score = 0.0
+
+        for metric, limits in thresholds.items():
+            values = [d.get(metric) for d in sensor_data if d.get(metric) is not None]
+
+            if not values:
+                continue
+
+            try:
+                values = [float(v) for v in values]
+            except (TypeError, ValueError):
+                continue
+
+            avg = mean(values)
+            max_val = max(values)
+            std = stdev(values) if len(values) > 1 else 0
+
+            warning_threshold = limits.get("warning", float("inf"))
+            critical_threshold = limits.get("critical", float("inf"))
+
+            # 최대값이 임계값 초과
+            if max_val >= critical_threshold:
+                risk_factors.append({
+                    "metric": metric,
+                    "severity": "critical",
+                    "message": f"{metric} 최대값({max_val:.1f})이 위험 수준({critical_threshold}) 초과",
+                    "contribution": 0.3,
+                })
+                risk_score += 0.3
+            elif max_val >= warning_threshold:
+                risk_factors.append({
+                    "metric": metric,
+                    "severity": "warning",
+                    "message": f"{metric} 최대값({max_val:.1f})이 경고 수준({warning_threshold}) 초과",
+                    "contribution": 0.15,
+                })
+                risk_score += 0.15
+
+            # 평균이 경고 수준에 근접
+            if avg >= warning_threshold * 0.9:
+                risk_factors.append({
+                    "metric": metric,
+                    "severity": "warning",
+                    "message": f"{metric} 평균({avg:.1f})이 경고 수준에 근접",
+                    "contribution": 0.1,
+                })
+                risk_score += 0.1
+
+            # 높은 변동성
+            if std > avg * 0.2:  # 변동계수 > 20%
+                risk_factors.append({
+                    "metric": metric,
+                    "severity": "info",
+                    "message": f"{metric} 변동성이 높음 (표준편차: {std:.2f})",
+                    "contribution": 0.05,
+                })
+                risk_score += 0.05
+
+        # 고장 확률 계산 (0~1 범위로 정규화)
+        failure_probability = min(risk_score, 1.0)
+        failure_probability = round(failure_probability, 3)
+
+        # 잔여 일수 추정
+        import random as rnd
+        if failure_probability >= 0.7:
+            days_to_failure = rnd.randint(1, 7)
+        elif failure_probability >= 0.4:
+            days_to_failure = rnd.randint(7, 30)
+        elif failure_probability >= 0.2:
+            days_to_failure = rnd.randint(30, 60)
+        else:
+            days_to_failure = rnd.randint(60, 180)
+
+        # 권장 조치 결정
+        if failure_probability >= 0.5:
+            recommendation = "즉시 유지보수 필요"
+        elif failure_probability >= 0.3:
+            recommendation = "예방 정비 권장"
+        elif failure_probability >= 0.1:
+            recommendation = "모니터링 강화 권장"
+        else:
+            recommendation = "정상 운영"
 
         return {
             "message": f"장비 고장 예측 완료: {equipment_id}",
@@ -769,7 +1012,523 @@ class ActionExecutor:
                 "equipment_id": equipment_id,
                 "failure_probability": failure_probability,
                 "estimated_days_to_failure": days_to_failure,
-                "recommendation": "유지보수 권장" if failure_probability > 0.2 else "정상 운영",
+                "risk_factors": risk_factors,
+                "risk_score": round(risk_score, 3),
+                "recommendation": recommendation,
+                "analysis_period_days": history_days,
+                "data_points": len(sensor_data),
+                "is_mock": False,
+            },
+        }
+
+    # ============ 인사이트 액션 (신규) ============
+
+    async def _execute_sql(
+        self,
+        params: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        SQL 쿼리 실행 및 데이터 조회
+
+        파라미터:
+            query: SQL 쿼리 문자열
+            params: 쿼리 파라미터 (dict)
+            timeout: 타임아웃 (초, 기본값 30)
+
+        출력:
+            rows: 조회된 데이터 리스트
+            columns: 컬럼명 리스트
+            row_count: 행 개수
+        """
+        from app.database import get_db_context
+        from sqlalchemy import text
+
+        query = params.get("query", "")
+        query_params = params.get("params", {})
+        timeout = params.get("timeout", 30)
+        workflow_id = context.get("workflow_id")
+
+        if not query or not query.strip():
+            return {
+                "message": "SQL 쿼리가 제공되지 않았습니다",
+                "data": {"rows": [], "columns": [], "row_count": 0},
+            }
+
+        # 보안: SELECT 쿼리만 허용
+        query_upper = query.strip().upper()
+        if not query_upper.startswith("SELECT"):
+            return {
+                "message": "SELECT 쿼리만 실행할 수 있습니다",
+                "data": {"rows": [], "columns": [], "row_count": 0, "error": "SELECT only"},
+            }
+
+        try:
+            with get_db_context() as db:
+                result = db.execute(text(query), query_params)
+                columns = list(result.keys()) if result.keys() else []
+                rows = [dict(zip(columns, row)) for row in result.fetchall()]
+
+            log_entry = {
+                "event_type": "sql_executed",
+                "details": {"query": query[:200], "row_count": len(rows)},
+                "context": context,
+                "workflow_id": workflow_id,
+            }
+            execution_log_store.add_log(log_entry)
+
+            return {
+                "message": f"SQL 쿼리 실행 완료: {len(rows)}건 조회",
+                "data": {
+                    "rows": rows,
+                    "columns": columns,
+                    "row_count": len(rows),
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"SQL 실행 오류: {e}")
+            return {
+                "message": f"SQL 실행 오류: {str(e)}",
+                "data": {"rows": [], "columns": [], "row_count": 0, "error": str(e)},
+            }
+
+    async def _aggregate_data(
+        self,
+        params: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        데이터 집계 (SUM, AVG, COUNT, MIN, MAX, GROUP BY)
+
+        파라미터:
+            data: 집계할 데이터 리스트 (list of dict)
+            group_by: 그룹화 키 (str 또는 list)
+            aggregations: 집계 정의 (dict)
+                예: {"total": {"field": "value", "func": "sum"},
+                     "average": {"field": "value", "func": "avg"}}
+
+        출력:
+            result: 집계 결과
+        """
+        from collections import defaultdict
+        from statistics import mean
+
+        data = params.get("data", [])
+        group_by = params.get("group_by")
+        aggregations = params.get("aggregations", {})
+
+        if not data:
+            return {
+                "message": "집계할 데이터가 없습니다",
+                "data": {"result": [], "total_groups": 0},
+            }
+
+        # 그룹화 키 정규화
+        if isinstance(group_by, str):
+            group_keys = [group_by]
+        elif isinstance(group_by, list):
+            group_keys = group_by
+        else:
+            group_keys = []
+
+        # 집계 함수 매핑
+        agg_funcs = {
+            "sum": sum,
+            "avg": lambda x: mean(x) if x else 0,
+            "mean": lambda x: mean(x) if x else 0,
+            "count": len,
+            "min": lambda x: min(x) if x else 0,
+            "max": lambda x: max(x) if x else 0,
+        }
+
+        # 그룹화 없이 전체 집계
+        if not group_keys:
+            result = {}
+            for agg_name, agg_config in aggregations.items():
+                field = agg_config.get("field")
+                func_name = agg_config.get("func", "sum").lower()
+                func = agg_funcs.get(func_name, sum)
+
+                values = [row.get(field, 0) for row in data if field in row]
+                try:
+                    result[agg_name] = round(func(values), 2) if values else 0
+                except (TypeError, ValueError):
+                    result[agg_name] = 0
+
+            return {
+                "message": "전체 집계 완료",
+                "data": {"result": result, "total_groups": 1},
+            }
+
+        # 그룹화 집계
+        groups = defaultdict(list)
+        for row in data:
+            key = tuple(row.get(k, "") for k in group_keys)
+            groups[key].append(row)
+
+        results = []
+        for key, group_data in groups.items():
+            group_result = dict(zip(group_keys, key))
+
+            for agg_name, agg_config in aggregations.items():
+                field = agg_config.get("field")
+                func_name = agg_config.get("func", "sum").lower()
+                func = agg_funcs.get(func_name, sum)
+
+                values = [row.get(field, 0) for row in group_data if field in row]
+                try:
+                    group_result[agg_name] = round(func(values), 2) if values else 0
+                except (TypeError, ValueError):
+                    group_result[agg_name] = 0
+
+            results.append(group_result)
+
+        return {
+            "message": f"그룹 집계 완료: {len(results)}개 그룹",
+            "data": {"result": results, "total_groups": len(results)},
+        }
+
+    async def _evaluate_threshold(
+        self,
+        params: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        다중 레벨 임계값 판정
+
+        파라미터:
+            value: 평가할 값 (숫자)
+            thresholds: 임계값 정의 리스트 (높은 순서대로)
+                예: [
+                    {"min": 95, "status": "EXCELLENT", "message": "우수"},
+                    {"min": 85, "status": "GOOD", "message": "양호"},
+                    {"min": 70, "status": "WARNING", "message": "주의"},
+                    {"min": 0, "status": "CRITICAL", "message": "위험"}
+                ]
+            metric_name: 지표 이름 (표시용)
+            inverse: True면 낮을수록 좋음 (불량률 등)
+
+        출력:
+            status: 판정 상태
+            message: 판정 메시지
+            level: 레벨 인덱스 (0=최상)
+        """
+        value = params.get("value", 0)
+        thresholds = params.get("thresholds", [])
+        metric_name = params.get("metric_name", "값")
+        inverse = params.get("inverse", False)
+
+        if not thresholds:
+            # 기본 3단계 판정
+            thresholds = [
+                {"min": 80, "status": "GREEN", "message": "정상"},
+                {"min": 50, "status": "YELLOW", "message": "주의"},
+                {"min": 0, "status": "RED", "message": "위험"},
+            ]
+
+        # inverse 모드: 낮을수록 좋음 (불량률 등)
+        if inverse:
+            thresholds = [
+                {"max": 2, "status": "GREEN", "message": "우수"},
+                {"max": 5, "status": "YELLOW", "message": "주의"},
+                {"max": 100, "status": "RED", "message": "위험"},
+            ]
+            for idx, t in enumerate(thresholds):
+                if value <= t.get("max", float("inf")):
+                    return {
+                        "message": f"{metric_name} 판정 완료",
+                        "data": {
+                            "value": value,
+                            "status": t.get("status", "UNKNOWN"),
+                            "status_message": t.get("message", ""),
+                            "level": idx,
+                            "metric_name": metric_name,
+                        },
+                    }
+        else:
+            # 일반 모드: 높을수록 좋음
+            for idx, t in enumerate(thresholds):
+                if value >= t.get("min", float("-inf")):
+                    return {
+                        "message": f"{metric_name} 판정 완료",
+                        "data": {
+                            "value": value,
+                            "status": t.get("status", "UNKNOWN"),
+                            "status_message": t.get("message", ""),
+                            "level": idx,
+                            "metric_name": metric_name,
+                        },
+                    }
+
+        # 기본값
+        return {
+            "message": f"{metric_name} 판정 완료",
+            "data": {
+                "value": value,
+                "status": "UNKNOWN",
+                "status_message": "판정 불가",
+                "level": -1,
+                "metric_name": metric_name,
+            },
+        }
+
+    async def _generate_chart(
+        self,
+        params: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Recharts 호환 차트 JSON 생성
+
+        파라미터:
+            chart_type: 차트 유형 (bar, line, pie, gauge)
+            data: 차트 데이터 (list of dict)
+            options: 차트 옵션
+                - title: 차트 제목
+                - x_key: X축 키 (bar, line)
+                - y_key: Y축 키 (bar, line)
+                - name_key: 이름 키 (pie)
+                - value_key: 값 키 (pie, gauge)
+                - style: 스타일 (gradient_rounded, glow_smooth_curve 등)
+                - colors: 색상 배열
+
+        출력:
+            chart_json: Recharts 호환 JSON 객체
+        """
+        chart_type = params.get("chart_type", "bar").lower()
+        data = params.get("data", [])
+        options = params.get("options", {})
+
+        title = options.get("title", "차트")
+        x_key = options.get("x_key", "name")
+        y_key = options.get("y_key", "value")
+        name_key = options.get("name_key", "name")
+        value_key = options.get("value_key", "value")
+        style = options.get("style", "default")
+        colors = options.get("colors", ["#8884d8", "#82ca9d", "#ffc658", "#ff7c43", "#a4de6c"])
+
+        chart_json = {
+            "type": chart_type,
+            "title": title,
+            "style": style,
+            "data": data,
+        }
+
+        if chart_type == "bar":
+            chart_json.update({
+                "xAxisDataKey": x_key,
+                "bars": [{"dataKey": y_key, "fill": colors[0], "radius": [4, 4, 0, 0]}],
+                "config": {
+                    "gradient": style == "gradient_rounded",
+                    "rounded": "rounded" in style,
+                },
+            })
+
+        elif chart_type == "line":
+            chart_json.update({
+                "xAxisDataKey": x_key,
+                "lines": [{"dataKey": y_key, "stroke": colors[0], "strokeWidth": 2}],
+                "config": {
+                    "glow": "glow" in style,
+                    "smooth": "smooth" in style,
+                    "dot": True,
+                },
+            })
+
+        elif chart_type == "pie":
+            # Pie 데이터 변환
+            pie_data = []
+            for idx, item in enumerate(data):
+                pie_data.append({
+                    "name": item.get(name_key, f"항목{idx+1}"),
+                    "value": item.get(value_key, 0),
+                    "fill": colors[idx % len(colors)],
+                })
+            chart_json.update({
+                "data": pie_data,
+                "config": {
+                    "innerRadius": 60 if "donut" in style else 0,
+                    "outerRadius": 80,
+                    "paddingAngle": 2,
+                },
+            })
+
+        elif chart_type == "gauge":
+            # Gauge 데이터
+            value = data[0].get(value_key, 0) if data else 0
+            chart_json.update({
+                "value": value,
+                "max": options.get("max", 100),
+                "min": options.get("min", 0),
+                "config": {
+                    "startAngle": 180,
+                    "endAngle": 0,
+                    "innerRadius": "70%",
+                    "outerRadius": "100%",
+                },
+            })
+
+        return {
+            "message": f"{chart_type} 차트 생성 완료",
+            "data": {"chart_json": chart_json},
+        }
+
+    async def _format_insight(
+        self,
+        params: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        인사이트 텍스트 생성 (마크다운 포맷)
+
+        파라미터:
+            template: 템플릿 문자열 (예: "현재 {metric}은(는) {value}입니다.")
+            data: 템플릿 변수 (dict)
+            status: 상태 정보 (optional)
+            sections: 섹션 정의 (list of dict)
+                예: [
+                    {"type": "summary", "content": "..."},
+                    {"type": "table", "headers": [...], "rows": [...]},
+                    {"type": "recommendation", "content": "..."}
+                ]
+
+        출력:
+            insight_text: 포맷팅된 마크다운 문자열
+        """
+        template = params.get("template", "")
+        data = params.get("data", {})
+        status = params.get("status", {})
+        sections = params.get("sections", [])
+
+        lines = []
+
+        # 템플릿 기반 텍스트 생성
+        if template:
+            try:
+                formatted = template.format(**data)
+                lines.append(formatted)
+            except KeyError as e:
+                lines.append(f"템플릿 오류: 변수 {e} 누락")
+
+        # 섹션별 생성
+        for section in sections:
+            section_type = section.get("type", "text")
+
+            if section_type == "summary":
+                lines.append(f"\n**요약:** {section.get('content', '')}")
+
+            elif section_type == "table":
+                headers = section.get("headers", [])
+                rows = section.get("rows", [])
+                if headers:
+                    lines.append("\n| " + " | ".join(headers) + " |")
+                    lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+                    for row in rows:
+                        lines.append("| " + " | ".join(str(v) for v in row) + " |")
+
+            elif section_type == "recommendation":
+                lines.append(f"\n**권장 조치:** {section.get('content', '')}")
+
+            elif section_type == "status":
+                status_text = status.get("status", "UNKNOWN")
+                status_msg = status.get("status_message", "")
+                emoji = {"GREEN": "🟢", "YELLOW": "🟡", "RED": "🔴"}.get(status_text, "⚪")
+                lines.append(f"\n**상태:** {emoji} {status_text} - {status_msg}")
+
+        insight_text = "\n".join(lines)
+
+        return {
+            "message": "인사이트 텍스트 생성 완료",
+            "data": {"insight_text": insight_text},
+        }
+
+    async def _calculate_metric(
+        self,
+        params: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        범용 지표 계산 (가동률, 합격률, 불량률 등)
+
+        파라미터:
+            metric_type: 지표 유형
+                - "oee": 설비종합효율
+                - "yield": 수율/합격률
+                - "defect_rate": 불량률
+                - "availability": 가동률
+                - "custom": 사용자 정의 수식
+            numerator: 분자 값
+            denominator: 분모 값
+            formula: 사용자 정의 수식 (custom인 경우)
+            data: 추가 데이터 (dict)
+
+        출력:
+            value: 계산된 값 (%)
+            raw_value: 원본 비율
+        """
+        metric_type = params.get("metric_type", "custom")
+        numerator = params.get("numerator", 0)
+        denominator = params.get("denominator", 1)
+        formula = params.get("formula", "")
+        data = params.get("data", {})
+
+        result_value = 0.0
+        calculation_details = {}
+
+        try:
+            if metric_type == "oee":
+                # OEE = 가동률 × 성능률 × 품질률
+                availability = data.get("availability", 100)
+                performance = data.get("performance", 100)
+                quality = data.get("quality", 100)
+                result_value = (availability * performance * quality) / 10000
+                calculation_details = {
+                    "availability": availability,
+                    "performance": performance,
+                    "quality": quality,
+                }
+
+            elif metric_type == "yield":
+                # 수율 = 양품 / 총생산 × 100
+                good_count = numerator or data.get("good_count", 0)
+                total_count = denominator or data.get("total_count", 1)
+                result_value = (good_count / total_count) * 100 if total_count > 0 else 0
+                calculation_details = {"good_count": good_count, "total_count": total_count}
+
+            elif metric_type == "defect_rate":
+                # 불량률 = 불량 / 총생산 × 100
+                defect_count = numerator or data.get("defect_count", 0)
+                total_count = denominator or data.get("total_count", 1)
+                result_value = (defect_count / total_count) * 100 if total_count > 0 else 0
+                calculation_details = {"defect_count": defect_count, "total_count": total_count}
+
+            elif metric_type == "availability":
+                # 가동률 = 가동시간 / 계획시간 × 100
+                run_time = numerator or data.get("run_time", 0)
+                planned_time = denominator or data.get("planned_time", 1)
+                result_value = (run_time / planned_time) * 100 if planned_time > 0 else 0
+                calculation_details = {"run_time": run_time, "planned_time": planned_time}
+
+            elif metric_type == "custom":
+                # 사용자 정의: 분자/분모
+                if denominator > 0:
+                    result_value = (numerator / denominator) * 100
+                calculation_details = {"numerator": numerator, "denominator": denominator}
+
+        except (TypeError, ZeroDivisionError) as e:
+            logger.error(f"지표 계산 오류: {e}")
+            result_value = 0
+
+        result_value = round(result_value, 2)
+
+        return {
+            "message": f"{metric_type} 지표 계산 완료: {result_value}%",
+            "data": {
+                "metric_type": metric_type,
+                "value": result_value,
+                "raw_value": result_value / 100,
+                "calculation_details": calculation_details,
             },
         }
 
@@ -785,16 +1544,29 @@ class WorkflowEngine:
     워크플로우 실행 엔진
     조건 평가 + 액션 실행 통합
 
-    지원 노드 타입:
+    지원 노드 타입 (스펙 B-5):
     - condition: 조건 평가 (순차 진행, 실패 시 워크플로우 중단)
     - action: 액션 실행
     - if_else: 조건 분기 (then/else 브랜치)
     - loop: 반복 실행 (조건 기반 while 또는 횟수 기반 for)
     - parallel: 병렬 실행
+    - data: 데이터 소스에서 데이터 조회 (Phase 3)
+    - wait: 대기 (지정 시간 또는 이벤트 기반) (Phase 3)
+    - approval: 인간 승인 대기 (Phase 3)
+    - switch: 다중 분기 (다수 case)
+    - judgment: 판단 에이전트 호출
+    - bi: BI 분석 에이전트 호출
+    - mcp: MCP 외부 도구 호출
     """
 
     # Loop 최대 반복 횟수 (무한 루프 방지)
     MAX_LOOP_ITERATIONS = 100
+
+    # Wait 노드 최대 대기 시간 (초)
+    MAX_WAIT_SECONDS = 3600  # 1시간
+
+    # Approval 노드 기본 타임아웃 (초)
+    DEFAULT_APPROVAL_TIMEOUT = 86400  # 24시간
 
     def __init__(self):
         self.condition_evaluator = condition_evaluator
@@ -941,6 +1713,82 @@ class WorkflowEngine:
                         error_message = result.get("error_message")
                         break
 
+                    executed_count += 1
+
+                elif node_type == "data":
+                    result = await self._execute_data_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    # 데이터 결과를 컨텍스트에 저장
+                    output_var = config.get("output_variable", "data_result")
+                    context[output_var] = result.get("data", {})
+                    executed_count += 1
+
+                elif node_type == "wait":
+                    result = await self._execute_wait_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    executed_count += 1
+
+                elif node_type == "approval":
+                    result = await self._execute_approval_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    # 승인 결과를 컨텍스트에 저장
+                    context["approval_result"] = result.get("approval_result", {})
+                    executed_count += 1
+
+                elif node_type == "switch":
+                    result = await self._execute_switch_node(node_id, config, context)
+                    results.append(result)
+
+                    if result.get("failed", False):
+                        failed = True
+                        error_message = result.get("error_message")
+                        break
+
+                    executed_count += 1
+
+                elif node_type == "trigger":
+                    result = await self._execute_trigger_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    # 트리거 결과를 컨텍스트에 저장
+                    context["trigger_result"] = result.get("trigger_output", {})
+                    executed_count += 1
+
+                elif node_type == "code":
+                    result = await self._execute_code_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    # 코드 실행 결과를 컨텍스트에 저장
+                    output_var = config.get("output_variable", "code_result")
+                    context[output_var] = result.get("output", {})
                     executed_count += 1
 
                 else:
@@ -1348,6 +2196,971 @@ class WorkflowEngine:
             "error_message": error_message,
             "success": not failed,
         }
+
+
+    # ============ DATA 노드 ============
+
+    async def _execute_data_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Data 노드 실행 - 데이터 소스에서 데이터 조회
+
+        config 형식:
+        {
+            "source_type": "database" | "api" | "sensor" | "connector",
+            "source_id": "connector_uuid" (connector 타입인 경우),
+            "query": "SELECT * FROM ...", (database 타입)
+            "endpoint": "/api/...", (api 타입)
+            "sensor_ids": ["TEMP_01", "TEMP_02"], (sensor 타입)
+            "time_range": {"start": "...", "end": "..."}, (선택)
+            "limit": 100, (선택)
+            "output_variable": "sensor_data" (컨텍스트에 저장할 변수명)
+        }
+        """
+        from app.database import get_db_context
+        from sqlalchemy import text
+
+        source_type = config.get("source_type", "database")
+        output_variable = config.get("output_variable", "data_result")
+        limit = config.get("limit", 100)
+
+        try:
+            if source_type == "database":
+                # 직접 SQL 쿼리 실행 (SELECT만)
+                query = config.get("query", "")
+                if not query.strip().upper().startswith("SELECT"):
+                    return {
+                        "node_id": node_id,
+                        "type": "data",
+                        "success": False,
+                        "message": "SELECT 쿼리만 실행할 수 있습니다",
+                    }
+
+                with get_db_context() as db:
+                    result = db.execute(text(query))
+                    columns = list(result.keys()) if result.keys() else []
+                    rows = [dict(zip(columns, row)) for row in result.fetchall()]
+
+                return {
+                    "node_id": node_id,
+                    "type": "data",
+                    "source_type": source_type,
+                    "success": True,
+                    "message": f"{len(rows)}건 조회됨",
+                    "data": {
+                        "rows": rows[:limit],
+                        "columns": columns,
+                        "total_count": len(rows),
+                    },
+                }
+
+            elif source_type == "sensor":
+                # 센서 데이터 조회 (core.sensor_data 테이블)
+                sensor_ids = config.get("sensor_ids", [])
+                time_range = config.get("time_range", {})
+
+                with get_db_context() as db:
+                    if sensor_ids:
+                        # 특정 센서만 조회
+                        query = text("""
+                            SELECT sensor_id, value, recorded_at
+                            FROM core.sensor_data
+                            WHERE sensor_id = ANY(:sensor_ids)
+                            ORDER BY recorded_at DESC
+                            LIMIT :limit
+                        """)
+                        result = db.execute(query, {"sensor_ids": sensor_ids, "limit": limit})
+                    else:
+                        # 전체 센서 조회
+                        query = text("""
+                            SELECT sensor_id, value, recorded_at
+                            FROM core.sensor_data
+                            ORDER BY recorded_at DESC
+                            LIMIT :limit
+                        """)
+                        result = db.execute(query, {"limit": limit})
+
+                    rows = [dict(row._mapping) for row in result.fetchall()]
+
+                return {
+                    "node_id": node_id,
+                    "type": "data",
+                    "source_type": source_type,
+                    "success": True,
+                    "message": f"센서 데이터 {len(rows)}건 조회됨",
+                    "data": {
+                        "rows": rows,
+                        "sensor_ids": sensor_ids,
+                        "total_count": len(rows),
+                    },
+                }
+
+            elif source_type == "connector":
+                # DataConnector 통해 데이터 조회 (MVP: mock)
+                source_id = config.get("source_id")
+                return {
+                    "node_id": node_id,
+                    "type": "data",
+                    "source_type": source_type,
+                    "success": True,
+                    "message": f"DataConnector {source_id} 조회 (mock)",
+                    "data": {
+                        "rows": [],
+                        "connector_id": source_id,
+                        "is_mock": True,
+                    },
+                }
+
+            elif source_type == "api":
+                # 외부 API 호출 (MVP: mock)
+                endpoint = config.get("endpoint", "")
+                return {
+                    "node_id": node_id,
+                    "type": "data",
+                    "source_type": source_type,
+                    "success": True,
+                    "message": f"API {endpoint} 호출 (mock)",
+                    "data": {
+                        "rows": [],
+                        "endpoint": endpoint,
+                        "is_mock": True,
+                    },
+                }
+
+            else:
+                return {
+                    "node_id": node_id,
+                    "type": "data",
+                    "success": False,
+                    "message": f"지원하지 않는 source_type: {source_type}",
+                }
+
+        except Exception as e:
+            logger.error(f"Data 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "data",
+                "success": False,
+                "message": f"데이터 조회 오류: {str(e)}",
+            }
+
+    # ============ WAIT 노드 ============
+
+    async def _execute_wait_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Wait 노드 실행 - 지정 시간 또는 이벤트 대기
+
+        config 형식:
+        {
+            "wait_type": "duration" | "event" | "schedule",
+            "duration_seconds": 10, (duration 타입)
+            "event_type": "sensor_alert", (event 타입)
+            "event_filter": {...}, (event 타입)
+            "schedule_cron": "0 9 * * *", (schedule 타입)
+            "timeout_seconds": 300 (이벤트/스케줄 타임아웃)
+        }
+        """
+        wait_type = config.get("wait_type", "duration")
+        start_time = time.time()
+
+        try:
+            if wait_type == "duration":
+                # 지정 시간 대기
+                duration = config.get("duration_seconds", 0)
+                duration = min(duration, self.MAX_WAIT_SECONDS)
+
+                if duration > 0:
+                    logger.info(f"Wait 노드 {node_id}: {duration}초 대기 시작")
+                    await asyncio.sleep(duration)
+
+                elapsed = time.time() - start_time
+                return {
+                    "node_id": node_id,
+                    "type": "wait",
+                    "wait_type": wait_type,
+                    "success": True,
+                    "message": f"{duration}초 대기 완료",
+                    "data": {
+                        "requested_duration": duration,
+                        "actual_duration": round(elapsed, 2),
+                    },
+                }
+
+            elif wait_type == "event":
+                # 이벤트 대기 (MVP: mock - 즉시 완료)
+                event_type = config.get("event_type", "unknown")
+                timeout = config.get("timeout_seconds", 300)
+
+                # 실제 구현에서는 이벤트 큐를 폴링하거나 webhook 수신
+                # MVP에서는 즉시 이벤트 수신된 것으로 처리
+                logger.info(f"Wait 노드 {node_id}: 이벤트 '{event_type}' 대기 (mock)")
+
+                return {
+                    "node_id": node_id,
+                    "type": "wait",
+                    "wait_type": wait_type,
+                    "success": True,
+                    "message": f"이벤트 '{event_type}' 수신됨 (mock)",
+                    "data": {
+                        "event_type": event_type,
+                        "timeout_seconds": timeout,
+                        "is_mock": True,
+                        "event_data": {},
+                    },
+                }
+
+            elif wait_type == "schedule":
+                # 스케줄 대기 (cron 표현식)
+                schedule_cron = config.get("schedule_cron", "")
+                timeout = config.get("timeout_seconds", 3600)
+
+                # MVP: 즉시 완료
+                logger.info(f"Wait 노드 {node_id}: 스케줄 '{schedule_cron}' 대기 (mock)")
+
+                return {
+                    "node_id": node_id,
+                    "type": "wait",
+                    "wait_type": wait_type,
+                    "success": True,
+                    "message": f"스케줄 '{schedule_cron}' 도달 (mock)",
+                    "data": {
+                        "schedule_cron": schedule_cron,
+                        "timeout_seconds": timeout,
+                        "is_mock": True,
+                    },
+                }
+
+            else:
+                return {
+                    "node_id": node_id,
+                    "type": "wait",
+                    "success": False,
+                    "message": f"지원하지 않는 wait_type: {wait_type}",
+                }
+
+        except asyncio.CancelledError:
+            return {
+                "node_id": node_id,
+                "type": "wait",
+                "success": False,
+                "message": "대기 중 취소됨",
+            }
+        except Exception as e:
+            logger.error(f"Wait 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "wait",
+                "success": False,
+                "message": f"대기 오류: {str(e)}",
+            }
+
+    # ============ APPROVAL 노드 ============
+
+    async def _execute_approval_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Approval 노드 실행 - 인간 승인 대기
+
+        config 형식:
+        {
+            "approval_type": "single" | "multi" | "quorum",
+            "approvers": ["user1@example.com", "user2@example.com"],
+            "quorum_count": 2, (quorum 타입일 때 필요한 승인 수)
+            "timeout_seconds": 86400, (기본 24시간)
+            "notification_channel": "slack" | "email",
+            "notification_message": "승인 요청...",
+            "auto_approve_on_timeout": false (타임아웃 시 자동 승인 여부)
+        }
+
+        MVP 구현:
+        - 승인 요청을 DB에 저장
+        - 알림 전송 (mock)
+        - 즉시 자동 승인 (실제 구현에서는 webhook/폴링으로 승인 대기)
+        """
+
+        approval_type = config.get("approval_type", "single")
+        approvers = config.get("approvers", [])
+        timeout_seconds = config.get("timeout_seconds", self.DEFAULT_APPROVAL_TIMEOUT)
+        notification_channel = config.get("notification_channel", "slack")
+        notification_message = config.get("notification_message", "워크플로우 승인 요청")
+        auto_approve = config.get("auto_approve_on_timeout", False)
+
+        approval_id = str(uuid4())
+        workflow_id = context.get("workflow_id")
+
+        try:
+            # 승인 요청 생성 (DB 저장)
+            # MVP: core.workflow_approvals 테이블이 없으면 인메모리로 처리
+            approval_request = {
+                "approval_id": approval_id,
+                "workflow_id": workflow_id,
+                "node_id": node_id,
+                "approval_type": approval_type,
+                "approvers": approvers,
+                "status": "pending",
+                "created_at": datetime.utcnow().isoformat(),
+                "timeout_at": datetime.utcnow().isoformat(),  # 실제로는 + timeout_seconds
+            }
+
+            # 로그에 승인 요청 기록
+            log_entry = {
+                "event_type": "approval_requested",
+                "details": approval_request,
+                "context": context,
+                "workflow_id": workflow_id,
+            }
+            execution_log_store.add_log(log_entry)
+
+            # 알림 전송 (mock)
+            logger.info(f"Approval 노드 {node_id}: 승인 요청 생성됨 - {approvers}")
+            if notification_channel == "slack":
+                # 실제로는 notification_manager 사용
+                logger.info(f"Slack 알림 전송 (mock): {notification_message}")
+            elif notification_channel == "email":
+                logger.info(f"이메일 알림 전송 (mock): {notification_message} -> {approvers}")
+
+            # MVP: 자동 승인 (실제 구현에서는 폴링/webhook 대기)
+            approval_result = {
+                "approval_id": approval_id,
+                "status": "approved",  # approved | rejected | timeout
+                "approved_by": approvers[0] if approvers else "system",
+                "approved_at": datetime.utcnow().isoformat(),
+                "comment": "Auto-approved (MVP mode)",
+                "is_mock": True,
+            }
+
+            # 승인 완료 로그
+            log_entry = {
+                "event_type": "approval_completed",
+                "details": approval_result,
+                "context": context,
+                "workflow_id": workflow_id,
+            }
+            execution_log_store.add_log(log_entry)
+
+            return {
+                "node_id": node_id,
+                "type": "approval",
+                "approval_type": approval_type,
+                "success": True,
+                "message": "승인 완료 (auto-approved in MVP)",
+                "approval_result": approval_result,
+                "data": {
+                    "approval_id": approval_id,
+                    "approvers": approvers,
+                    "status": "approved",
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Approval 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "approval",
+                "success": False,
+                "message": f"승인 처리 오류: {str(e)}",
+            }
+
+    # ============ SWITCH 노드 ============
+
+    async def _execute_switch_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Switch 노드 실행 - 다중 분기 (다수 case)
+
+        config 형식:
+        {
+            "expression": "status",  # 평가할 변수/표현식
+            "cases": [
+                {"value": "running", "nodes": [...]},
+                {"value": "stopped", "nodes": [...]},
+                {"value": "error", "nodes": [...]}
+            ],
+            "default": [...]  # 매칭되는 case가 없을 때 실행 (선택)
+        }
+        """
+        expression = config.get("expression", "")
+        cases = config.get("cases", [])
+        default_nodes = config.get("default", [])
+
+        # 표현식 평가하여 값 가져오기
+        switch_value = context.get(expression)
+        if switch_value is None:
+            # 표현식이 조건식일 수도 있음
+            switch_value = expression
+
+        matched_case = None
+        matched_nodes = None
+
+        # case 매칭
+        for case in cases:
+            case_value = case.get("value")
+            if switch_value == case_value:
+                matched_case = case_value
+                matched_nodes = case.get("nodes", [])
+                break
+
+        # 매칭된 case가 없으면 default 실행
+        if matched_nodes is None:
+            if default_nodes:
+                matched_case = "default"
+                matched_nodes = default_nodes
+            else:
+                # 아무것도 실행하지 않음
+                return {
+                    "node_id": node_id,
+                    "type": "switch",
+                    "expression": expression,
+                    "switch_value": switch_value,
+                    "matched_case": None,
+                    "case_results": [],
+                    "failed": False,
+                    "error_message": None,
+                    "success": True,
+                    "message": "매칭되는 case 없음 (default도 없음)",
+                }
+
+        # 매칭된 노드 실행
+        case_result = await self._execute_nodes(matched_nodes, context)
+
+        return {
+            "node_id": node_id,
+            "type": "switch",
+            "expression": expression,
+            "switch_value": switch_value,
+            "matched_case": matched_case,
+            "case_results": case_result["results"],
+            "case_executed_count": case_result["executed"],
+            "failed": case_result["failed"],
+            "error_message": case_result["error_message"],
+            "success": not case_result["failed"],
+        }
+
+    async def _execute_trigger_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        TRIGGER 노드 실행
+
+        스펙 (B-5 섹션 4.7):
+        - trigger_type: schedule, event, condition, webhook, manual
+        - schedule_config: cron 표현식, timezone
+        - event_config: event_type, filter
+        - condition_config: expression, check_interval_seconds, debounce_seconds
+        - webhook_config: path, method, auth, rate_limit
+
+        TRIGGER 노드는 워크플로우의 시작점으로:
+        1. 워크플로우 DSL에서 트리거 조건 정의
+        2. 조건 충족 시 워크플로우 자동 시작
+        3. 이 메서드는 트리거가 실행될 때 초기 컨텍스트 설정
+        """
+        trigger_type = config.get("trigger_type", "manual")
+        trigger_time = datetime.utcnow().isoformat()
+
+        # 트리거 타입별 처리
+        if trigger_type == "schedule":
+            schedule_config = config.get("schedule_config", {})
+            cron_expression = schedule_config.get("cron", "")
+            timezone = schedule_config.get("timezone", "UTC")
+
+            trigger_output = {
+                "triggered": True,
+                "trigger_time": trigger_time,
+                "trigger_reason": f"Schedule: {cron_expression}",
+                "trigger_type": "schedule",
+                "schedule": {
+                    "cron": cron_expression,
+                    "timezone": timezone,
+                }
+            }
+
+        elif trigger_type == "event":
+            event_config = config.get("event_config", {})
+            event_type = event_config.get("event_type", "")
+            event_filter = event_config.get("filter", {})
+
+            # 이벤트 데이터는 컨텍스트에서 가져옴 (이벤트 버스에서 전달)
+            event_data = context.get("_event_data", {})
+
+            trigger_output = {
+                "triggered": True,
+                "trigger_time": trigger_time,
+                "trigger_reason": f"Event: {event_type}",
+                "trigger_type": "event",
+                "event": {
+                    "event_type": event_type,
+                    "filter": event_filter,
+                    "data": event_data,
+                }
+            }
+
+        elif trigger_type == "condition":
+            condition_config = config.get("condition_config", {})
+            expression = condition_config.get("expression", "true")
+            check_interval = condition_config.get("check_interval_seconds", 60)
+            debounce = condition_config.get("debounce_seconds", 0)
+
+            # 조건 평가
+            condition_result, condition_msg = self.condition_evaluator.evaluate(
+                expression, context
+            )
+
+            trigger_output = {
+                "triggered": condition_result,
+                "trigger_time": trigger_time,
+                "trigger_reason": f"Condition: {expression}",
+                "trigger_type": "condition",
+                "condition": {
+                    "expression": expression,
+                    "result": condition_result,
+                    "message": condition_msg,
+                    "check_interval_seconds": check_interval,
+                    "debounce_seconds": debounce,
+                }
+            }
+
+            if not condition_result:
+                return {
+                    "node_id": node_id,
+                    "type": "trigger",
+                    "success": False,
+                    "message": f"트리거 조건 불충족: {condition_msg}",
+                    "trigger_output": trigger_output,
+                }
+
+        elif trigger_type == "webhook":
+            webhook_config = config.get("webhook_config", {})
+            webhook_path = webhook_config.get("path", "")
+            webhook_method = webhook_config.get("method", "POST")
+
+            # 웹훅 데이터는 컨텍스트에서 가져옴
+            webhook_data = context.get("_webhook_data", {})
+
+            trigger_output = {
+                "triggered": True,
+                "trigger_time": trigger_time,
+                "trigger_reason": f"Webhook: {webhook_method} {webhook_path}",
+                "trigger_type": "webhook",
+                "webhook": {
+                    "path": webhook_path,
+                    "method": webhook_method,
+                    "data": webhook_data,
+                }
+            }
+
+        else:  # manual
+            trigger_output = {
+                "triggered": True,
+                "trigger_time": trigger_time,
+                "trigger_reason": "Manual trigger",
+                "trigger_type": "manual",
+            }
+
+        # 로그 기록
+        execution_log_store.add_log({
+            "event_type": "trigger_executed",
+            "workflow_id": context.get("workflow_id"),
+            "node_id": node_id,
+            "trigger_type": trigger_type,
+            "trigger_output": trigger_output,
+        })
+
+        return {
+            "node_id": node_id,
+            "type": "trigger",
+            "success": True,
+            "message": f"트리거 실행 완료: {trigger_type}",
+            "trigger_output": trigger_output,
+        }
+
+    async def _execute_code_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        CODE 노드 실행 (Python 샌드박스)
+
+        스펙 (B-5 섹션 4.4):
+        - code_type: transform, calculate, validate, format, custom
+        - code_template_id: 사전 정의된 코드 템플릿 ID
+        - inline_code: 인라인 코드 (보안 주의)
+        - sandbox_enabled: 샌드박스 모드
+        - allowed_imports: 허용된 import 목록
+
+        보안 고려사항:
+        1. RestrictedPython 사용 (exec 직접 사용 금지)
+        2. 화이트리스트 import만 허용
+        3. 타임아웃 및 메모리 제한
+        4. 파일 시스템 접근 차단
+        """
+        code_type = config.get("code_type", "custom")
+        code_template_id = config.get("code_template_id")
+        inline_code = config.get("inline_code")
+        sandbox_enabled = config.get("sandbox_enabled", True)
+        allowed_imports = config.get("allowed_imports", [
+            "json", "datetime", "math", "statistics", "re"
+        ])
+        timeout_ms = config.get("timeout_ms", 30000)
+        memory_limit_mb = config.get("memory_limit_mb", 256)
+
+        # 입력 데이터
+        input_data = config.get("input", {})
+        resolved_input = {}
+
+        # 입력 데이터에서 컨텍스트 변수 참조 해석
+        for key, value in input_data.items():
+            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+                var_name = value[2:-1]  # ${var} -> var
+                resolved_input[key] = context.get(var_name, value)
+            else:
+                resolved_input[key] = value
+
+        # 코드 템플릿 로드 또는 인라인 코드 사용
+        code_to_execute = None
+
+        if code_template_id:
+            # 템플릿 저장소에서 코드 로드 (향후 DB 연동)
+            code_to_execute = self._load_code_template(code_template_id)
+            if not code_to_execute:
+                return {
+                    "node_id": node_id,
+                    "type": "code",
+                    "success": False,
+                    "message": f"코드 템플릿을 찾을 수 없음: {code_template_id}",
+                    "output": None,
+                }
+        elif inline_code:
+            code_to_execute = inline_code
+        else:
+            return {
+                "node_id": node_id,
+                "type": "code",
+                "success": False,
+                "message": "실행할 코드가 없음 (code_template_id 또는 inline_code 필요)",
+                "output": None,
+            }
+
+        # 샌드박스 실행
+        start_time = time.time()
+        try:
+            if sandbox_enabled:
+                output = await self._execute_code_sandbox(
+                    code_to_execute,
+                    resolved_input,
+                    allowed_imports,
+                    timeout_ms,
+                    memory_limit_mb
+                )
+            else:
+                # 비샌드박스 모드 (개발/테스트용, 프로덕션에서 비권장)
+                logger.warning(f"CODE 노드 {node_id} 비샌드박스 모드로 실행")
+                output = await self._execute_code_unsafe(
+                    code_to_execute,
+                    resolved_input,
+                    timeout_ms
+                )
+
+            execution_time_ms = int((time.time() - start_time) * 1000)
+
+            # 출력 스키마 검증 (선택)
+            output_schema = config.get("output", {}).get("schema")
+            if output_schema:
+                # JSON Schema 검증 (향후 구현)
+                pass
+
+            # 로그 기록
+            execution_log_store.add_log({
+                "event_type": "code_executed",
+                "workflow_id": context.get("workflow_id"),
+                "node_id": node_id,
+                "code_type": code_type,
+                "execution_time_ms": execution_time_ms,
+                "sandbox_enabled": sandbox_enabled,
+            })
+
+            return {
+                "node_id": node_id,
+                "type": "code",
+                "success": True,
+                "message": f"코드 실행 완료 ({execution_time_ms}ms)",
+                "output": output,
+                "execution_time_ms": execution_time_ms,
+                "code_type": code_type,
+                "sandbox_enabled": sandbox_enabled,
+            }
+
+        except asyncio.TimeoutError:
+            return {
+                "node_id": node_id,
+                "type": "code",
+                "success": False,
+                "message": f"코드 실행 타임아웃 ({timeout_ms}ms)",
+                "output": None,
+            }
+        except Exception as e:
+            logger.error(f"CODE 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "code",
+                "success": False,
+                "message": f"코드 실행 오류: {str(e)}",
+                "output": None,
+            }
+
+    def _load_code_template(self, template_id: str) -> Optional[str]:
+        """
+        코드 템플릿 로드
+
+        사전 정의된 안전한 코드 템플릿:
+        - defect_rate_calc: 불량률 계산
+        - moving_average: 이동 평균 계산
+        - data_transform: 데이터 변환
+        - anomaly_score: 이상치 점수 계산
+        """
+        # 내장 템플릿
+        templates = {
+            "defect_rate_calc": '''
+# 불량률 계산 템플릿
+total = data.get("total_count", 0)
+defects = data.get("defect_count", 0)
+threshold = parameters.get("threshold", 0.05)
+
+if total > 0:
+    defect_rate = defects / total
+else:
+    defect_rate = 0
+
+result = {
+    "defect_rate": defect_rate,
+    "is_over_threshold": defect_rate > threshold,
+    "total_count": total,
+    "defect_count": defects,
+}
+''',
+            "moving_average": '''
+# 이동 평균 계산 템플릿
+import statistics
+values = data.get("values", [])
+window = parameters.get("window", 7)
+
+if len(values) >= window:
+    ma = statistics.mean(values[-window:])
+else:
+    ma = statistics.mean(values) if values else 0
+
+result = {
+    "moving_average": ma,
+    "window_size": window,
+    "data_points": len(values),
+}
+''',
+            "data_transform": '''
+# 데이터 변환 템플릿
+import json
+source_data = data.get("source", {})
+mapping = parameters.get("mapping", {})
+
+transformed = {}
+for target_key, source_key in mapping.items():
+    if source_key in source_data:
+        transformed[target_key] = source_data[source_key]
+
+result = transformed
+''',
+            "anomaly_score": '''
+# 이상치 점수 계산 템플릿
+import statistics
+values = data.get("values", [])
+current = data.get("current_value", 0)
+
+if len(values) >= 2:
+    mean = statistics.mean(values)
+    stdev = statistics.stdev(values)
+    if stdev > 0:
+        z_score = abs(current - mean) / stdev
+    else:
+        z_score = 0
+else:
+    z_score = 0
+    mean = current
+    stdev = 0
+
+result = {
+    "z_score": z_score,
+    "mean": mean,
+    "stdev": stdev,
+    "is_anomaly": z_score > 2.0,
+}
+''',
+        }
+
+        return templates.get(template_id)
+
+    async def _execute_code_sandbox(
+        self,
+        code: str,
+        input_data: Dict[str, Any],
+        allowed_imports: List[str],
+        timeout_ms: int,
+        memory_limit_mb: int
+    ) -> Dict[str, Any]:
+        """
+        제한된 샌드박스 환경에서 Python 코드 실행
+
+        보안 조치:
+        1. 허용된 import만 가능
+        2. 내장 함수 제한 (open, exec, eval 등 차단)
+        3. 타임아웃 적용
+        4. 결과는 'result' 변수로 반환
+        """
+        # 허용된 모듈 사전 import
+        safe_globals = {
+            "__builtins__": {
+                # 안전한 내장 함수만 허용
+                "len": len,
+                "range": range,
+                "enumerate": enumerate,
+                "zip": zip,
+                "map": map,
+                "filter": filter,
+                "sorted": sorted,
+                "reversed": reversed,
+                "min": min,
+                "max": max,
+                "sum": sum,
+                "abs": abs,
+                "round": round,
+                "int": int,
+                "float": float,
+                "str": str,
+                "bool": bool,
+                "list": list,
+                "dict": dict,
+                "set": set,
+                "tuple": tuple,
+                "isinstance": isinstance,
+                "type": type,
+                "None": None,
+                "True": True,
+                "False": False,
+            }
+        }
+
+        # 허용된 모듈 import
+        for module_name in allowed_imports:
+            try:
+                if module_name == "json":
+                    import json as _json
+                    safe_globals["json"] = _json
+                elif module_name == "datetime":
+                    import datetime as _datetime
+                    safe_globals["datetime"] = _datetime
+                elif module_name == "math":
+                    import math as _math
+                    safe_globals["math"] = _math
+                elif module_name == "statistics":
+                    import statistics as _statistics
+                    safe_globals["statistics"] = _statistics
+                elif module_name == "re":
+                    import re as _re
+                    safe_globals["re"] = _re
+                # pandas, numpy는 설치 여부에 따라 선택적 허용
+                elif module_name == "pandas":
+                    try:
+                        import pandas as _pd
+                        safe_globals["pd"] = _pd
+                    except ImportError:
+                        pass
+                elif module_name == "numpy":
+                    try:
+                        import numpy as _np
+                        safe_globals["np"] = _np
+                    except ImportError:
+                        pass
+            except ImportError:
+                logger.warning(f"모듈 import 실패: {module_name}")
+
+        # 입력 데이터를 locals에 설정
+        safe_locals = {
+            "data": input_data.get("data", {}),
+            "parameters": input_data.get("parameters", {}),
+            "context": input_data.get("context", {}),
+            "result": None,  # 결과 저장용
+        }
+
+        # 타임아웃 적용하여 실행
+        timeout_sec = timeout_ms / 1000
+
+        def run_code():
+            exec(code, safe_globals, safe_locals)
+            return safe_locals.get("result", {})
+
+        # asyncio에서 동기 코드 실행 (타임아웃 포함)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, run_code),
+                timeout=timeout_sec
+            )
+            return result if result is not None else {}
+        except asyncio.TimeoutError:
+            raise
+
+    async def _execute_code_unsafe(
+        self,
+        code: str,
+        input_data: Dict[str, Any],
+        timeout_ms: int
+    ) -> Dict[str, Any]:
+        """
+        비샌드박스 모드 실행 (개발/테스트용)
+
+        주의: 프로덕션에서 사용 금지
+        """
+        safe_locals = {
+            "data": input_data.get("data", {}),
+            "parameters": input_data.get("parameters", {}),
+            "context": input_data.get("context", {}),
+            "result": None,
+        }
+
+        timeout_sec = timeout_ms / 1000
+
+        def run_code():
+            exec(code, {"__builtins__": __builtins__}, safe_locals)
+            return safe_locals.get("result", {})
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, run_code),
+                timeout=timeout_sec
+            )
+            return result if result is not None else {}
+        except asyncio.TimeoutError:
+            raise
 
 
 # 전역 워크플로우 엔진

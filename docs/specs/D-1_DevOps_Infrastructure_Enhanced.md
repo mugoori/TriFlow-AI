@@ -2,11 +2,13 @@
 
 ## 문서 정보
 - **문서 ID**: D-1
-- **버전**: 2.0 (Enhanced)
-- **최종 수정일**: 2025-11-26
-- **상태**: Draft
+- **버전**: 3.0 (V7 Intent + Orchestrator)
+- **최종 수정일**: 2025-12-16
+- **상태**: Active Development
 - **관련 문서**:
   - B-1 System Architecture
+  - B-3-3 V7 Intent Router 설계
+  - B-3-4 Orchestrator 설계
   - C-1 Development Plan
   - C-5 Security & Compliance
   - D-3 Operation Runbook
@@ -15,9 +17,10 @@
 1. [인프라 개요](#1-인프라-개요)
 2. [CI/CD 파이프라인](#2-cicd-파이프라인)
 3. [Kubernetes 설정](#3-kubernetes-설정)
-4. [설정 및 비밀 관리](#4-설정-및-비밀-관리)
-5. [백업 및 DR](#5-백업-및-dr)
-6. [운영 자동화](#6-운영-자동화)
+4. [V7 Intent Router & Orchestrator 배포](#4-v7-intent-router--orchestrator-배포)
+5. [설정 및 비밀 관리](#5-설정-및-비밀-관리)
+6. [백업 및 DR](#6-백업-및-dr)
+7. [운영 자동화](#7-운영-자동화)
 
 ---
 
@@ -320,9 +323,257 @@ spec:
 
 ---
 
-## 4. 설정 및 비밀 관리
+## 4. V7 Intent Router & Orchestrator 배포
 
-### 4.1 ConfigMap (비민감 설정)
+### 4.1 Intent Router 서비스 배포
+
+**deployment-intent-router.yaml**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intent-router
+  namespace: production
+  labels:
+    app: intent-router
+    version: v7
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: intent-router
+  template:
+    metadata:
+      labels:
+        app: intent-router
+        version: v7
+    spec:
+      containers:
+        - name: intent-router
+          image: factory-ai/intent-router:v7.0.0
+          ports:
+            - containerPort: 8010
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-secrets
+                  key: api-key
+            - name: DEFAULT_MODEL
+              value: "claude-3-haiku-20240307"
+            - name: INTENT_CLASSIFICATION_TIMEOUT
+              value: "300"  # ms
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8010
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8010
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: intent-router
+  namespace: production
+spec:
+  selector:
+    app: intent-router
+  ports:
+    - port: 8010
+      targetPort: 8010
+  type: ClusterIP
+```
+
+### 4.2 Orchestrator 서비스 배포
+
+**deployment-orchestrator.yaml**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: production
+  labels:
+    app: orchestrator
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+    spec:
+      containers:
+        - name: orchestrator
+          image: factory-ai/orchestrator:v1.0.0
+          ports:
+            - containerPort: 8020
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-secrets
+                  key: api-key
+            - name: PLAN_GENERATION_MODEL
+              value: "claude-3-5-sonnet-20241022"
+            - name: PLAN_GENERATION_TIMEOUT
+              value: "500"  # ms
+            - name: INTENT_ROUTER_URL
+              value: "http://intent-router:8010"
+            - name: DATA_LAYER_URL
+              value: "http://data-layer:8030"
+            - name: JUDGMENT_ENGINE_URL
+              value: "http://judgment-engine:8040"
+            - name: RULE_ENGINE_URL
+              value: "http://rule-engine:8050"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8020
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8020
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+  namespace: production
+spec:
+  selector:
+    app: orchestrator
+  ports:
+    - port: 8020
+      targetPort: 8020
+  type: ClusterIP
+```
+
+### 4.3 HPA 설정 (Intent Router & Orchestrator)
+
+**hpa-intent-router.yaml**:
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: intent-router-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: intent-router
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: intent_classification_latency_p95
+        target:
+          type: AverageValue
+          averageValue: "300m"  # 300ms
+```
+
+**hpa-orchestrator.yaml**:
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: orchestrator-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: orchestrator
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: orchestrator_plan_latency_p95
+        target:
+          type: AverageValue
+          averageValue: "500m"  # 500ms
+```
+
+### 4.4 서비스 간 의존성 (15 노드 타입)
+
+**서비스 토폴로지**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    V7 Intent Router                          │
+│        (14개 V7 Intent 분류, Claude Haiku)                   │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     Orchestrator                             │
+│    (Route Target → Plan 생성, Claude Sonnet)                │
+└─────────────────────────────────────────────────────────────┘
+          │               │               │
+          ▼               ▼               ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│  Data Layer   │ │   Judgment    │ │  Rule Engine  │
+│  (DATA 노드)  │ │(JUDGMENT 노드)│ │ (SWITCH 노드) │
+└───────────────┘ └───────────────┘ └───────────────┘
+          │               │               │
+          └───────────────┼───────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│               Workflow Engine (15 노드)                      │
+│  P0: DATA, JUDGMENT, CODE, SWITCH, ACTION                   │
+│  P1: BI, MCP, TRIGGER, WAIT, APPROVAL                       │
+│  P2: PARALLEL, COMPENSATION, DEPLOY, ROLLBACK, SIMULATE     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 5. 설정 및 비밀 관리
+
+### 5.1 ConfigMap (비민감 설정)
 
 ```yaml
 # configmap-judgment-service.yaml
@@ -342,7 +593,7 @@ data:
   LLM_TIMEOUT_MS: "15000"
 ```
 
-### 4.2 Secret (민감 정보)
+### 5.2 Secret (민감 정보)
 
 **Kubernetes Secret**:
 ```yaml
@@ -371,7 +622,7 @@ git add sealed-secret-judgment-service.yaml
 git commit -m "Add sealed secret for judgment service"
 ```
 
-### 4.3 External Secrets (AWS Secrets Manager)
+### 5.3 External Secrets (AWS Secrets Manager)
 
 ```yaml
 # external-secret-judgment.yaml
@@ -399,11 +650,11 @@ spec:
 
 ---
 
-## 5. 백업 및 DR
+## 6. 백업 및 DR
 
-### 5.1 PostgreSQL 백업 전략
+### 6.1 PostgreSQL 백업 전략
 
-#### 5.1.1 Full Backup (pg_dump)
+#### 6.1.1 Full Backup (pg_dump)
 
 **CronJob** (Kubernetes):
 ```yaml
@@ -455,7 +706,7 @@ spec:
           restartPolicy: OnFailure
 ```
 
-#### 5.1.2 WAL Archiving (Continuous Backup)
+#### 6.1.2 WAL Archiving (Continuous Backup)
 
 **postgresql.conf**:
 ```conf
@@ -480,12 +731,12 @@ aws s3 cp "$WAL_FILE" "$S3_BUCKET"
 # rm "$WAL_FILE"
 ```
 
-### 5.2 DR (Disaster Recovery)
+### 6.2 DR (Disaster Recovery)
 
 **RTO (Recovery Time Objective)**: 4시간
 **RPO (Recovery Point Objective)**: 30분
 
-#### 5.2.1 DR 사이트 구성 (Cross-Region)
+#### 6.2.1 DR 사이트 구성 (Cross-Region)
 
 ```
 Primary Site (us-east-1)      DR Site (us-west-2)
@@ -520,9 +771,9 @@ Primary Site (us-east-1)      DR Site (us-west-2)
 
 ---
 
-## 6. 운영 자동화
+## 7. 운영 자동화
 
-### 6.1 자동 스케일링 (HPA)
+### 7.1 자동 스케일링 (HPA)
 
 **Judgment Service HPA**:
 ```yaml
@@ -567,7 +818,7 @@ spec:
         periodSeconds: 60
 ```
 
-### 6.2 자동 복구 (Self-Healing)
+### 7.2 자동 복구 (Self-Healing)
 
 **Liveness Probe** (서비스 생존 확인):
 ```yaml
@@ -603,10 +854,13 @@ readinessProbe:
 1. **인프라 토폴로지**: VPC 3계층 분리 (Public, Application, Database)
 2. **CI/CD 파이프라인**: GitHub Actions (CI), ArgoCD (CD GitOps)
 3. **Kubernetes 설정**: Namespace, ResourceQuota, HPA
-4. **설정/비밀 관리**: ConfigMap, Sealed Secrets, External Secrets
-5. **백업 전략**: 일 1회 Full Backup, WAL Archiving (실시간)
-6. **DR 계획**: Cross-Region (RTO 4h, RPO 30m)
-7. **운영 자동화**: HPA, Self-Healing (Liveness/Readiness)
+4. **V7 Intent Router 배포**: 3 Replicas, Claude Haiku, 300ms 타임아웃
+5. **Orchestrator 배포**: 2 Replicas, Claude Sonnet, 500ms 타임아웃
+6. **15 노드 서비스 토폴로지**: Intent Router → Orchestrator → Data/Judgment/Rule → Workflow
+7. **설정/비밀 관리**: ConfigMap, Sealed Secrets, External Secrets, Anthropic API Key
+8. **백업 전략**: 일 1회 Full Backup, WAL Archiving (실시간)
+9. **DR 계획**: Cross-Region (RTO 4h, RPO 30m)
+10. **운영 자동화**: HPA (Intent Router, Orchestrator 포함), Self-Healing
 
 ### 다음 단계
 1. Kubernetes 클러스터 구축 (EKS)
@@ -621,3 +875,4 @@ readinessProbe:
 |------|------|--------|----------|
 | 1.0 | 2025-11-01 | DevOps Team | 초안 작성 |
 | 2.0 | 2025-11-26 | DevOps Team | Enhanced 버전 (CI/CD, Kubernetes, 백업/DR 상세 추가) |
+| 3.0 | 2025-12-16 | DevOps Team | V7 Intent + Orchestrator 배포 추가: Intent Router Deployment (3 Replicas, Haiku), Orchestrator Deployment (2 Replicas, Sonnet), HPA 설정 (Latency 기반), 15노드 서비스 토폴로지 |
