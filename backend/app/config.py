@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # AI Models (MVP: Anthropic Only - Rule 8)
     anthropic_api_key: str
 
+    # Embedding & Reranking (E-1 스펙)
+    openai_api_key: str = ""       # OpenAI Embedding용 (선택)
+    voyage_api_key: str = ""       # Voyage AI Embedding용 (선택)
+    cohere_api_key: str = ""       # Cohere Reranking용 (E-1 스펙)
+
     # LLM Settings
     default_llm_model: str = "claude-sonnet-4-5-20250929"
     llm_temperature: float = 0.7

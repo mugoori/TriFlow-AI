@@ -1,6 +1,6 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-10
+> **최종 업데이트**: 2025-12-16
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → Production 배포 준비
 > **현재 브랜치**: `develop` (V1 개발용)
 
@@ -1483,6 +1483,111 @@ cd backend && python -m pytest tests/test_security.py -v
 
 # 3. Health Check
 curl http://localhost:8000/health
+```
+
+---
+
+## 📋 V2 Phase 2: Advanced RAG & Intent 시스템 강화 (2025-12-16)
+
+### 🎯 Phase 2 진행 현황
+| 우선순위 | Task | Status | Progress |
+| :--- | :--- | :--- | :--- |
+| **1순위** | Hybrid Search + Reranking (E-1 스펙) | ✅ 완료 | ██████████ 100% |
+| **2순위** | V7 Intent 체계 (14개) 구현 (B-6 스펙) | ✅ 완료 | ██████████ 100% |
+| 3순위 | BI 분석 강화 - RANK 분석 | ⏳ 대기 | ░░░░░░░░░░ 0% |
+| 4순위 | CRAG (Corrective RAG) | ⏳ 대기 | ░░░░░░░░░░ 0% |
+| 5순위 | MCP ToolHub 기본 | ⏳ 대기 | ░░░░░░░░░░ 0% |
+
+### ✅ 1순위: Hybrid Search + Reranking (E-1 스펙) 완료
+
+#### 📋 구현 내역
+- [x] **[Service]** HybridSearchService 구현 (`backend/app/services/search_service.py`)
+  - 벡터 검색 (pgvector cosine similarity) → TOP 20
+  - 키워드 검색 (PostgreSQL Full-Text Search) → TOP 20
+  - RRF (Reciprocal Rank Fusion) 병합 → TOP 20
+  - Cohere Reranking (rerank-multilingual-v3.0) → TOP 5
+- [x] **[Service]** CohereReranker 구현
+  - Cohere API v2 클라이언트 연동
+  - 다국어 Reranking 지원 (한국어 포함)
+- [x] **[Service]** RAG Service 확장 (`backend/app/services/rag_service.py`)
+  - `advanced_search()` - Hybrid Search + Reranking 통합 검색
+  - `get_context_advanced()` - 고급 RAG 컨텍스트 생성
+- [x] **[Config]** 환경 변수 추가 (`backend/app/config.py`)
+  - `COHERE_API_KEY` - Cohere Reranking API 키
+- [x] **[Deps]** 의존성 추가 (`backend/requirements.txt`)
+  - `cohere==5.11.4`
+
+#### 🔍 검증 방법 (How to Test)
+```bash
+# Hybrid Search 테스트
+cd backend
+USE_SQLITE=1 python -m pytest tests/test_search_service.py -v
+
+# RAG API 테스트 (서버 필요)
+curl -X POST "http://localhost:8000/api/v1/rag/search" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "온도 센서 이상", "top_k": 5, "use_rerank": true}'
+```
+
+---
+
+### ✅ 2순위: V7 Intent 체계 (14개) 구현 (B-6 스펙) 완료
+
+#### 📋 V7 Intent 체계 (14개)
+| 카테고리 | Intent | Route Target | Legacy |
+|----------|--------|--------------|--------|
+| **정보 조회** | CHECK | DATA_LAYER | judgment |
+| | TREND | DATA_LAYER | judgment |
+| | COMPARE | JUDGMENT_ENGINE | judgment |
+| | RANK | JUDGMENT_ENGINE | bi |
+| **분석** | FIND_CAUSE | JUDGMENT_ENGINE | judgment |
+| | DETECT_ANOMALY | RULE_ENGINE | learning |
+| | PREDICT | JUDGMENT_ENGINE | judgment |
+| | WHAT_IF | JUDGMENT_ENGINE | judgment |
+| **액션** | REPORT | BI_GUIDE | bi |
+| | NOTIFY | WORKFLOW_GUIDE | workflow |
+| **대화 제어** | CONTINUE | CONTEXT_DEPENDENT | general |
+| | CLARIFY | ASK_BACK | general |
+| | STOP | CONTEXT_DEPENDENT | general |
+| | SYSTEM | DIRECT_RESPONSE | general |
+
+#### 📋 구현 내역
+- [x] **[Agent]** V7 라우팅 규칙 정의 (`backend/app/agents/routing_rules.py`)
+  - V7Intent Enum (14개 Intent)
+  - RouteTarget Enum (8개 라우팅 대상)
+  - V7_ROUTING_RULES (Intent별 패턴, 우선순위, 키워드)
+  - V7_TO_LEGACY_INTENT 매핑
+  - v7_to_route_target() 매핑 함수
+- [x] **[Agent]** V7IntentClassifier 구현 (`backend/app/agents/intent_classifier.py`)
+  - 정규식 패턴 기반 분류 (우선순위 지원)
+  - 키워드 기반 분류 (fallback)
+  - ClassificationResult 데이터클래스 (V7/Legacy 호환)
+  - should_clarify() - 명확화 필요 여부 판단
+  - 디버그 정보 제공 (get_classification_debug)
+- [x] **[Agent]** MetaRouterAgent V7 지원 (`backend/app/agents/meta_router.py`)
+  - classify_v7_intent Tool 추가
+  - route_with_hybrid() - 하이브리드 라우팅 (규칙 기반 우선, LLM fallback)
+  - route_target_to_agent() - Route Target → Agent 매핑
+- [x] **[Test]** V7 Intent 테스트 (`backend/tests/test_v7_intent.py`)
+  - 58개 테스트 케이스 (전체 통과)
+  - V7Intent Enum, RouteTarget, 라우팅 규칙, Legacy 매핑
+  - 패턴 매칭 (14개 Intent 모두)
+  - 하이브리드 라우팅, Edge cases
+
+#### 🔍 검증 방법 (How to Test)
+```bash
+# V7 Intent 테스트 실행
+cd backend
+USE_SQLITE=1 python -m pytest tests/test_v7_intent.py -v
+
+# Intent 분류기 직접 테스트
+python -c "
+from app.agents.intent_classifier import V7IntentClassifier
+classifier = V7IntentClassifier()
+result = classifier.classify('오늘 생산량 얼마야?')
+print(f'V7 Intent: {result.v7_intent}, Route: {result.route_to}, Legacy: {result.legacy_intent}')
+"
 ```
 
 ---

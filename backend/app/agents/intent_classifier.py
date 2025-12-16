@@ -1,9 +1,15 @@
 # ===================================================
-# TriFlow AI - Hybrid Intent Classifier
-# 하이브리드 Intent 분류기 (규칙 기반 + LLM fallback)
+# TriFlow AI - Hybrid Intent Classifier (V7)
+# V7 Intent 체계 기반 하이브리드 분류기
 # ===================================================
 """
-하이브리드 Intent 분류기
+하이브리드 Intent 분류기 (V7 체계)
+
+V7 Intent 체계 (14개):
+- 정보 조회: CHECK, TREND, COMPARE, RANK
+- 분석: FIND_CAUSE, DETECT_ANOMALY, PREDICT, WHAT_IF
+- 액션: REPORT, NOTIFY
+- 대화 제어: CONTINUE, CLARIFY, STOP, SYSTEM
 
 1차: 규칙 기반 분류 (정규식 패턴 매칭)
    - 명확한 패턴은 빠르고 정확하게 분류
@@ -16,58 +22,82 @@
 
 import re
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 
-from .routing_rules import ROUTING_RULES, get_sorted_rules
+from .routing_rules import (
+    V7_ROUTING_RULES,
+    LEGACY_ROUTING_RULES,
+    get_sorted_v7_rules,
+    v7_to_legacy,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ClassificationResult:
-    """분류 결과"""
-    intent: str
+    """분류 결과 (V7 체계)"""
+    # V7 Intent (기본)
+    v7_intent: str
+    route_to: str
     confidence: float
-    source: str  # "rule_engine" or "llm"
+    source: str  # "rule_engine", "keyword_match", "llm"
+
+    # Legacy Intent (하위호환)
+    legacy_intent: str = ""
+
+    # 매칭 정보
     matched_pattern: Optional[str] = None
     matched_keyword: Optional[str] = None
     all_matches: Optional[List[Dict]] = None
 
+    # Slot 정보 (선택)
+    slots: Dict[str, Any] = field(default_factory=dict)
 
-class IntentClassifier:
+    # 명확화 필요 시
+    ask_back: Optional[str] = None
+
+    @property
+    def intent(self) -> str:
+        """Legacy 호환: intent 속성 (v7_intent 반환)"""
+        return self.legacy_intent or v7_to_legacy(self.v7_intent)
+
+
+class V7IntentClassifier:
     """
-    하이브리드 Intent 분류기
+    V7 Intent 분류기
 
     사용법:
-        classifier = IntentClassifier()
-        result = classifier.classify("11월달 센서 데이터 보여줘")
+        classifier = V7IntentClassifier()
+        result = classifier.classify("오늘 생산량 얼마야?")
 
         if result:
-            print(f"Intent: {result.intent}, Source: {result.source}")
+            print(f"V7 Intent: {result.v7_intent}, Route: {result.route_to}")
         else:
             # LLM으로 분류 필요
             pass
     """
 
     def __init__(self):
-        self.rules = ROUTING_RULES
+        self.v7_rules = V7_ROUTING_RULES
+        self.legacy_rules = LEGACY_ROUTING_RULES
         self._compiled_patterns: Dict[str, List[re.Pattern]] = {}
         self._compile_patterns()
 
     def _compile_patterns(self) -> None:
-        """정규식 패턴 사전 컴파일"""
-        for intent, rule in self.rules.items():
+        """정규식 패턴 사전 컴파일 (V7 규칙)"""
+        for intent, rule in self.v7_rules.items():
             patterns = rule.get("patterns", [])
             self._compiled_patterns[intent] = [
                 re.compile(pattern, re.IGNORECASE | re.UNICODE)
                 for pattern in patterns
             ]
-        logger.info(f"Compiled patterns for {len(self._compiled_patterns)} intents")
+        logger.info(f"Compiled V7 patterns for {len(self._compiled_patterns)} intents")
 
     def classify(self, text: str) -> Optional[ClassificationResult]:
         """
-        텍스트를 분류하여 Intent 반환
+        텍스트를 V7 Intent로 분류
 
         Args:
             text: 사용자 입력 텍스트
@@ -82,9 +112,9 @@ class IntentClassifier:
         text = text.strip()
         all_matches: List[Dict[str, Any]] = []
 
-        # 모든 Intent에 대해 패턴 매칭 시도
+        # 모든 V7 Intent에 대해 패턴 매칭 시도
         for intent, compiled_patterns in self._compiled_patterns.items():
-            rule = self.rules[intent]
+            rule = self.v7_rules[intent]
             priority = rule.get("priority", 0)
 
             for pattern in compiled_patterns:
@@ -95,10 +125,11 @@ class IntentClassifier:
                         "priority": priority,
                         "pattern": pattern.pattern,
                         "matched_text": match.group(),
+                        "route_to": rule.get("route_to"),
                     })
 
         if not all_matches:
-            logger.debug(f"No rule match for: '{text[:50]}...'")
+            logger.debug(f"No V7 rule match for: '{text[:50]}...'")
             return None
 
         # 우선순위가 가장 높은 매칭 선택
@@ -111,21 +142,27 @@ class IntentClassifier:
         ]
         if len(same_priority_matches) > 1:
             logger.info(
-                f"Multiple matches with same priority {best_match['priority']}: "
+                f"Multiple V7 matches with same priority {best_match['priority']}: "
                 f"{[m['intent'] for m in same_priority_matches]}"
             )
 
+        v7_intent = best_match["intent"]
+        route_to = best_match["route_to"]
+        legacy_intent = v7_to_legacy(v7_intent)
+
         result = ClassificationResult(
-            intent=best_match["intent"],
+            v7_intent=v7_intent,
+            route_to=route_to,
             confidence=0.95,  # 규칙 기반은 높은 신뢰도
             source="rule_engine",
+            legacy_intent=legacy_intent,
             matched_pattern=best_match["pattern"],
             all_matches=all_matches,
         )
 
         logger.info(
-            f"Rule-based classification: '{text[:30]}...' → {result.intent} "
-            f"(pattern: {best_match['pattern'][:40]}...)"
+            f"V7 Rule classification: '{text[:30]}...' → {v7_intent} "
+            f"(route: {route_to}, pattern: {best_match['pattern'][:40]}...)"
         )
 
         return result
@@ -142,16 +179,49 @@ class IntentClassifier:
         """
         text_lower = text.lower()
 
-        for intent, rule in get_sorted_rules():
+        for intent, rule in get_sorted_v7_rules():
             keywords = rule.get("keywords", [])
             for keyword in keywords:
                 if keyword.lower() in text_lower:
+                    route_to = rule.get("route_to", "DIRECT_RESPONSE")
+                    legacy_intent = v7_to_legacy(intent)
+
                     return ClassificationResult(
-                        intent=intent,
+                        v7_intent=intent,
+                        route_to=route_to,
                         confidence=0.7,  # 키워드 매칭은 낮은 신뢰도
                         source="keyword_match",
+                        legacy_intent=legacy_intent,
                         matched_keyword=keyword,
                     )
+
+        return None
+
+    def should_clarify(self, text: str, confidence: float = 0.7) -> Optional[str]:
+        """
+        명확화가 필요한지 확인
+
+        Args:
+            text: 사용자 입력 텍스트
+            confidence: 신뢰도 임계값
+
+        Returns:
+            명확화 질문 (필요 시) or None
+        """
+        # 짧은 발화
+        if len(text.strip()) <= 3:
+            return "무엇을 도와드릴까요? 생산, 품질, 설비 중 어느 것이 궁금하신가요?"
+
+        # 모호한 단어
+        ambiguous_patterns = [
+            (r"^(확인|체크|봐줘)$", "무엇을 확인해 드릴까요?"),
+            (r"^(어떻게|어떡해)\??$", "어떤 작업을 도와드릴까요?"),
+            (r"^(괜찮아|됐어)\??$", "현재 상태를 확인해 드릴까요, 아니면 다른 작업이 필요하신가요?"),
+        ]
+
+        for pattern, question in ambiguous_patterns:
+            if re.match(pattern, text.strip(), re.IGNORECASE):
+                return question
 
         return None
 
@@ -167,22 +237,29 @@ class IntentClassifier:
         """
         result = self.classify(text)
         keyword_result = self.classify_with_keywords(text)
+        clarify_question = self.should_clarify(text)
 
         return {
             "input": text,
             "pattern_result": {
-                "intent": result.intent if result else None,
+                "v7_intent": result.v7_intent if result else None,
+                "route_to": result.route_to if result else None,
+                "legacy_intent": result.legacy_intent if result else None,
                 "confidence": result.confidence if result else 0,
                 "matched_pattern": result.matched_pattern if result else None,
                 "all_matches": result.all_matches if result else [],
             } if result else None,
             "keyword_result": {
-                "intent": keyword_result.intent if keyword_result else None,
+                "v7_intent": keyword_result.v7_intent if keyword_result else None,
+                "route_to": keyword_result.route_to if keyword_result else None,
                 "confidence": keyword_result.confidence if keyword_result else 0,
                 "matched_keyword": keyword_result.matched_keyword if keyword_result else None,
             } if keyword_result else None,
-            "final_intent": result.intent if result else (
-                keyword_result.intent if keyword_result else "llm_required"
+            "clarify_question": clarify_question,
+            "final_v7_intent": result.v7_intent if result else (
+                keyword_result.v7_intent if keyword_result else (
+                    "CLARIFY" if clarify_question else "llm_required"
+                )
             ),
         }
 
@@ -191,7 +268,7 @@ class IntentClassifier:
         테스트 케이스 일괄 실행
 
         Args:
-            test_cases: [{"input": "...", "expected": "judgment"}, ...]
+            test_cases: [{"input": "...", "expected": "CHECK"}, ...]
 
         Returns:
             테스트 결과 목록
@@ -202,63 +279,116 @@ class IntentClassifier:
             expected = case.get("expected", "")
 
             result = self.classify(text)
-            actual = result.intent if result else "llm_required"
+            actual = result.v7_intent if result else "llm_required"
 
             results.append({
                 "input": text,
                 "expected": expected,
                 "actual": actual,
-                "passed": actual == expected,
+                "passed": actual.upper() == expected.upper(),
                 "matched_pattern": result.matched_pattern if result else None,
+                "route_to": result.route_to if result else None,
             })
 
         passed = sum(1 for r in results if r["passed"])
-        logger.info(f"Test results: {passed}/{len(results)} passed")
+        logger.info(f"V7 Test results: {passed}/{len(results)} passed")
 
         return results
 
 
+# =========================================
+# Legacy 호환 IntentClassifier
+# =========================================
+class IntentClassifier(V7IntentClassifier):
+    """
+    Legacy 호환 Intent 분류기
+
+    V7IntentClassifier를 상속하여 기존 API 유지
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Legacy 규칙도 컴파일 (하위호환)
+        self.rules = LEGACY_ROUTING_RULES
+        self._legacy_compiled_patterns: Dict[str, List[re.Pattern]] = {}
+
+    @property
+    def compiled_patterns(self) -> Dict[str, List[re.Pattern]]:
+        """Legacy 호환: compiled_patterns 속성"""
+        return self._compiled_patterns
+
+
 # 싱글톤 인스턴스
 intent_classifier = IntentClassifier()
+v7_intent_classifier = V7IntentClassifier()
 
 
-# 테스트용 함수
-def run_classifier_tests():
-    """분류기 테스트 실행"""
+# =========================================
+# 테스트 함수
+# =========================================
+def run_v7_classifier_tests():
+    """V7 분류기 테스트 실행"""
     test_cases = [
-        # Judgment (데이터 조회)
-        {"input": "11월달 센서 데이터 보여줘", "expected": "judgment"},
-        {"input": "A라인 온도 데이터 확인", "expected": "judgment"},
-        {"input": "현재 공장 상태 알려줘", "expected": "judgment"},
-        {"input": "지난주 압력 데이터 조회해줘", "expected": "judgment"},
-        {"input": "LINE_A 상태 어때?", "expected": "judgment"},
+        # 정보 조회 (Information)
+        {"input": "오늘 생산량 얼마야?", "expected": "CHECK"},
+        {"input": "불량률 어때?", "expected": "CHECK"},
+        {"input": "현재 온도 확인", "expected": "CHECK"},
+        {"input": "A라인 상태 어때?", "expected": "CHECK"},
 
-        # BI (차트/분석)
-        {"input": "11월달 센서 데이터 차트로 보여줘", "expected": "bi"},
-        {"input": "온도 추이 그래프 만들어줘", "expected": "bi"},
-        {"input": "라인별 불량률 비교 대시보드", "expected": "bi"},
-        {"input": "지난달 생산량 통계 분석해줘", "expected": "bi"},
+        {"input": "이번 주 불량률 추이", "expected": "TREND"},
+        {"input": "월별 생산량 변화", "expected": "TREND"},
+        {"input": "온도 추이 보여줘", "expected": "TREND"},
 
-        # Workflow
-        {"input": "새 워크플로우 만들어줘", "expected": "workflow"},
-        {"input": "자동화 설정해줘", "expected": "workflow"},
+        {"input": "1호기랑 2호기 비교", "expected": "COMPARE"},
+        {"input": "오늘이랑 어제 차이", "expected": "COMPARE"},
+        {"input": "뭐가 더 나아?", "expected": "COMPARE"},
 
-        # Learning
-        {"input": "온도 80도 넘으면 경고 규칙 만들어줘", "expected": "learning"},
-        {"input": "새 룰셋 생성해줘", "expected": "learning"},
+        {"input": "제일 문제인 설비", "expected": "RANK"},
+        {"input": "불량 많은 순서대로", "expected": "RANK"},
+        {"input": "생산량 top 5", "expected": "RANK"},
 
-        # General
-        {"input": "안녕", "expected": "general"},
-        {"input": "넌 뭐야?", "expected": "general"},
+        # 분석 (Analysis)
+        {"input": "왜 불량이 늘었어?", "expected": "FIND_CAUSE"},
+        {"input": "생산량 떨어진 원인", "expected": "FIND_CAUSE"},
+
+        {"input": "뭔가 이상한 거 없어?", "expected": "DETECT_ANOMALY"},
+        {"input": "경고 뜬 설비 있어?", "expected": "DETECT_ANOMALY"},
+
+        {"input": "납기 맞출 수 있어?", "expected": "PREDICT"},
+        {"input": "오늘 목표 달성 가능해?", "expected": "PREDICT"},
+
+        {"input": "1호기 멈추면 어떻게 돼?", "expected": "WHAT_IF"},
+        {"input": "생산량 10% 늘리면?", "expected": "WHAT_IF"},
+
+        # 액션 (Action)
+        {"input": "일일 리포트 만들어줘", "expected": "REPORT"},
+        {"input": "불량률 그래프 보여줘", "expected": "REPORT"},
+        {"input": "차트로 보여줘", "expected": "REPORT"},
+
+        {"input": "온도 60도 넘으면 알려줘", "expected": "NOTIFY"},
+        {"input": "워크플로우 만들어줘", "expected": "NOTIFY"},
+        {"input": "슬랙으로 알림 보내줘", "expected": "NOTIFY"},
+
+        # 대화 제어 (Conversation)
+        {"input": "응", "expected": "CONTINUE"},
+        {"input": "더 자세히", "expected": "CONTINUE"},
+
+        {"input": "그만", "expected": "STOP"},
+        {"input": "취소해", "expected": "STOP"},
+
+        {"input": "안녕", "expected": "SYSTEM"},
+        {"input": "뭘 할 수 있어?", "expected": "SYSTEM"},
+        {"input": "도움말", "expected": "SYSTEM"},
     ]
 
-    classifier = IntentClassifier()
+    classifier = V7IntentClassifier()
     results = classifier.test_patterns(test_cases)
 
-    print("\n=== Intent Classifier Test Results ===")
+    print("\n=== V7 Intent Classifier Test Results ===")
     for r in results:
         status = "✅" if r["passed"] else "❌"
-        print(f"{status} '{r['input'][:30]}...' → {r['actual']} (expected: {r['expected']})")
+        route = r.get("route_to", "N/A")
+        print(f"{status} '{r['input'][:30]}...' → {r['actual']} (expected: {r['expected']}) [route: {route}]")
 
     passed = sum(1 for r in results if r["passed"])
     print(f"\nTotal: {passed}/{len(results)} passed")
@@ -266,5 +396,11 @@ def run_classifier_tests():
     return results
 
 
+# Legacy 테스트 함수 (하위호환)
+def run_classifier_tests():
+    """분류기 테스트 실행 (Legacy)"""
+    return run_v7_classifier_tests()
+
+
 if __name__ == "__main__":
-    run_classifier_tests()
+    run_v7_classifier_tests()
