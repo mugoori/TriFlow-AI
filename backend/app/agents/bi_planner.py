@@ -1,13 +1,20 @@
 """
 BI Planner Agent
 데이터 분석 및 차트 생성 (Text-to-SQL)
+
+V2 Phase 2 확장:
+- RANK 분석 (상위/하위 N개, 백분위)
+- PREDICT 분석 (이동평균, 선형회귀)
+- WHAT_IF 시뮬레이션
 """
 from typing import Any, Dict, List
 import logging
 from pathlib import Path
+from uuid import UUID
 
 from .base_agent import BaseAgent
 from app.tools.db import get_table_schema, execute_safe_sql
+from app.services.bi_service import get_bi_service, TimeGranularity
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +124,139 @@ class BIPlannerAgent(BaseAgent):
                     "required": ["data", "chart_type", "analysis_goal"],
                 },
             },
+            # V2 Phase 2: RANK 분석
+            {
+                "name": "analyze_rank",
+                "description": "RANK 분석: 상위/하위 N개 항목을 분석합니다. 불량률, 생산량, 온도 등의 순위를 차원별로 분석할 때 사용합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "tenant_id": {
+                            "type": "string",
+                            "description": "테넌트 ID (UUID)",
+                        },
+                        "metric": {
+                            "type": "string",
+                            "description": "분석 지표",
+                            "enum": [
+                                "defect_rate", "production_count", "defect_count",
+                                "avg_confidence", "avg_execution_time",
+                                "avg_temperature", "max_temperature", "min_temperature",
+                                "avg_value", "sum_value"
+                            ],
+                        },
+                        "dimension": {
+                            "type": "string",
+                            "description": "그룹화 차원 (예: line_code, sensor_type, shift, ruleset_id)",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "반환할 항목 수 (기본 5)",
+                            "default": 5,
+                        },
+                        "order": {
+                            "type": "string",
+                            "description": "정렬 순서: desc=상위, asc=하위",
+                            "enum": ["desc", "asc"],
+                            "default": "desc",
+                        },
+                        "time_range_days": {
+                            "type": "integer",
+                            "description": "분석 기간 (일, 기본 7)",
+                            "default": 7,
+                        },
+                    },
+                    "required": ["tenant_id", "metric", "dimension"],
+                },
+            },
+            # V2 Phase 2: PREDICT 분석
+            {
+                "name": "analyze_predict",
+                "description": "PREDICT 분석: 시계열 예측을 수행합니다. 이동평균 또는 선형회귀 기반으로 미래 값을 예측합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "tenant_id": {
+                            "type": "string",
+                            "description": "테넌트 ID (UUID)",
+                        },
+                        "metric": {
+                            "type": "string",
+                            "description": "예측 지표",
+                            "enum": [
+                                "defect_rate", "production_count",
+                                "avg_temperature", "avg_value"
+                            ],
+                        },
+                        "dimension": {
+                            "type": "string",
+                            "description": "그룹화 차원 (선택)",
+                        },
+                        "time_range_days": {
+                            "type": "integer",
+                            "description": "학습 데이터 기간 (기본 30일)",
+                            "default": 30,
+                        },
+                        "forecast_periods": {
+                            "type": "integer",
+                            "description": "예측 기간 (기본 7일)",
+                            "default": 7,
+                        },
+                        "method": {
+                            "type": "string",
+                            "description": "예측 방법",
+                            "enum": ["moving_average", "linear_regression"],
+                            "default": "moving_average",
+                        },
+                        "granularity": {
+                            "type": "string",
+                            "description": "시간 단위",
+                            "enum": ["minute", "hour", "day", "week", "month"],
+                            "default": "day",
+                        },
+                    },
+                    "required": ["tenant_id", "metric"],
+                },
+            },
+            # V2 Phase 2: WHAT_IF 시뮬레이션
+            {
+                "name": "analyze_what_if",
+                "description": "WHAT_IF 시뮬레이션: 가정 기반 영향 분석을 수행합니다. '온도가 5도 올라가면 불량률이 어떻게 될까?' 같은 시나리오 분석에 사용합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "tenant_id": {
+                            "type": "string",
+                            "description": "테넌트 ID (UUID)",
+                        },
+                        "metric": {
+                            "type": "string",
+                            "description": "분석 대상 메트릭 (예: defect_rate)",
+                        },
+                        "dimension": {
+                            "type": "string",
+                            "description": "변경 차원",
+                        },
+                        "baseline_value": {
+                            "type": "number",
+                            "description": "현재 기준값 (예: 현재 불량률 2.5)",
+                        },
+                        "scenario_changes": {
+                            "type": "object",
+                            "description": "변경 시나리오 (예: {\"temperature\": 5, \"pressure\": -10})",
+                            "additionalProperties": {
+                                "type": "number"
+                            },
+                        },
+                        "time_range_days": {
+                            "type": "integer",
+                            "description": "기준 데이터 기간 (기본 30일)",
+                            "default": 30,
+                        },
+                    },
+                    "required": ["tenant_id", "metric", "dimension", "baseline_value", "scenario_changes"],
+                },
+            },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
@@ -143,6 +283,40 @@ class BIPlannerAgent(BaseAgent):
                 x_axis=tool_input.get("x_axis"),
                 y_axis=tool_input.get("y_axis"),
                 group_by=tool_input.get("group_by"),
+            )
+
+        # V2 Phase 2: RANK 분석
+        elif tool_name == "analyze_rank":
+            return self._analyze_rank(
+                tenant_id=tool_input["tenant_id"],
+                metric=tool_input["metric"],
+                dimension=tool_input["dimension"],
+                limit=tool_input.get("limit", 5),
+                order=tool_input.get("order", "desc"),
+                time_range_days=tool_input.get("time_range_days", 7),
+            )
+
+        # V2 Phase 2: PREDICT 분석
+        elif tool_name == "analyze_predict":
+            return self._analyze_predict(
+                tenant_id=tool_input["tenant_id"],
+                metric=tool_input["metric"],
+                dimension=tool_input.get("dimension"),
+                time_range_days=tool_input.get("time_range_days", 30),
+                forecast_periods=tool_input.get("forecast_periods", 7),
+                method=tool_input.get("method", "moving_average"),
+                granularity=tool_input.get("granularity", "day"),
+            )
+
+        # V2 Phase 2: WHAT_IF 시뮬레이션
+        elif tool_name == "analyze_what_if":
+            return self._analyze_what_if(
+                tenant_id=tool_input["tenant_id"],
+                metric=tool_input["metric"],
+                dimension=tool_input["dimension"],
+                baseline_value=tool_input["baseline_value"],
+                scenario_changes=tool_input["scenario_changes"],
+                time_range_days=tool_input.get("time_range_days", 30),
             )
 
         else:
@@ -324,3 +498,211 @@ class BIPlannerAgent(BaseAgent):
                 numeric_keys.append(key)
 
         return numeric_keys
+
+    # =========================================
+    # V2 Phase 2: Advanced Analysis Methods
+    # =========================================
+
+    def _analyze_rank(
+        self,
+        tenant_id: str,
+        metric: str,
+        dimension: str,
+        limit: int = 5,
+        order: str = "desc",
+        time_range_days: int = 7,
+    ) -> Dict[str, Any]:
+        """
+        RANK 분석 실행 (BIService 위임)
+        """
+        import asyncio
+
+        try:
+            bi_service = get_bi_service()
+            tenant_uuid = UUID(tenant_id)
+
+            # 동기 컨텍스트에서 비동기 함수 호출
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 이미 실행 중인 이벤트 루프 내에서는 새로운 태스크 생성
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        bi_service.analyze_rank(
+                            tenant_id=tenant_uuid,
+                            metric=metric,
+                            dimension=dimension,
+                            limit=limit,
+                            order=order,
+                            time_range_days=time_range_days,
+                        )
+                    )
+                    result = future.result()
+            else:
+                result = loop.run_until_complete(
+                    bi_service.analyze_rank(
+                        tenant_id=tenant_uuid,
+                        metric=metric,
+                        dimension=dimension,
+                        limit=limit,
+                        order=order,
+                        time_range_days=time_range_days,
+                    )
+                )
+
+            logger.info(f"RANK analysis completed: {len(result.data)} items")
+
+            return {
+                "success": True,
+                "analysis_type": "rank",
+                "data": result.data,
+                "summary": result.summary,
+                "chart_config": result.chart_config,
+                "insights": result.insights,
+                "metadata": result.metadata,
+            }
+
+        except Exception as e:
+            logger.error(f"RANK analysis error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "analysis_type": "rank",
+            }
+
+    def _analyze_predict(
+        self,
+        tenant_id: str,
+        metric: str,
+        dimension: str = None,
+        time_range_days: int = 30,
+        forecast_periods: int = 7,
+        method: str = "moving_average",
+        granularity: str = "day",
+    ) -> Dict[str, Any]:
+        """
+        PREDICT 분석 실행 (BIService 위임)
+        """
+        import asyncio
+
+        try:
+            bi_service = get_bi_service()
+            tenant_uuid = UUID(tenant_id)
+            granularity_enum = TimeGranularity(granularity)
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        bi_service.analyze_predict(
+                            tenant_id=tenant_uuid,
+                            metric=metric,
+                            dimension=dimension,
+                            time_range_days=time_range_days,
+                            forecast_periods=forecast_periods,
+                            method=method,
+                            granularity=granularity_enum,
+                        )
+                    )
+                    result = future.result()
+            else:
+                result = loop.run_until_complete(
+                    bi_service.analyze_predict(
+                        tenant_id=tenant_uuid,
+                        metric=metric,
+                        dimension=dimension,
+                        time_range_days=time_range_days,
+                        forecast_periods=forecast_periods,
+                        method=method,
+                        granularity=granularity_enum,
+                    )
+                )
+
+            logger.info(f"PREDICT analysis completed: method={method}, periods={forecast_periods}")
+
+            return {
+                "success": True,
+                "analysis_type": "predict",
+                "data": result.data,
+                "summary": result.summary,
+                "chart_config": result.chart_config,
+                "insights": result.insights,
+                "metadata": result.metadata,
+            }
+
+        except Exception as e:
+            logger.error(f"PREDICT analysis error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "analysis_type": "predict",
+            }
+
+    def _analyze_what_if(
+        self,
+        tenant_id: str,
+        metric: str,
+        dimension: str,
+        baseline_value: float,
+        scenario_changes: Dict[str, float],
+        time_range_days: int = 30,
+    ) -> Dict[str, Any]:
+        """
+        WHAT_IF 시뮬레이션 실행 (BIService 위임)
+        """
+        import asyncio
+
+        try:
+            bi_service = get_bi_service()
+            tenant_uuid = UUID(tenant_id)
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        bi_service.analyze_what_if(
+                            tenant_id=tenant_uuid,
+                            metric=metric,
+                            dimension=dimension,
+                            baseline_value=baseline_value,
+                            scenario_changes=scenario_changes,
+                            time_range_days=time_range_days,
+                        )
+                    )
+                    result = future.result()
+            else:
+                result = loop.run_until_complete(
+                    bi_service.analyze_what_if(
+                        tenant_id=tenant_uuid,
+                        metric=metric,
+                        dimension=dimension,
+                        baseline_value=baseline_value,
+                        scenario_changes=scenario_changes,
+                        time_range_days=time_range_days,
+                    )
+                )
+
+            logger.info(f"WHAT_IF analysis completed: baseline={baseline_value}, changes={scenario_changes}")
+
+            return {
+                "success": True,
+                "analysis_type": "what_if",
+                "data": result.data,
+                "summary": result.summary,
+                "chart_config": result.chart_config,
+                "insights": result.insights,
+                "metadata": result.metadata,
+            }
+
+        except Exception as e:
+            logger.error(f"WHAT_IF analysis error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "analysis_type": "what_if",
+            }

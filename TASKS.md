@@ -1494,7 +1494,7 @@ curl http://localhost:8000/health
 | :--- | :--- | :--- | :--- |
 | **1순위** | Hybrid Search + Reranking (E-1 스펙) | ✅ 완료 | ██████████ 100% |
 | **2순위** | V7 Intent 체계 (14개) 구현 (B-6 스펙) | ✅ 완료 | ██████████ 100% |
-| 3순위 | BI 분석 강화 - RANK 분석 | ⏳ 대기 | ░░░░░░░░░░ 0% |
+| **3순위** | BI Service 완성 (RANK/PREDICT/WHAT_IF) | ✅ 완료 | ██████████ 100% |
 | 4순위 | CRAG (Corrective RAG) | ⏳ 대기 | ░░░░░░░░░░ 0% |
 | 5순위 | MCP ToolHub 기본 | ⏳ 대기 | ░░░░░░░░░░ 0% |
 
@@ -1588,6 +1588,44 @@ classifier = V7IntentClassifier()
 result = classifier.classify('오늘 생산량 얼마야?')
 print(f'V7 Intent: {result.v7_intent}, Route: {result.route_to}, Legacy: {result.legacy_intent}')
 "
+```
+
+---
+
+### ✅ 3순위: BI Service 완성 (RANK/PREDICT/WHAT_IF) 완료
+
+#### 📋 구현 내역
+- [x] **[Service]** BIService 신규 구현 (`backend/app/services/bi_service.py`)
+  - `AnalysisType` Enum (RANK, PREDICT, WHAT_IF, TREND, COMPARE)
+  - `ChartType` Enum (LINE, BAR, PIE, SCATTER, AREA, TABLE, GAUGE)
+  - `TimeGranularity` Enum (MINUTE, HOURLY, DAILY, WEEKLY, MONTHLY)
+  - **RANK 분석**: 상위/하위 N개 분석, 백분위 계산
+  - **PREDICT 분석**: 이동평균/선형회귀 기반 시계열 예측
+  - **WHAT_IF 시뮬레이션**: 상관관계 기반 영향 분석
+  - **차트 추천**: 분석 유형별 최적 차트 자동 추천
+
+- [x] **[Agent]** BI Planner Agent 확장 (`backend/app/agents/bi_planner.py`)
+  - `analyze_rank` Tool - 상위/하위 N개 분석
+  - `analyze_predict` Tool - 시계열 예측 분석
+  - `analyze_what_if` Tool - What-If 시뮬레이션
+  - Async-to-Sync 브릿지 (ThreadPoolExecutor)
+
+- [x] **[Test]** 33개 유닛 테스트 (`backend/tests/test_bi_service.py`)
+  - 백분위 계산 (TestBIServicePercentileCalculation)
+  - RANK 요약 생성 (TestBIServiceRankSummary)
+  - 이동평균 예측 (TestBIServicePredictMovingAverage)
+  - 선형회귀 예측 (TestBIServicePredictLinearRegression)
+  - What-If 영향 분석 (TestBIServiceWhatIfImpact)
+  - 차트 추천 (TestBIServiceChartRecommendation)
+
+#### 🔍 검증 방법 (How to Test)
+```bash
+# BI Service 테스트 실행
+cd backend
+USE_SQLITE=1 python -m pytest tests/test_bi_service.py -v
+
+# 전체 테스트 (33개 모두 통과)
+# ============================= 33 passed in 0.16s ==============================
 ```
 
 ---
