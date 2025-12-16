@@ -1,18 +1,19 @@
 """
 TriFlow AI - Advanced Search Service (E-1 스펙)
 ==============================================
-Hybrid Search + Cohere Reranking 구현
+Hybrid Search + Cohere Reranking + CRAG 구현
 
 스펙 참조: E-1_Advanced_RAG_Technology_Roadmap.md
 - 벡터 검색 (pgvector) + 키워드 검색 (PostgreSQL FTS/ILIKE)
 - RRF (Reciprocal Rank Fusion) 병합
 - Cohere Rerank v3.0 (다국어 지원)
+- CRAG (Corrective RAG): 검색 결과 검증 및 재검색
 """
 import asyncio
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import text
@@ -29,6 +30,58 @@ class SearchStrategy(str, Enum):
     KEYWORD_ONLY = "keyword_only"
     HYBRID = "hybrid"
     HYBRID_RERANK = "hybrid_rerank"
+
+
+class RelevanceGrade(str, Enum):
+    """CRAG 관련성 등급"""
+    RELEVANT = "relevant"        # 관련성 높음 (0.7+)
+    AMBIGUOUS = "ambiguous"      # 애매함 (0.5-0.7)
+    NOT_RELEVANT = "not_relevant"  # 관련 없음 (<0.5)
+
+
+@dataclass
+class CRAGResult:
+    """
+    CRAG (Corrective RAG) 결과
+
+    검색 결과 검증 및 재검색 결과를 담는 데이터 클래스
+    """
+    # 검색 결과
+    results: List["SearchResult"]
+
+    # 관련성 평가
+    relevance_grade: RelevanceGrade
+    avg_relevance_score: float
+
+    # CRAG 처리 정보
+    was_corrected: bool = False
+    correction_method: Optional[str] = None  # "query_rewrite", "web_search", "none"
+    original_query: Optional[str] = None
+    rewritten_query: Optional[str] = None
+
+    # 판단 보류 여부
+    should_abstain: bool = False
+    abstain_reason: Optional[str] = None
+
+    # 메타데이터
+    search_attempts: int = 1
+    total_candidates: int = 0
+
+    def to_dict(self) -> Dict:
+        """딕셔너리로 변환"""
+        return {
+            "relevance_grade": self.relevance_grade.value,
+            "avg_relevance_score": round(self.avg_relevance_score, 4),
+            "was_corrected": self.was_corrected,
+            "correction_method": self.correction_method,
+            "original_query": self.original_query,
+            "rewritten_query": self.rewritten_query,
+            "should_abstain": self.should_abstain,
+            "abstain_reason": self.abstain_reason,
+            "search_attempts": self.search_attempts,
+            "total_candidates": self.total_candidates,
+            "result_count": len(self.results),
+        }
 
 
 @dataclass
@@ -496,6 +549,235 @@ class HybridSearchService:
                 count=0,
                 error=str(e),
             )
+
+    # =========================================
+    # CRAG (Corrective RAG) Methods
+    # =========================================
+
+    def _evaluate_relevance(
+        self,
+        results: List[SearchResult],
+        high_threshold: float = 0.7,
+        low_threshold: float = 0.5,
+    ) -> Tuple[RelevanceGrade, float]:
+        """
+        검색 결과의 관련성 평가
+
+        Args:
+            results: 검색 결과 목록
+            high_threshold: 높은 관련성 임계값 (기본 0.7)
+            low_threshold: 낮은 관련성 임계값 (기본 0.5)
+
+        Returns:
+            (관련성 등급, 평균 점수)
+        """
+        if not results:
+            return RelevanceGrade.NOT_RELEVANT, 0.0
+
+        # final_score 기준으로 평가 (rerank_score > rrf_score > vector_score)
+        scores = []
+        for r in results:
+            if r.rerank_score > 0:
+                scores.append(r.rerank_score)
+            elif r.rrf_score > 0:
+                # RRF 점수는 0~0.03 범위이므로 정규화
+                normalized = min(r.rrf_score * 30, 1.0)
+                scores.append(normalized)
+            else:
+                scores.append(r.vector_score)
+
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+
+        # 상위 결과 점수도 고려 (첫 번째 결과가 중요)
+        top_score = scores[0] if scores else 0.0
+
+        # 가중 평균: 상위 결과 50%, 전체 평균 50%
+        weighted_score = (top_score * 0.5) + (avg_score * 0.5)
+
+        if weighted_score >= high_threshold:
+            return RelevanceGrade.RELEVANT, weighted_score
+        elif weighted_score >= low_threshold:
+            return RelevanceGrade.AMBIGUOUS, weighted_score
+        else:
+            return RelevanceGrade.NOT_RELEVANT, weighted_score
+
+    async def _rewrite_query(self, query: str, context: Optional[str] = None) -> str:
+        """
+        쿼리 재작성 (Query Rewrite)
+
+        간단한 규칙 기반 재작성 + 동의어 확장
+        (향후 LLM 기반 재작성으로 확장 가능)
+
+        Args:
+            query: 원본 쿼리
+            context: 추가 컨텍스트 (선택)
+
+        Returns:
+            재작성된 쿼리
+        """
+        # 한국어 동의어/유의어 매핑
+        synonyms = {
+            # 제조/생산 관련
+            "불량": "결함 품질 이상 defect",
+            "불량률": "불량율 결함률 defect rate",
+            "생산량": "생산수량 output 산출량",
+            "온도": "temperature 열 기온",
+            "설비": "장비 기계 machine equipment",
+            "라인": "생산라인 line 공정",
+            # 분석 관련
+            "원인": "이유 reason cause 요인",
+            "추세": "추이 트렌드 trend 경향",
+            "이상": "비정상 anomaly abnormal",
+            # 시간 관련
+            "오늘": "당일 today 금일",
+            "이번주": "금주 this week",
+            "이번달": "금월 this month",
+        }
+
+        # 쿼리에서 키워드 확장
+        expanded_terms = []
+        query_lower = query.lower()
+
+        for keyword, expansions in synonyms.items():
+            if keyword in query_lower:
+                expanded_terms.append(expansions)
+
+        if expanded_terms:
+            # 원본 쿼리 + 확장 키워드
+            rewritten = f"{query} {' '.join(expanded_terms)}"
+            logger.info(f"Query rewritten: '{query}' -> '{rewritten[:100]}...'")
+            return rewritten
+
+        # 확장할 키워드가 없으면 원본 반환
+        return query
+
+    async def corrective_search(
+        self,
+        tenant_id: UUID,
+        query: str,
+        top_k: int = 5,
+        max_attempts: int = 2,
+        relevance_threshold: float = 0.5,
+        source_type: Optional[str] = None,
+        use_rerank: bool = True,
+    ) -> CRAGResult:
+        """
+        CRAG (Corrective RAG) 검색
+
+        검색 결과를 검증하고, 관련성이 낮으면 쿼리를 재작성하여 재검색
+
+        흐름:
+        1. 초기 검색 (Hybrid + Rerank)
+        2. 관련성 평가
+        3. 관련성 낮으면 → Query Rewrite → 재검색
+        4. 여전히 낮으면 → 판단 보류 (should_abstain=True)
+
+        Args:
+            tenant_id: 테넌트 ID
+            query: 검색 쿼리
+            top_k: 반환할 결과 수
+            max_attempts: 최대 검색 시도 횟수
+            relevance_threshold: 관련성 임계값
+            source_type: 소스 타입 필터
+            use_rerank: Cohere Rerank 사용 여부
+
+        Returns:
+            CRAGResult
+        """
+        original_query = query
+        current_query = query
+        all_candidates = []
+        attempt = 0
+
+        while attempt < max_attempts:
+            attempt += 1
+
+            # 검색 실행
+            response = await self.search(
+                tenant_id=tenant_id,
+                query=current_query,
+                strategy=SearchStrategy.HYBRID_RERANK if use_rerank else SearchStrategy.HYBRID,
+                top_k=top_k * 2,  # 더 많이 가져와서 필터링
+                source_type=source_type,
+                use_rerank=use_rerank,
+            )
+
+            if not response.success:
+                logger.warning(f"CRAG search failed: {response.error}")
+                return CRAGResult(
+                    results=[],
+                    relevance_grade=RelevanceGrade.NOT_RELEVANT,
+                    avg_relevance_score=0.0,
+                    should_abstain=True,
+                    abstain_reason=f"검색 실패: {response.error}",
+                    search_attempts=attempt,
+                )
+
+            all_candidates.extend(response.results)
+
+            # 관련성 평가
+            grade, avg_score = self._evaluate_relevance(
+                response.results,
+                high_threshold=0.7,
+                low_threshold=relevance_threshold,
+            )
+
+            logger.info(
+                f"CRAG attempt {attempt}: query='{current_query[:30]}...', "
+                f"grade={grade.value}, avg_score={avg_score:.3f}, "
+                f"results={len(response.results)}"
+            )
+
+            # 관련성 높음 → 즉시 반환
+            if grade == RelevanceGrade.RELEVANT:
+                return CRAGResult(
+                    results=response.results[:top_k],
+                    relevance_grade=grade,
+                    avg_relevance_score=avg_score,
+                    was_corrected=(attempt > 1),
+                    correction_method="query_rewrite" if attempt > 1 else None,
+                    original_query=original_query,
+                    rewritten_query=current_query if attempt > 1 else None,
+                    search_attempts=attempt,
+                    total_candidates=len(all_candidates),
+                )
+
+            # 마지막 시도면 현재 결과로 반환
+            if attempt >= max_attempts:
+                break
+
+            # 관련성 낮음/애매함 → Query Rewrite 후 재시도
+            current_query = await self._rewrite_query(query)
+
+            # 쿼리가 변경되지 않았으면 재시도 의미 없음
+            if current_query == query:
+                break
+
+        # 최종 결과 반환 (재시도 후에도 관련성 낮음)
+        final_grade, final_score = self._evaluate_relevance(all_candidates[:top_k])
+
+        # 판단 보류 여부 결정
+        should_abstain = final_grade == RelevanceGrade.NOT_RELEVANT
+        abstain_reason = None
+        if should_abstain:
+            abstain_reason = (
+                f"검색 결과의 관련성이 낮습니다 (점수: {final_score:.2f}). "
+                "질문을 더 구체적으로 해주시거나, 관련 문서를 먼저 등록해주세요."
+            )
+
+        return CRAGResult(
+            results=all_candidates[:top_k],
+            relevance_grade=final_grade,
+            avg_relevance_score=final_score,
+            was_corrected=(attempt > 1),
+            correction_method="query_rewrite" if attempt > 1 else None,
+            original_query=original_query,
+            rewritten_query=current_query if current_query != original_query else None,
+            should_abstain=should_abstain,
+            abstain_reason=abstain_reason,
+            search_attempts=attempt,
+            total_candidates=len(all_candidates),
+        )
 
 
 # 싱글톤

@@ -780,6 +780,155 @@ class RAGService:
 
         return "\n\n---\n\n".join(context_parts)
 
+    # =========================================
+    # CRAG (Corrective RAG) Methods
+    # =========================================
+
+    async def corrective_search(
+        self,
+        tenant_id: UUID,
+        query: str,
+        top_k: int = 5,
+        max_attempts: int = 2,
+        relevance_threshold: float = 0.5,
+        source_type: Optional[str] = None,
+        use_rerank: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        CRAG (Corrective RAG) 검색
+
+        검색 결과를 검증하고, 관련성이 낮으면 쿼리를 재작성하여 재검색
+
+        흐름:
+        1. 초기 검색 (Hybrid + Rerank)
+        2. 관련성 평가
+        3. 관련성 낮으면 → Query Rewrite → 재검색
+        4. 여전히 낮으면 → 판단 보류 (should_abstain=True)
+
+        Args:
+            tenant_id: 테넌트 ID
+            query: 검색 쿼리
+            top_k: 반환할 결과 수
+            max_attempts: 최대 검색 시도 횟수
+            relevance_threshold: 관련성 임계값
+            source_type: 소스 타입 필터
+            use_rerank: Cohere Rerank 사용 여부
+
+        Returns:
+            CRAG 검색 결과 딕셔너리
+        """
+
+        search_service = self._get_search_service()
+
+        crag_result = await search_service.corrective_search(
+            tenant_id=tenant_id,
+            query=query,
+            top_k=top_k,
+            max_attempts=max_attempts,
+            relevance_threshold=relevance_threshold,
+            source_type=source_type,
+            use_rerank=use_rerank,
+        )
+
+        # SearchResult를 딕셔너리로 변환
+        results = []
+        for r in crag_result.results:
+            results.append({
+                "document_id": r.document_id,
+                "title": r.title,
+                "text": r.text,
+                "section": r.section,
+                "chunk_index": r.chunk_index,
+                "source_type": r.source_type,
+                "source_id": r.source_id,
+                "tags": r.tags,
+                "vector_score": round(r.vector_score, 4),
+                "keyword_score": round(r.keyword_score, 4),
+                "rrf_score": round(r.rrf_score, 6),
+                "rerank_score": round(r.rerank_score, 4) if r.rerank_score else None,
+                "final_score": round(r.final_score, 4),
+                "found_by": r.found_by,
+            })
+
+        return {
+            "success": True,
+            "query": query,
+            "search_type": "crag",
+            "results": results,
+            "count": len(results),
+            "crag": crag_result.to_dict(),
+        }
+
+    async def get_context_crag(
+        self,
+        tenant_id: UUID,
+        query: str,
+        max_tokens: int = 2000,
+        top_k: int = 5,
+        use_rerank: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        CRAG 기반 컨텍스트 생성
+
+        검색 결과 검증 + 재검색 + 판단 보류 지원
+
+        Returns:
+            {
+                "context": str,  # LLM에 전달할 컨텍스트
+                "should_abstain": bool,  # 판단 보류 여부
+                "abstain_reason": str | None,  # 보류 사유
+                "crag_info": dict,  # CRAG 처리 정보
+            }
+        """
+        search_result = await self.corrective_search(
+            tenant_id=tenant_id,
+            query=query,
+            top_k=top_k,
+            use_rerank=use_rerank,
+        )
+
+        crag_info = search_result.get("crag", {})
+
+        # 판단 보류 상태면 컨텍스트 없이 반환
+        if crag_info.get("should_abstain"):
+            return {
+                "context": "",
+                "should_abstain": True,
+                "abstain_reason": crag_info.get("abstain_reason"),
+                "crag_info": crag_info,
+            }
+
+        # 컨텍스트 생성
+        context_parts = []
+        current_tokens = 0
+
+        for doc in search_result.get("results", []):
+            chunk = doc.get("text", "")
+            estimated_tokens = len(chunk.split())
+
+            if current_tokens + estimated_tokens > max_tokens:
+                break
+
+            # 점수 표시
+            if doc.get("rerank_score"):
+                score_info = f"Rerank: {doc['rerank_score']:.2f}"
+            else:
+                score_info = f"RRF: {doc['rrf_score']:.4f}"
+
+            context_parts.append(
+                f"[{doc['title']}] ({score_info})\n{chunk}"
+            )
+            current_tokens += estimated_tokens
+
+        context = "\n\n---\n\n".join(context_parts)
+
+        return {
+            "context": context,
+            "should_abstain": False,
+            "abstain_reason": None,
+            "crag_info": crag_info,
+        }
+
     async def delete_document(
         self,
         tenant_id: UUID,
