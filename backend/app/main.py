@@ -470,6 +470,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register bi router: {e}")
 
+# MCP ToolHub 라우터 (외부 MCP 서버 연동)
+try:
+    from app.routers import mcp
+    app.include_router(mcp.router, prefix="/api/v1", tags=["mcp"])
+    logger.info("MCP ToolHub router registered")
+except Exception as e:
+    logger.error(f"Failed to register mcp router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

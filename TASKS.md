@@ -1530,7 +1530,7 @@ curl http://localhost:8000/health
 | **3순위** | BI Service 완성 (RANK/PREDICT/WHAT_IF) | ✅ 완료 | ██████████ 100% |
 | **4순위** | CRAG (Corrective RAG) | ✅ 완료 | ██████████ 100% |
 | **5순위** | Schema 확장 (B-3 스펙) | ✅ 완료 | ██████████ 100% |
-| 6순위 | MCP ToolHub 기본 | ⏳ 대기 | ░░░░░░░░░░ 0% |
+| **6순위** | MCP ToolHub 기본 (B-2-3 스펙) | ✅ 완료 | ██████████ 100% |
 
 ### ✅ 1순위: Hybrid Search + Reranking (E-1 스펙) 완료
 
@@ -1733,6 +1733,118 @@ docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/
 # 테이블 확인
 docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt bi.*"
 docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dm bi.*"  # MV 확인
+```
+
+---
+
+### ✅ 6순위: MCP ToolHub 기본 (B-2-3 스펙) 완료
+
+#### 📋 마이그레이션 파일
+| 파일 | 설명 | 테이블/함수 수 |
+|------|------|--------------|
+| `019_mcp_toolhub_schema.sql` | MCP ToolHub 스키마 | 7개 테이블 + 3개 함수 |
+
+#### 📋 구현 내역
+
+**🔵 DB 스키마 (Migration 019)**
+- [x] **mcp_servers** - MCP 서버 레지스트리
+  - 인증 방식: none, api_key, oauth2, basic
+  - 타임아웃, 재시도 설정
+  - 상태 관리 (active/inactive/failed)
+- [x] **mcp_tools** - MCP 도구 메타데이터
+  - JSON Schema 기반 파라미터 정의
+  - 권한 레벨 (low/medium/high/critical)
+- [x] **mcp_call_logs** - 도구 호출 로그 (월별 파티션)
+  - 요청/응답 기록
+  - 레이턴시, 재시도 횟수 추적
+- [x] **circuit_breaker_states** - Circuit Breaker 상태
+  - CLOSED → OPEN → HALF_OPEN 상태 전이
+  - 자동 복구 로직
+- [x] **data_connectors** - 외부 DB 커넥터
+  - PostgreSQL, MySQL 지원
+  - 연결 문자열 암호화
+- [x] **schema_snapshots** - 스키마 스냅샷
+  - 외부 DB 스키마 버전 관리
+  - 해시 기반 변경 감지
+- [x] **schema_drift_detections** - 스키마 변경 감지
+  - 변경 유형: ADDED, REMOVED, MODIFIED
+  - 심각도: INFO, WARNING, CRITICAL
+
+**🔵 Stored Functions**
+- [x] `update_circuit_breaker_on_success()` - 성공 시 CB 상태 업데이트
+- [x] `update_circuit_breaker_on_failure()` - 실패 시 CB 상태 업데이트
+- [x] `try_half_open_circuit_breaker()` - HALF_OPEN 전환 시도
+
+**🔵 Pydantic 모델 (`backend/app/models/mcp.py`)**
+- [x] `MCPServer`, `MCPServerCreate`, `MCPServerUpdate` - 서버 CRUD
+- [x] `MCPTool`, `MCPToolCreate`, `MCPToolUpdate` - 도구 CRUD
+- [x] `MCPCallRequest`, `MCPCallResponse` - 도구 호출
+- [x] `CircuitBreakerState`, `CircuitBreakerConfig` - CB 관리
+- [x] `DataConnector`, `DataConnectorCreate` - DB 커넥터
+- [x] `SchemaSnapshot`, `DriftReport`, `DriftChange` - Drift 감지
+
+**🔵 서비스 계층**
+- [x] **CircuitBreaker** (`backend/app/services/circuit_breaker.py`)
+  - DB 기반 상태 저장 + Redis 캐싱
+  - InMemoryCircuitBreaker (테스트용)
+  - 설정: failure_threshold=5, success_threshold=2, timeout=60s
+- [x] **HTTPMCPProxy** (`backend/app/services/mcp_proxy.py`)
+  - JSON-RPC 2.0 프로토콜
+  - API Key / OAuth2 / Basic 인증 지원
+  - 타임아웃 + 재시도 (exponential backoff)
+  - MockMCPProxy (테스트용)
+- [x] **MCPToolHubService** (`backend/app/services/mcp_toolhub.py`)
+  - 서버/도구 CRUD
+  - `call_tool()` - CB 통합 도구 호출
+  - `health_check()` - 서버 헬스체크
+- [x] **SchemaDriftDetector** (`backend/app/services/drift_detector.py`)
+  - PostgreSQL/MySQL 스키마 조회
+  - 스냅샷 저장 및 비교
+  - 변경 감지 및 심각도 계산
+
+**🔵 API 엔드포인트 (`backend/app/routers/mcp.py`)**
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| POST | `/api/v1/mcp/servers` | MCP 서버 등록 |
+| GET | `/api/v1/mcp/servers` | 서버 목록 조회 |
+| GET | `/api/v1/mcp/servers/{id}` | 서버 상세 조회 |
+| PUT | `/api/v1/mcp/servers/{id}` | 서버 정보 수정 |
+| DELETE | `/api/v1/mcp/servers/{id}` | 서버 삭제 |
+| POST | `/api/v1/mcp/servers/{id}/tools` | 도구 등록 |
+| GET | `/api/v1/mcp/servers/{id}/tools` | 도구 목록 |
+| POST | `/api/v1/mcp/call` | 도구 호출 |
+| GET | `/api/v1/mcp/health` | 전체 헬스체크 |
+| GET | `/api/v1/mcp/servers/{id}/health` | 서버 헬스체크 |
+| GET | `/api/v1/mcp/circuit-breaker/{id}` | CB 상태 조회 |
+| POST | `/api/v1/mcp/circuit-breaker/{id}/reset` | CB 리셋 |
+| POST | `/api/v1/mcp/connectors` | DB 커넥터 등록 |
+| GET | `/api/v1/mcp/connectors` | 커넥터 목록 |
+| POST | `/api/v1/mcp/drift/detect/{id}` | Drift 감지 |
+| GET | `/api/v1/mcp/drift/reports/{id}` | Drift 리포트 목록 |
+
+**🔵 테스트 (`backend/tests/test_mcp_toolhub.py`)**
+- [x] TestInMemoryCircuitBreaker - 상태 전이 테스트
+- [x] TestMockMCPProxy - 도구 호출/헬스체크 테스트
+- [x] TestSchemaDriftDetector - 스키마 비교 로직 테스트
+- [x] TestMCPModels - Pydantic 유효성 검사 테스트
+
+#### 🔍 검증 방법 (How to Test)
+```bash
+# MCP ToolHub 테스트 실행
+cd backend
+USE_SQLITE=1 python -m pytest tests/test_mcp_toolhub.py -v
+
+# Docker PostgreSQL에 마이그레이션 적용
+docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/019_mcp_toolhub_schema.sql
+
+# 테이블 확인
+docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt core.mcp_*"
+docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt core.circuit_*"
+docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt core.schema_*"
+docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt core.data_connectors"
+
+# API 엔드포인트 확인 (서버 실행 필요)
+curl http://localhost:8000/api/v1/mcp/health -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
