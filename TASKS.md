@@ -1,6 +1,6 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-16
+> **최종 업데이트**: 2025-12-19
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → Production 배포 준비
 > **현재 브랜치**: `develop` (V1 개발용)
 
@@ -1528,8 +1528,9 @@ curl http://localhost:8000/health
 | **1순위** | Hybrid Search + Reranking (E-1 스펙) | ✅ 완료 | ██████████ 100% |
 | **2순위** | V7 Intent 체계 (14개) 구현 (B-6 스펙) | ✅ 완료 | ██████████ 100% |
 | **3순위** | BI Service 완성 (RANK/PREDICT/WHAT_IF) | ✅ 완료 | ██████████ 100% |
-| 4순위 | CRAG (Corrective RAG) | ⏳ 대기 | ░░░░░░░░░░ 0% |
-| 5순위 | MCP ToolHub 기본 | ⏳ 대기 | ░░░░░░░░░░ 0% |
+| **4순위** | CRAG (Corrective RAG) | ✅ 완료 | ██████████ 100% |
+| **5순위** | Schema 확장 (B-3 스펙) | ✅ 완료 | ██████████ 100% |
+| 6순위 | MCP ToolHub 기본 | ⏳ 대기 | ░░░░░░░░░░ 0% |
 
 ### ✅ 1순위: Hybrid Search + Reranking (E-1 스펙) 완료
 
@@ -1659,6 +1660,79 @@ USE_SQLITE=1 python -m pytest tests/test_bi_service.py -v
 
 # 전체 테스트 (33개 모두 통과)
 # ============================= 33 passed in 0.16s ==============================
+```
+
+---
+
+### ✅ 5순위: Schema 확장 (B-3 스펙) 완료
+
+#### 📋 마이그레이션 파일 목록
+| 파일 | 설명 | 테이블 수 |
+|------|------|----------|
+| `015_critical_schema_additions.sql` | 🔴 Critical 테이블 | 2개 |
+| `016_bi_dim_tables.sql` | 🟡 DIM 테이블 (Star Schema) | 6개 |
+| `017_bi_fact_tables.sql` | 🟡 FACT 테이블 | 5개 |
+| `018_bi_preagg_views.sql` | 🟡 Pre-Agg MV + ETL/DQ | 10개 |
+
+#### 📋 구현 내역
+
+**🔴 Critical 테이블 (Migration 015)**
+- [x] **feedbacks** - 사용자 피드백 수집 (학습 루프)
+  - thumbs_up/down, rating, correction, suggestion 타입 지원
+  - judgment_execution, workflow_instance, chat_message 연관
+  - 처리 상태 관리 (pending → reviewed → applied/rejected)
+- [x] **rule_scripts** - 룰 스크립트 버전 관리
+  - rulesets와 분리하여 버전별 이력 추적
+  - 스크립트 해시 기반 변경 감지
+  - 성능 메트릭 (avg_execution_time, error_count)
+
+**🟡 DIM 테이블 (Migration 016)**
+- [x] **dim_date** - 날짜 차원 (2020-2030 시드 포함)
+- [x] **dim_line** - 생산 라인 마스터
+- [x] **dim_product** - 제품 마스터
+- [x] **dim_equipment** - 설비 마스터 (MTBF/MTTR)
+- [x] **dim_kpi** - KPI 정의 (threshold, aggregation)
+- [x] **dim_shift** - 교대 정의 (주간/오후/야간)
+
+**🟡 FACT 테이블 (Migration 017)**
+- [x] **fact_daily_production** - 일일 생산 실적 (분기별 파티션)
+- [x] **fact_daily_defect** - 일일 불량 실적 (분기별 파티션)
+- [x] **fact_inventory_snapshot** - 재고 스냅샷 (분기별 파티션)
+- [x] **fact_equipment_event** - 설비 이벤트 집계 (분기별 파티션)
+- [x] **fact_hourly_production** - 시간별 생산 실적 (월별 파티션)
+- [x] **v_fact_daily_production_calc** - 계산 필드 뷰 (yield_rate, defect_rate, availability)
+
+**🟡 Pre-Agg MV + ETL/DQ (Migration 018)**
+- [x] **mv_defect_trend** - 불량 추이 (1시간 리프레시)
+- [x] **mv_oee_daily** - 일일 OEE (A×P×Q, 새벽 리프레시)
+- [x] **mv_inventory_coverage** - 재고 커버리지 (일 1회)
+- [x] **mv_line_performance** - 라인별 종합 성과 (새벽 리프레시)
+- [x] **bi_datasets** - BI 데이터셋 정의
+- [x] **bi_metrics** - BI 지표 정의
+- [x] **bi_dashboards** - BI 대시보드 레이아웃
+- [x] **etl_jobs** - ETL 작업 정의
+- [x] **etl_job_executions** - ETL 실행 이력
+- [x] **data_quality_rules** - 데이터 품질 규칙
+- [x] **data_quality_checks** - 데이터 품질 체크 결과
+
+#### 🔧 유틸리티 함수
+- `bi.create_quarterly_partitions()` - 분기별 파티션 자동 생성
+- `bi.create_monthly_partitions()` - 월별 파티션 자동 생성
+- `bi.refresh_all_mv()` - 모든 MV 리프레시
+- `bi.refresh_hourly_mv()` - 시간별 MV 리프레시
+- `bi.refresh_daily_mv()` - 일별 MV 리프레시
+
+#### 🔍 검증 방법 (How to Apply)
+```bash
+# Docker PostgreSQL에 마이그레이션 적용
+docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/015_critical_schema_additions.sql
+docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/016_bi_dim_tables.sql
+docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/017_bi_fact_tables.sql
+docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/018_bi_preagg_views.sql
+
+# 테이블 확인
+docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt bi.*"
+docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dm bi.*"  # MV 확인
 ```
 
 ---
