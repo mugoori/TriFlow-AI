@@ -1,6 +1,6 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-19
+> **최종 업데이트**: 2025-12-22
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → Production 배포 준비
 > **현재 브랜치**: `develop` (V1 개발용)
 
@@ -1828,23 +1828,64 @@ docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dm bi.*"  # MV �
 - [x] TestSchemaDriftDetector - 스키마 비교 로직 테스트
 - [x] TestMCPModels - Pydantic 유효성 검사 테스트
 
+#### 🔧 API 스키마 수정 (2025-12-22)
+Pydantic 모델과 PostgreSQL DB 스키마 불일치 문제 해결
+
+**문제점**
+- 기존 코드가 사용하던 컬럼명 (`server_id`, `base_url`, `auth_type` 등)이
+  실제 DB 스키마 (`id`, `endpoint`, `protocol`, `config` 등)와 불일치
+
+**수정 내역**
+- [x] **[Service]** `mcp_toolhub.py` 완전 재작성
+  - DB 스키마에 맞는 새 Pydantic 모델 정의 (MCPServerResponse, MCPToolResponse 등)
+  - Raw SQL 쿼리로 CRUD 구현 (sqlalchemy.text)
+  - 동기식 HTTP health check 메서드 추가 (`_perform_health_check`)
+- [x] **[Router]** `mcp.py` 재작성
+  - 서비스 파일에서 모델 import
+  - Data Connector/Drift Detection 엔드포인트 제거 (스키마 불일치)
+- [x] **[Lint]** ruff check 통과
+
+**실제 DB 스키마 (core.mcp_servers)**
+| Column | Type |
+|--------|------|
+| id | uuid |
+| tenant_id | uuid |
+| name | varchar |
+| endpoint | varchar |
+| protocol | varchar |
+| config | jsonb |
+| auth_config | jsonb |
+| status | varchar |
+| circuit_breaker_state | varchar |
+| fail_count | integer |
+
 #### 🔍 검증 방법 (How to Test)
 ```bash
-# MCP ToolHub 테스트 실행
+# 백엔드 서버 실행
 cd backend
-USE_SQLITE=1 python -m pytest tests/test_mcp_toolhub.py -v
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-# Docker PostgreSQL에 마이그레이션 적용
-docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/019_mcp_toolhub_schema.sql
+# API 엔드포인트 테스트 (Python)
+python -c "
+import requests
+resp = requests.post('http://localhost:8000/api/v1/auth/login',
+    json={'email':'mcp_test@triflow.ai','password':'test1234!'})
+token = resp.json()['tokens']['access_token']
+headers = {'Authorization': f'Bearer {token}'}
 
-# 테이블 확인
-docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt core.mcp_*"
-docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt core.circuit_*"
-docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt core.schema_*"
-docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt core.data_connectors"
+# MCP 서버 CRUD
+resp = requests.post('http://localhost:8000/api/v1/mcp/servers',
+    headers=headers,
+    json={'name':'test','endpoint':'http://test.com','protocol':'stdio','config':{}})
+print('Create:', resp.status_code)  # 201
 
-# API 엔드포인트 확인 (서버 실행 필요)
-curl http://localhost:8000/api/v1/mcp/health -H "Authorization: Bearer $TOKEN"
+server_id = resp.json()['id']
+resp = requests.get(f'http://localhost:8000/api/v1/mcp/servers/{server_id}', headers=headers)
+print('Get:', resp.status_code)  # 200
+
+resp = requests.delete(f'http://localhost:8000/api/v1/mcp/servers/{server_id}', headers=headers)
+print('Delete:', resp.status_code)  # 204
+"
 ```
 
 ---

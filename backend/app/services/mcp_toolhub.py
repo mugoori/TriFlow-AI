@@ -9,38 +9,154 @@ MCP ToolHub: 외부 MCP 서버 호출을 표준화하는 게이트웨이
 - 도구 호출 프록시 (인증, 타임아웃, 재시도)
 - Circuit Breaker
 - 커넥터 헬스 체크
+
+DB 스키마:
+- mcp_servers: id, tenant_id, name, endpoint, protocol, config, auth_config,
+               status, last_health_check_at, circuit_breaker_state, fail_count
+- mcp_tools: id, mcp_server_id, tool_name, description, input_schema, output_schema,
+             is_enabled, usage_count, avg_latency_ms, last_used_at
+- mcp_call_logs: id, tenant_id, mcp_tool_id, workflow_instance_id, input_data,
+                 output_data, success, error_message, latency_ms, retry_count, trace_id
 """
 
+import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from app.models.mcp import (
-    CircuitBreakerConfig,
-    CircuitBreakerState,
-    HealthStatus,
-    MCPCallRequest,
-    MCPCallResponse,
-    MCPCallStatus,
-    MCPHealthCheckResponse,
-    MCPServer,
-    MCPServerCreate,
-    MCPServerList,
-    MCPServerStatus,
-    MCPServerUpdate,
-    MCPTool,
-    MCPToolCreate,
-    MCPToolList,
-    MCPToolUpdate,
-)
 from app.services.circuit_breaker import CircuitBreaker
 from app.services.mcp_proxy import HTTPMCPProxy
 
 logger = logging.getLogger(__name__)
+
+
+# =====================================================
+# Simplified Response Models (matching actual DB schema)
+# =====================================================
+class MCPServerResponse(BaseModel):
+    """MCP 서버 응답 모델 (DB 스키마 기반)"""
+    id: UUID
+    tenant_id: UUID
+    name: str
+    endpoint: str
+    protocol: str = "stdio"
+    config: dict[str, Any] = {}
+    auth_config: dict[str, Any] | None = None
+    status: str = "inactive"
+    last_health_check_at: datetime | None = None
+    circuit_breaker_state: str = "closed"
+    fail_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class MCPServerCreate(BaseModel):
+    """MCP 서버 생성 요청"""
+    name: str
+    endpoint: str
+    protocol: str = "stdio"  # stdio, sse, websocket
+    config: dict[str, Any] = {}
+    auth_config: dict[str, Any] | None = None
+
+
+class MCPServerUpdate(BaseModel):
+    """MCP 서버 수정 요청"""
+    name: str | None = None
+    endpoint: str | None = None
+    protocol: str | None = None
+    config: dict[str, Any] | None = None
+    auth_config: dict[str, Any] | None = None
+    status: str | None = None
+
+
+class MCPServerList(BaseModel):
+    """MCP 서버 목록 응답"""
+    items: list[MCPServerResponse]
+    total: int
+    page: int
+    size: int
+
+
+class MCPToolResponse(BaseModel):
+    """MCP 도구 응답 모델 (DB 스키마 기반)"""
+    id: UUID
+    mcp_server_id: UUID
+    tool_name: str
+    description: str | None = None
+    input_schema: dict[str, Any] = {}
+    output_schema: dict[str, Any] | None = None
+    is_enabled: bool = True
+    usage_count: int = 0
+    avg_latency_ms: int | None = None
+    last_used_at: datetime | None = None
+    created_at: datetime
+
+
+class MCPToolCreate(BaseModel):
+    """MCP 도구 생성 요청"""
+    mcp_server_id: UUID
+    tool_name: str
+    description: str | None = None
+    input_schema: dict[str, Any] = {}
+    output_schema: dict[str, Any] | None = None
+    is_enabled: bool = True
+
+
+class MCPToolUpdate(BaseModel):
+    """MCP 도구 수정 요청"""
+    tool_name: str | None = None
+    description: str | None = None
+    input_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
+    is_enabled: bool | None = None
+
+
+class MCPToolList(BaseModel):
+    """MCP 도구 목록 응답"""
+    items: list[MCPToolResponse]
+    total: int
+    page: int
+    size: int
+
+
+class MCPCallRequest(BaseModel):
+    """MCP 도구 호출 요청"""
+    mcp_server_id: UUID
+    tool_name: str
+    input_data: dict[str, Any] = {}
+    workflow_instance_id: UUID | None = None
+    trace_id: str | None = None
+
+
+class MCPCallResponse(BaseModel):
+    """MCP 도구 호출 응답"""
+    id: UUID | None = None
+    success: bool
+    output_data: dict[str, Any] | None = None
+    error_message: str | None = None
+    latency_ms: int | None = None
+    retry_count: int = 0
+
+
+class MCPHealthCheckResponse(BaseModel):
+    """MCP 서버 헬스체크 응답"""
+    server_id: UUID
+    status: str  # healthy, unhealthy, unknown
+    latency_ms: int | None = None
+    error: str | None = None
+    checked_at: datetime
+
+
+class CircuitBreakerStateResponse(BaseModel):
+    """Circuit Breaker 상태 응답"""
+    server_id: UUID
+    state: str  # closed, open, half_open
+    fail_count: int = 0
 
 
 class MCPToolHubService:
@@ -52,7 +168,7 @@ class MCPToolHubService:
 
     def __init__(
         self,
-        db: AsyncSession,
+        db: Session,
         proxy: HTTPMCPProxy | None = None,
         circuit_breaker: CircuitBreaker | None = None,
     ):
@@ -76,82 +192,54 @@ class MCPToolHubService:
     # =========================================
     # MCP Server CRUD
     # =========================================
-    async def register_server(
+    def register_server(
         self,
         tenant_id: UUID,
         data: MCPServerCreate,
-        created_by: UUID | None = None,
-    ) -> MCPServer:
+    ) -> MCPServerResponse:
         """MCP 서버 등록"""
         query = text("""
             INSERT INTO core.mcp_servers (
-                tenant_id, name, description, base_url,
-                auth_type, api_key, oauth_config, basic_auth_config,
-                timeout_ms, retry_count, retry_delay_ms,
-                tags, attributes, created_by
+                tenant_id, name, endpoint, protocol, config, auth_config
             )
             VALUES (
-                :tenant_id, :name, :description, :base_url,
-                :auth_type, :api_key, :oauth_config, :basic_auth_config,
-                :timeout_ms, :retry_count, :retry_delay_ms,
-                :tags, :attributes, :created_by
+                :tenant_id, :name, :endpoint, :protocol, :config, :auth_config
             )
-            RETURNING server_id, tenant_id, name, description, base_url,
-                      auth_type, api_key, oauth_config, basic_auth_config,
-                      timeout_ms, retry_count, retry_delay_ms,
-                      status, last_health_check, last_health_status, health_check_error,
-                      tags, attributes, created_at, updated_at, created_by
+            RETURNING id, tenant_id, name, endpoint, protocol, config, auth_config,
+                      status, last_health_check_at, circuit_breaker_state, fail_count,
+                      created_at, updated_at
         """)
 
-        import json
-
-        result = await self.db.execute(
+        result = self.db.execute(
             query,
             {
                 "tenant_id": str(tenant_id),
                 "name": data.name,
-                "description": data.description,
-                "base_url": data.base_url,
-                "auth_type": data.auth_type.value,
-                "api_key": data.api_key,
-                "oauth_config": json.dumps(data.oauth_config.model_dump())
-                if data.oauth_config
-                else None,
-                "basic_auth_config": json.dumps(data.basic_auth_config.model_dump())
-                if data.basic_auth_config
-                else None,
-                "timeout_ms": data.timeout_ms,
-                "retry_count": data.retry_count,
-                "retry_delay_ms": data.retry_delay_ms,
-                "tags": data.tags,
-                "attributes": json.dumps(data.attributes),
-                "created_by": str(created_by) if created_by else None,
+                "endpoint": data.endpoint,
+                "protocol": data.protocol,
+                "config": json.dumps(data.config),
+                "auth_config": json.dumps(data.auth_config) if data.auth_config else None,
             },
         )
-        await self.db.commit()
+        self.db.commit()
 
         row = result.fetchone()
         server = self._row_to_server(row)
 
-        # Circuit Breaker 초기화
-        await self.circuit_breaker.initialize(server.server_id)
-
-        logger.info(f"MCP server registered: {server.name} ({server.server_id})")
+        logger.info(f"MCP server registered: {server.name} ({server.id})")
         return server
 
-    async def get_server(self, server_id: UUID, tenant_id: UUID) -> MCPServer | None:
+    def get_server(self, server_id: UUID, tenant_id: UUID) -> MCPServerResponse | None:
         """MCP 서버 조회"""
         query = text("""
-            SELECT server_id, tenant_id, name, description, base_url,
-                   auth_type, api_key, oauth_config, basic_auth_config,
-                   timeout_ms, retry_count, retry_delay_ms,
-                   status, last_health_check, last_health_status, health_check_error,
-                   tags, attributes, created_at, updated_at, created_by
+            SELECT id, tenant_id, name, endpoint, protocol, config, auth_config,
+                   status, last_health_check_at, circuit_breaker_state, fail_count,
+                   created_at, updated_at
             FROM core.mcp_servers
-            WHERE server_id = :server_id AND tenant_id = :tenant_id
+            WHERE id = :server_id AND tenant_id = :tenant_id
         """)
 
-        result = await self.db.execute(
+        result = self.db.execute(
             query,
             {"server_id": str(server_id), "tenant_id": str(tenant_id)},
         )
@@ -162,13 +250,12 @@ class MCPToolHubService:
 
         return self._row_to_server(row)
 
-    async def list_servers(
+    def list_servers(
         self,
         tenant_id: UUID,
         page: int = 1,
         size: int = 20,
-        status: MCPServerStatus | None = None,
-        tags: list[str] | None = None,
+        status: str | None = None,
     ) -> MCPServerList:
         """MCP 서버 목록 조회"""
         # WHERE 조건 구성
@@ -177,11 +264,7 @@ class MCPToolHubService:
 
         if status:
             conditions.append("status = :status")
-            params["status"] = status.value
-
-        if tags:
-            conditions.append("tags @> :tags")
-            params["tags"] = tags
+            params["status"] = status
 
         where_clause = " AND ".join(conditions)
 
@@ -191,7 +274,7 @@ class MCPToolHubService:
             FROM core.mcp_servers
             WHERE {where_clause}
         """)
-        count_result = await self.db.execute(count_query, params)
+        count_result = self.db.execute(count_query, params)
         total = count_result.scalar() or 0
 
         # 목록 쿼리
@@ -200,109 +283,72 @@ class MCPToolHubService:
         params["offset"] = offset
 
         list_query = text(f"""
-            SELECT server_id, tenant_id, name, description, base_url,
-                   auth_type, api_key, oauth_config, basic_auth_config,
-                   timeout_ms, retry_count, retry_delay_ms,
-                   status, last_health_check, last_health_status, health_check_error,
-                   tags, attributes, created_at, updated_at, created_by
+            SELECT id, tenant_id, name, endpoint, protocol, config, auth_config,
+                   status, last_health_check_at, circuit_breaker_state, fail_count,
+                   created_at, updated_at
             FROM core.mcp_servers
             WHERE {where_clause}
             ORDER BY created_at DESC
             LIMIT :limit OFFSET :offset
         """)
-        list_result = await self.db.execute(list_query, params)
+        list_result = self.db.execute(list_query, params)
         rows = list_result.fetchall()
 
         items = [self._row_to_server(row) for row in rows]
 
         return MCPServerList(items=items, total=total, page=page, size=size)
 
-    async def update_server(
+    def update_server(
         self,
         server_id: UUID,
         tenant_id: UUID,
         data: MCPServerUpdate,
-    ) -> MCPServer | None:
+    ) -> MCPServerResponse | None:
         """MCP 서버 수정"""
         # 동적 UPDATE 쿼리 구성
-        updates = []
+        updates = ["updated_at = now()"]
         params: dict[str, Any] = {
             "server_id": str(server_id),
             "tenant_id": str(tenant_id),
         }
 
-        import json
-
         if data.name is not None:
             updates.append("name = :name")
             params["name"] = data.name
 
-        if data.description is not None:
-            updates.append("description = :description")
-            params["description"] = data.description
+        if data.endpoint is not None:
+            updates.append("endpoint = :endpoint")
+            params["endpoint"] = data.endpoint
 
-        if data.base_url is not None:
-            updates.append("base_url = :base_url")
-            params["base_url"] = data.base_url
+        if data.protocol is not None:
+            updates.append("protocol = :protocol")
+            params["protocol"] = data.protocol
 
-        if data.auth_type is not None:
-            updates.append("auth_type = :auth_type")
-            params["auth_type"] = data.auth_type.value
+        if data.config is not None:
+            updates.append("config = :config")
+            params["config"] = json.dumps(data.config)
 
-        if data.api_key is not None:
-            updates.append("api_key = :api_key")
-            params["api_key"] = data.api_key
-
-        if data.oauth_config is not None:
-            updates.append("oauth_config = :oauth_config")
-            params["oauth_config"] = json.dumps(data.oauth_config.model_dump())
-
-        if data.basic_auth_config is not None:
-            updates.append("basic_auth_config = :basic_auth_config")
-            params["basic_auth_config"] = json.dumps(data.basic_auth_config.model_dump())
-
-        if data.timeout_ms is not None:
-            updates.append("timeout_ms = :timeout_ms")
-            params["timeout_ms"] = data.timeout_ms
-
-        if data.retry_count is not None:
-            updates.append("retry_count = :retry_count")
-            params["retry_count"] = data.retry_count
-
-        if data.retry_delay_ms is not None:
-            updates.append("retry_delay_ms = :retry_delay_ms")
-            params["retry_delay_ms"] = data.retry_delay_ms
+        if data.auth_config is not None:
+            updates.append("auth_config = :auth_config")
+            params["auth_config"] = json.dumps(data.auth_config)
 
         if data.status is not None:
             updates.append("status = :status")
-            params["status"] = data.status.value
-
-        if data.tags is not None:
-            updates.append("tags = :tags")
-            params["tags"] = data.tags
-
-        if data.attributes is not None:
-            updates.append("attributes = :attributes")
-            params["attributes"] = json.dumps(data.attributes)
-
-        if not updates:
-            return await self.get_server(server_id, tenant_id)
+            params["status"] = data.status
 
         update_clause = ", ".join(updates)
 
         query = text(f"""
             UPDATE core.mcp_servers
             SET {update_clause}
-            WHERE server_id = :server_id AND tenant_id = :tenant_id
-            RETURNING server_id, tenant_id, name, description, base_url,
-                      auth_type, api_key, oauth_config, basic_auth_config,
-                      timeout_ms, retry_count, retry_delay_ms,
-                      status, last_health_check, last_health_status, health_check_error,
-                      tags, attributes, created_at, updated_at, created_by
+            WHERE id = :server_id AND tenant_id = :tenant_id
+            RETURNING id, tenant_id, name, endpoint, protocol, config, auth_config,
+                      status, last_health_check_at, circuit_breaker_state, fail_count,
+                      created_at, updated_at
         """)
 
-        result = await self.db.execute(query, params)
-        await self.db.commit()
+        result = self.db.execute(query, params)
+        self.db.commit()
 
         row = result.fetchone()
         if not row:
@@ -310,19 +356,19 @@ class MCPToolHubService:
 
         return self._row_to_server(row)
 
-    async def delete_server(self, server_id: UUID, tenant_id: UUID) -> bool:
+    def delete_server(self, server_id: UUID, tenant_id: UUID) -> bool:
         """MCP 서버 삭제"""
         query = text("""
             DELETE FROM core.mcp_servers
-            WHERE server_id = :server_id AND tenant_id = :tenant_id
-            RETURNING server_id
+            WHERE id = :server_id AND tenant_id = :tenant_id
+            RETURNING id
         """)
 
-        result = await self.db.execute(
+        result = self.db.execute(
             query,
             {"server_id": str(server_id), "tenant_id": str(tenant_id)},
         )
-        await self.db.commit()
+        self.db.commit()
 
         deleted = result.fetchone() is not None
 
@@ -334,63 +380,68 @@ class MCPToolHubService:
     # =========================================
     # MCP Tool CRUD
     # =========================================
-    async def create_tool(
+    def create_tool(
         self,
         tenant_id: UUID,
         data: MCPToolCreate,
-    ) -> MCPTool:
+    ) -> MCPToolResponse:
         """MCP 도구 등록"""
-        import json
-
         query = text("""
             INSERT INTO core.mcp_tools (
-                server_id, tenant_id, name, description, method,
-                input_schema, output_schema, is_enabled, tags, attributes
+                mcp_server_id, tool_name, description, input_schema, output_schema, is_enabled
             )
             VALUES (
-                :server_id, :tenant_id, :name, :description, :method,
-                :input_schema, :output_schema, :is_enabled, :tags, :attributes
+                :mcp_server_id, :tool_name, :description, :input_schema, :output_schema, :is_enabled
             )
-            RETURNING tool_id, server_id, tenant_id, name, description, method,
-                      input_schema, output_schema, is_enabled, tags, attributes,
-                      call_count, success_count, failure_count, avg_latency_ms, last_called_at,
-                      created_at, updated_at
+            RETURNING id, mcp_server_id, tool_name, description, input_schema, output_schema,
+                      is_enabled, usage_count, avg_latency_ms, last_used_at, created_at
         """)
 
-        result = await self.db.execute(
+        result = self.db.execute(
             query,
             {
-                "server_id": str(data.server_id),
-                "tenant_id": str(tenant_id),
-                "name": data.name,
+                "mcp_server_id": str(data.mcp_server_id),
+                "tool_name": data.tool_name,
                 "description": data.description,
-                "method": data.method,
                 "input_schema": json.dumps(data.input_schema),
-                "output_schema": json.dumps(data.output_schema),
+                "output_schema": json.dumps(data.output_schema) if data.output_schema else None,
                 "is_enabled": data.is_enabled,
-                "tags": data.tags,
-                "attributes": json.dumps(data.attributes),
             },
         )
-        await self.db.commit()
+        self.db.commit()
 
         row = result.fetchone()
         return self._row_to_tool(row)
 
-    async def get_tool(self, tool_id: UUID, tenant_id: UUID) -> MCPTool | None:
+    def get_tool(self, tool_id: UUID) -> MCPToolResponse | None:
         """MCP 도구 조회"""
         query = text("""
-            SELECT tool_id, server_id, tenant_id, name, description, method,
-                   input_schema, output_schema, is_enabled, tags, attributes,
-                   call_count, success_count, failure_count, avg_latency_ms, last_called_at,
-                   created_at, updated_at
+            SELECT id, mcp_server_id, tool_name, description, input_schema, output_schema,
+                   is_enabled, usage_count, avg_latency_ms, last_used_at, created_at
             FROM core.mcp_tools
-            WHERE tool_id = :tool_id AND tenant_id = :tenant_id
+            WHERE id = :tool_id
         """)
 
-        result = await self.db.execute(
+        result = self.db.execute(query, {"tool_id": str(tool_id)})
+        row = result.fetchone()
+
+        if not row:
+            return None
+
+        return self._row_to_tool(row)
+
+    def get_tool_by_name(self, mcp_server_id: UUID, tool_name: str) -> MCPToolResponse | None:
+        """MCP 도구 이름으로 조회"""
+        query = text("""
+            SELECT id, mcp_server_id, tool_name, description, input_schema, output_schema,
+                   is_enabled, usage_count, avg_latency_ms, last_used_at, created_at
+            FROM core.mcp_tools
+            WHERE mcp_server_id = :mcp_server_id AND tool_name = :tool_name
+        """)
+
+        result = self.db.execute(
             query,
-            {"tool_id": str(tool_id), "tenant_id": str(tenant_id)},
+            {"mcp_server_id": str(mcp_server_id), "tool_name": tool_name},
         )
         row = result.fetchone()
 
@@ -399,27 +450,26 @@ class MCPToolHubService:
 
         return self._row_to_tool(row)
 
-    async def list_tools(
+    def list_tools(
         self,
-        tenant_id: UUID,
-        server_id: UUID | None = None,
+        mcp_server_id: UUID | None = None,
         page: int = 1,
         size: int = 50,
         is_enabled: bool | None = None,
     ) -> MCPToolList:
         """MCP 도구 목록 조회"""
-        conditions = ["tenant_id = :tenant_id"]
-        params: dict[str, Any] = {"tenant_id": str(tenant_id)}
+        conditions = []
+        params: dict[str, Any] = {}
 
-        if server_id:
-            conditions.append("server_id = :server_id")
-            params["server_id"] = str(server_id)
+        if mcp_server_id:
+            conditions.append("mcp_server_id = :mcp_server_id")
+            params["mcp_server_id"] = str(mcp_server_id)
 
         if is_enabled is not None:
             conditions.append("is_enabled = :is_enabled")
             params["is_enabled"] = is_enabled
 
-        where_clause = " AND ".join(conditions)
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
 
         # 카운트
         count_query = text(f"""
@@ -427,7 +477,7 @@ class MCPToolHubService:
             FROM core.mcp_tools
             WHERE {where_clause}
         """)
-        count_result = await self.db.execute(count_query, params)
+        count_result = self.db.execute(count_query, params)
         total = count_result.scalar() or 0
 
         # 목록
@@ -436,48 +486,36 @@ class MCPToolHubService:
         params["offset"] = offset
 
         list_query = text(f"""
-            SELECT tool_id, server_id, tenant_id, name, description, method,
-                   input_schema, output_schema, is_enabled, tags, attributes,
-                   call_count, success_count, failure_count, avg_latency_ms, last_called_at,
-                   created_at, updated_at
+            SELECT id, mcp_server_id, tool_name, description, input_schema, output_schema,
+                   is_enabled, usage_count, avg_latency_ms, last_used_at, created_at
             FROM core.mcp_tools
             WHERE {where_clause}
-            ORDER BY name ASC
+            ORDER BY tool_name ASC
             LIMIT :limit OFFSET :offset
         """)
-        list_result = await self.db.execute(list_query, params)
+        list_result = self.db.execute(list_query, params)
         rows = list_result.fetchall()
 
         items = [self._row_to_tool(row) for row in rows]
 
         return MCPToolList(items=items, total=total, page=page, size=size)
 
-    async def update_tool(
+    def update_tool(
         self,
         tool_id: UUID,
-        tenant_id: UUID,
         data: MCPToolUpdate,
-    ) -> MCPTool | None:
+    ) -> MCPToolResponse | None:
         """MCP 도구 수정"""
-        import json
-
         updates = []
-        params: dict[str, Any] = {
-            "tool_id": str(tool_id),
-            "tenant_id": str(tenant_id),
-        }
+        params: dict[str, Any] = {"tool_id": str(tool_id)}
 
-        if data.name is not None:
-            updates.append("name = :name")
-            params["name"] = data.name
+        if data.tool_name is not None:
+            updates.append("tool_name = :tool_name")
+            params["tool_name"] = data.tool_name
 
         if data.description is not None:
             updates.append("description = :description")
             params["description"] = data.description
-
-        if data.method is not None:
-            updates.append("method = :method")
-            params["method"] = data.method
 
         if data.input_schema is not None:
             updates.append("input_schema = :input_schema")
@@ -491,31 +529,21 @@ class MCPToolHubService:
             updates.append("is_enabled = :is_enabled")
             params["is_enabled"] = data.is_enabled
 
-        if data.tags is not None:
-            updates.append("tags = :tags")
-            params["tags"] = data.tags
-
-        if data.attributes is not None:
-            updates.append("attributes = :attributes")
-            params["attributes"] = json.dumps(data.attributes)
-
         if not updates:
-            return await self.get_tool(tool_id, tenant_id)
+            return self.get_tool(tool_id)
 
         update_clause = ", ".join(updates)
 
         query = text(f"""
             UPDATE core.mcp_tools
             SET {update_clause}
-            WHERE tool_id = :tool_id AND tenant_id = :tenant_id
-            RETURNING tool_id, server_id, tenant_id, name, description, method,
-                      input_schema, output_schema, is_enabled, tags, attributes,
-                      call_count, success_count, failure_count, avg_latency_ms, last_called_at,
-                      created_at, updated_at
+            WHERE id = :tool_id
+            RETURNING id, mcp_server_id, tool_name, description, input_schema, output_schema,
+                      is_enabled, usage_count, avg_latency_ms, last_used_at, created_at
         """)
 
-        result = await self.db.execute(query, params)
-        await self.db.commit()
+        result = self.db.execute(query, params)
+        self.db.commit()
 
         row = result.fetchone()
         if not row:
@@ -523,124 +551,193 @@ class MCPToolHubService:
 
         return self._row_to_tool(row)
 
-    async def delete_tool(self, tool_id: UUID, tenant_id: UUID) -> bool:
+    def delete_tool(self, tool_id: UUID) -> bool:
         """MCP 도구 삭제"""
         query = text("""
             DELETE FROM core.mcp_tools
-            WHERE tool_id = :tool_id AND tenant_id = :tenant_id
-            RETURNING tool_id
+            WHERE id = :tool_id
+            RETURNING id
         """)
 
-        result = await self.db.execute(
-            query,
-            {"tool_id": str(tool_id), "tenant_id": str(tenant_id)},
-        )
-        await self.db.commit()
+        result = self.db.execute(query, {"tool_id": str(tool_id)})
+        self.db.commit()
 
         return result.fetchone() is not None
 
     # =========================================
     # Tool Calling
     # =========================================
-    async def call_tool(
+    def call_tool(
         self,
         tenant_id: UUID,
         request: MCPCallRequest,
-        called_by: UUID | None = None,
     ) -> MCPCallResponse:
         """MCP 도구 호출"""
+        import time
+
+        start_time = time.time()
+
         # 서버 조회
-        server = await self.get_server(request.server_id, tenant_id)
+        server = self.get_server(request.mcp_server_id, tenant_id)
         if not server:
             return MCPCallResponse(
-                request_id="",
-                status=MCPCallStatus.FAILURE,
-                error_message=f"Server not found: {request.server_id}",
-                latency_ms=0,
+                success=False,
+                error_message=f"Server not found: {request.mcp_server_id}",
             )
 
-        if server.status != MCPServerStatus.ACTIVE:
+        if server.status != "active":
             return MCPCallResponse(
-                request_id="",
-                status=MCPCallStatus.FAILURE,
+                success=False,
                 error_message=f"Server is not active: {server.status}",
-                latency_ms=0,
             )
 
-        # 프록시 호출
-        response = await self.proxy.call_tool(
-            server=server,
-            tool_name=request.tool_name,
-            args=request.args,
-            correlation_id=request.correlation_id,
-        )
+        # 도구 조회
+        tool = self.get_tool_by_name(request.mcp_server_id, request.tool_name)
+        if not tool:
+            return MCPCallResponse(
+                success=False,
+                error_message=f"Tool not found: {request.tool_name}",
+            )
+
+        if not tool.is_enabled:
+            return MCPCallResponse(
+                success=False,
+                error_message=f"Tool is disabled: {request.tool_name}",
+            )
+
+        # 실제 도구 호출 (프록시 사용)
+        try:
+            # 프록시를 통한 MCP 호출
+            result = self.proxy.call_tool_sync(
+                server=server,
+                tool_name=request.tool_name,
+                args=request.input_data,
+                trace_id=request.trace_id,
+            )
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            success = result.get("success", True)
+            output_data = result.get("result", result)
+            error_message = result.get("error") if not success else None
+
+        except Exception as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            success = False
+            output_data = None
+            error_message = str(e)
 
         # 호출 로그 저장
-        await self._save_call_log(
+        log_id = self._save_call_log(
             tenant_id=tenant_id,
-            server_id=server.server_id,
-            tool_name=request.tool_name,
-            request_id=response.request_id,
-            request_payload=request.args,
-            response_payload=response.result,
-            status=response.status,
-            error_message=response.error_message,
-            error_code=response.error_code,
-            latency_ms=response.latency_ms,
-            retry_count=response.retry_count,
-            called_by=called_by,
-            correlation_id=request.correlation_id,
+            mcp_tool_id=tool.id,
+            workflow_instance_id=request.workflow_instance_id,
+            input_data=request.input_data,
+            output_data=output_data,
+            success=success,
+            error_message=error_message,
+            latency_ms=latency_ms,
+            trace_id=request.trace_id,
         )
 
         # 도구 통계 업데이트
-        await self._update_tool_stats(
-            server_id=server.server_id,
-            tool_name=request.tool_name,
-            success=response.status == MCPCallStatus.SUCCESS,
-            latency_ms=response.latency_ms,
+        self._update_tool_stats(
+            tool_id=tool.id,
+            success=success,
+            latency_ms=latency_ms,
         )
 
-        return response
+        return MCPCallResponse(
+            id=log_id,
+            success=success,
+            output_data=output_data,
+            error_message=error_message,
+            latency_ms=latency_ms,
+        )
 
     # =========================================
     # Health Check
     # =========================================
-    async def health_check(
+    def _perform_health_check(
+        self,
+        endpoint: str,
+    ) -> tuple[bool, int | None, str | None]:
+        """
+        동기식 HTTP 헬스체크 수행
+
+        Returns:
+            (is_healthy, latency_ms, error_message)
+        """
+        import httpx
+        import time
+
+        start_time = time.time()
+
+        try:
+            # 동기식 httpx 클라이언트 사용
+            with httpx.Client(timeout=10.0) as client:
+                # health 엔드포인트 또는 루트 엔드포인트 체크
+                health_url = endpoint.rstrip("/")
+                if not health_url.endswith("/health"):
+                    health_url = f"{health_url}/health"
+
+                response = client.get(health_url)
+                latency_ms = int((time.time() - start_time) * 1000)
+
+                if response.status_code == 200:
+                    return True, latency_ms, None
+                else:
+                    return False, latency_ms, f"HTTP {response.status_code}"
+
+        except httpx.TimeoutException:
+            latency_ms = int((time.time() - start_time) * 1000)
+            return False, latency_ms, "Timeout"
+
+        except httpx.ConnectError as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            return False, latency_ms, f"Connection error: {str(e)}"
+
+        except Exception as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            return False, latency_ms, str(e)
+
+    def health_check(
         self,
         server_id: UUID,
         tenant_id: UUID,
     ) -> MCPHealthCheckResponse:
         """MCP 서버 헬스체크"""
-        server = await self.get_server(server_id, tenant_id)
+        server = self.get_server(server_id, tenant_id)
         if not server:
             return MCPHealthCheckResponse(
                 server_id=server_id,
-                status=HealthStatus.UNKNOWN,
+                status="unknown",
                 error="Server not found",
+                checked_at=datetime.utcnow(),
             )
 
-        # 헬스체크 수행
-        is_healthy, latency_ms, error = await self.proxy.health_check(server)
+        # 헬스체크 수행 (동기식)
+        is_healthy, latency_ms, error = self._perform_health_check(server.endpoint)
 
-        status = HealthStatus.HEALTHY if is_healthy else HealthStatus.UNHEALTHY
+        status = "healthy" if is_healthy else "unhealthy"
 
         # 서버 상태 업데이트
-        await self._update_health_status(server_id, status, error)
+        self._update_health_status(server_id, status, error)
 
         return MCPHealthCheckResponse(
             server_id=server_id,
             status=status,
             latency_ms=latency_ms,
             error=error,
+            checked_at=datetime.utcnow(),
         )
 
-    async def health_check_all(self, tenant_id: UUID) -> list[MCPHealthCheckResponse]:
+    def health_check_all(self, tenant_id: UUID) -> list[MCPHealthCheckResponse]:
         """모든 활성 서버 헬스체크"""
-        servers = await self.list_servers(tenant_id, size=100, status=MCPServerStatus.ACTIVE)
+        servers = self.list_servers(tenant_id, size=100, status="active")
 
         results = []
         for server in servers.items:
-            result = await self.health_check(server.server_id, tenant_id)
+            result = self.health_check(server.id, tenant_id)
             results.append(result)
 
         return results
@@ -648,147 +745,133 @@ class MCPToolHubService:
     # =========================================
     # Circuit Breaker
     # =========================================
-    async def get_circuit_breaker_state(
+    def get_circuit_breaker_state(
         self,
         server_id: UUID,
-    ) -> CircuitBreakerState | None:
+        tenant_id: UUID,
+    ) -> CircuitBreakerStateResponse | None:
         """Circuit Breaker 상태 조회"""
-        return await self.circuit_breaker.get_state(server_id)
+        server = self.get_server(server_id, tenant_id)
+        if not server:
+            return None
 
-    async def reset_circuit_breaker(self, server_id: UUID) -> None:
+        return CircuitBreakerStateResponse(
+            server_id=server_id,
+            state=server.circuit_breaker_state,
+            fail_count=server.fail_count,
+        )
+
+    def reset_circuit_breaker(self, server_id: UUID, tenant_id: UUID) -> bool:
         """Circuit Breaker 리셋"""
-        await self.circuit_breaker.reset(server_id)
+        query = text("""
+            UPDATE core.mcp_servers
+            SET circuit_breaker_state = 'closed', fail_count = 0
+            WHERE id = :server_id AND tenant_id = :tenant_id
+            RETURNING id
+        """)
 
-    async def update_circuit_breaker_config(
-        self,
-        server_id: UUID,
-        config: CircuitBreakerConfig,
-    ) -> None:
-        """Circuit Breaker 설정 업데이트"""
-        await self.circuit_breaker.update_config(server_id, config)
+        result = self.db.execute(
+            query,
+            {"server_id": str(server_id), "tenant_id": str(tenant_id)},
+        )
+        self.db.commit()
+
+        return result.fetchone() is not None
 
     # =========================================
     # Private Methods
     # =========================================
-    def _row_to_server(self, row) -> MCPServer:
-        """DB row → MCPServer"""
-        from app.models.mcp import AuthType, BasicAuthConfig, OAuth2Config
+    def _row_to_server(self, row) -> MCPServerResponse:
+        """DB row → MCPServerResponse"""
+        config = row.config if isinstance(row.config, dict) else {}
+        auth_config = row.auth_config if isinstance(row.auth_config, dict) else None
 
-        oauth_config = None
-        if row.oauth_config:
-            oauth_config = OAuth2Config.model_validate(row.oauth_config)
-
-        basic_auth_config = None
-        if row.basic_auth_config:
-            basic_auth_config = BasicAuthConfig.model_validate(row.basic_auth_config)
-
-        return MCPServer(
-            server_id=row.server_id,
+        return MCPServerResponse(
+            id=row.id,
             tenant_id=row.tenant_id,
             name=row.name,
-            description=row.description,
-            base_url=row.base_url,
-            auth_type=AuthType(row.auth_type),
-            api_key=row.api_key,
-            oauth_config=oauth_config,
-            basic_auth_config=basic_auth_config,
-            timeout_ms=row.timeout_ms,
-            retry_count=row.retry_count,
-            retry_delay_ms=row.retry_delay_ms,
-            status=MCPServerStatus(row.status),
-            last_health_check=row.last_health_check,
-            last_health_status=HealthStatus(row.last_health_status)
-            if row.last_health_status
-            else None,
-            health_check_error=row.health_check_error,
-            tags=row.tags or [],
-            attributes=row.attributes or {},
+            endpoint=row.endpoint,
+            protocol=row.protocol,
+            config=config,
+            auth_config=auth_config,
+            status=row.status,
+            last_health_check_at=row.last_health_check_at,
+            circuit_breaker_state=row.circuit_breaker_state,
+            fail_count=row.fail_count,
             created_at=row.created_at,
             updated_at=row.updated_at,
-            created_by=row.created_by,
         )
 
-    def _row_to_tool(self, row) -> MCPTool:
-        """DB row → MCPTool"""
-        return MCPTool(
-            tool_id=row.tool_id,
-            server_id=row.server_id,
-            tenant_id=row.tenant_id,
-            name=row.name,
+    def _row_to_tool(self, row) -> MCPToolResponse:
+        """DB row → MCPToolResponse"""
+        input_schema = row.input_schema if isinstance(row.input_schema, dict) else {}
+        output_schema = row.output_schema if isinstance(row.output_schema, dict) else None
+
+        return MCPToolResponse(
+            id=row.id,
+            mcp_server_id=row.mcp_server_id,
+            tool_name=row.tool_name,
             description=row.description,
-            method=row.method,
-            input_schema=row.input_schema or {},
-            output_schema=row.output_schema or {},
+            input_schema=input_schema,
+            output_schema=output_schema,
             is_enabled=row.is_enabled,
-            tags=row.tags or [],
-            attributes=row.attributes or {},
-            call_count=row.call_count,
-            success_count=row.success_count,
-            failure_count=row.failure_count,
-            avg_latency_ms=float(row.avg_latency_ms) if row.avg_latency_ms else None,
-            last_called_at=row.last_called_at,
+            usage_count=row.usage_count,
+            avg_latency_ms=row.avg_latency_ms,
+            last_used_at=row.last_used_at,
             created_at=row.created_at,
-            updated_at=row.updated_at,
         )
 
-    async def _save_call_log(
+    def _save_call_log(
         self,
         tenant_id: UUID,
-        server_id: UUID,
-        tool_name: str,
-        request_id: str,
-        request_payload: dict,
-        response_payload: dict | None,
-        status: MCPCallStatus,
+        mcp_tool_id: UUID,
+        workflow_instance_id: UUID | None,
+        input_data: dict,
+        output_data: dict | None,
+        success: bool,
         error_message: str | None,
-        error_code: str | None,
-        latency_ms: int,
-        retry_count: int,
-        called_by: UUID | None,
-        correlation_id: str | None,
-    ) -> None:
+        latency_ms: int | None,
+        trace_id: str | None,
+        retry_count: int = 0,
+    ) -> UUID | None:
         """호출 로그 저장"""
-        import json
-
         query = text("""
             INSERT INTO core.mcp_call_logs (
-                tenant_id, server_id, tool_name, request_id,
-                request_payload, response_payload,
-                status, error_message, error_code,
-                latency_ms, retry_count, called_by, correlation_id
+                tenant_id, mcp_tool_id, workflow_instance_id,
+                input_data, output_data, success, error_message,
+                latency_ms, retry_count, trace_id
             )
             VALUES (
-                :tenant_id, :server_id, :tool_name, :request_id,
-                :request_payload, :response_payload,
-                :status, :error_message, :error_code,
-                :latency_ms, :retry_count, :called_by, :correlation_id
+                :tenant_id, :mcp_tool_id, :workflow_instance_id,
+                :input_data, :output_data, :success, :error_message,
+                :latency_ms, :retry_count, :trace_id
             )
+            RETURNING id
         """)
 
-        await self.db.execute(
+        result = self.db.execute(
             query,
             {
                 "tenant_id": str(tenant_id),
-                "server_id": str(server_id),
-                "tool_name": tool_name,
-                "request_id": request_id,
-                "request_payload": json.dumps(request_payload),
-                "response_payload": json.dumps(response_payload) if response_payload else None,
-                "status": status.value,
+                "mcp_tool_id": str(mcp_tool_id),
+                "workflow_instance_id": str(workflow_instance_id) if workflow_instance_id else None,
+                "input_data": json.dumps(input_data),
+                "output_data": json.dumps(output_data) if output_data else None,
+                "success": success,
                 "error_message": error_message,
-                "error_code": error_code,
                 "latency_ms": latency_ms,
                 "retry_count": retry_count,
-                "called_by": str(called_by) if called_by else None,
-                "correlation_id": correlation_id,
+                "trace_id": trace_id,
             },
         )
-        await self.db.commit()
+        self.db.commit()
 
-    async def _update_tool_stats(
+        row = result.fetchone()
+        return row.id if row else None
+
+    def _update_tool_stats(
         self,
-        server_id: UUID,
-        tool_name: str,
+        tool_id: UUID,
         success: bool,
         latency_ms: int,
     ) -> None:
@@ -796,55 +879,54 @@ class MCPToolHubService:
         if success:
             query = text("""
                 UPDATE core.mcp_tools
-                SET call_count = call_count + 1,
-                    success_count = success_count + 1,
+                SET usage_count = usage_count + 1,
                     avg_latency_ms = COALESCE(
-                        (avg_latency_ms * call_count + :latency_ms) / (call_count + 1),
+                        (COALESCE(avg_latency_ms, 0) * usage_count + :latency_ms) / (usage_count + 1),
                         :latency_ms
                     ),
-                    last_called_at = now()
-                WHERE server_id = :server_id AND name = :tool_name
+                    last_used_at = now()
+                WHERE id = :tool_id
             """)
         else:
             query = text("""
                 UPDATE core.mcp_tools
-                SET call_count = call_count + 1,
-                    failure_count = failure_count + 1,
-                    last_called_at = now()
-                WHERE server_id = :server_id AND name = :tool_name
+                SET usage_count = usage_count + 1,
+                    last_used_at = now()
+                WHERE id = :tool_id
             """)
 
-        await self.db.execute(
+        self.db.execute(
             query,
             {
-                "server_id": str(server_id),
-                "tool_name": tool_name,
+                "tool_id": str(tool_id),
                 "latency_ms": latency_ms,
             },
         )
-        await self.db.commit()
+        self.db.commit()
 
-    async def _update_health_status(
+    def _update_health_status(
         self,
         server_id: UUID,
-        status: HealthStatus,
+        status: str,
         error: str | None,
     ) -> None:
         """서버 헬스 상태 업데이트"""
+        new_status = "active" if status == "healthy" else "error"
+
         query = text("""
             UPDATE core.mcp_servers
-            SET last_health_check = now(),
-                last_health_status = :status,
-                health_check_error = :error
-            WHERE server_id = :server_id
+            SET last_health_check_at = now(),
+                status = :new_status,
+                fail_count = CASE WHEN :status = 'healthy' THEN 0 ELSE fail_count + 1 END
+            WHERE id = :server_id
         """)
 
-        await self.db.execute(
+        self.db.execute(
             query,
             {
                 "server_id": str(server_id),
-                "status": status.value,
-                "error": error,
+                "new_status": new_status,
+                "status": status,
             },
         )
-        await self.db.commit()
+        self.db.commit()
