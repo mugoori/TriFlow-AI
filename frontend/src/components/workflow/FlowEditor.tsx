@@ -41,6 +41,23 @@ import {
   Clock,
   SkipForward,
   Trash2,
+  // P1 노드 아이콘
+  Database,
+  Brain,
+  BarChart3,
+  Plug,
+  Pause,
+  UserCheck,
+  // P2 노드 아이콘
+  Undo2,
+  Rocket,
+  RotateCcw,
+  FlaskConical,
+  // 설정 관련
+  Settings,
+  Tag,
+  Timer,
+  RefreshCw,
 } from 'lucide-react';
 import type { WorkflowDSL, WorkflowNode, WorkflowInstance } from '@/services/workflowService';
 import { workflowService } from '@/services/workflowService';
@@ -89,30 +106,69 @@ interface CustomNodeData {
 // ============ Constants ============
 
 const nodeTypeColors: Record<string, { bg: string; border: string; text: string }> = {
+  // P0 기본 노드
   condition: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', border: 'border-yellow-600', text: 'text-yellow-900 dark:text-yellow-200' },
   action: { bg: 'bg-blue-100 dark:bg-blue-900/30', border: 'border-blue-600', text: 'text-blue-900 dark:text-blue-200' },
   if_else: { bg: 'bg-purple-100 dark:bg-purple-900/30', border: 'border-purple-600', text: 'text-purple-900 dark:text-purple-200' },
   loop: { bg: 'bg-green-100 dark:bg-green-900/30', border: 'border-green-600', text: 'text-green-900 dark:text-green-200' },
   parallel: { bg: 'bg-orange-100 dark:bg-orange-900/30', border: 'border-orange-600', text: 'text-orange-900 dark:text-orange-200' },
   trigger: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', border: 'border-emerald-600', text: 'text-emerald-900 dark:text-emerald-200' },
+  // P1 비즈니스 노드
+  data: { bg: 'bg-cyan-100 dark:bg-cyan-900/30', border: 'border-cyan-600', text: 'text-cyan-900 dark:text-cyan-200' },
+  judgment: { bg: 'bg-indigo-100 dark:bg-indigo-900/30', border: 'border-indigo-600', text: 'text-indigo-900 dark:text-indigo-200' },
+  bi: { bg: 'bg-pink-100 dark:bg-pink-900/30', border: 'border-pink-600', text: 'text-pink-900 dark:text-pink-200' },
+  mcp: { bg: 'bg-violet-100 dark:bg-violet-900/30', border: 'border-violet-600', text: 'text-violet-900 dark:text-violet-200' },
+  wait: { bg: 'bg-slate-100 dark:bg-slate-900/30', border: 'border-slate-600', text: 'text-slate-900 dark:text-slate-200' },
+  approval: { bg: 'bg-amber-100 dark:bg-amber-900/30', border: 'border-amber-600', text: 'text-amber-900 dark:text-amber-200' },
+  // P2 고급 노드
+  compensation: { bg: 'bg-rose-100 dark:bg-rose-900/30', border: 'border-rose-600', text: 'text-rose-900 dark:text-rose-200' },
+  deploy: { bg: 'bg-teal-100 dark:bg-teal-900/30', border: 'border-teal-600', text: 'text-teal-900 dark:text-teal-200' },
+  rollback: { bg: 'bg-red-100 dark:bg-red-900/30', border: 'border-red-600', text: 'text-red-900 dark:text-red-200' },
+  simulate: { bg: 'bg-fuchsia-100 dark:bg-fuchsia-900/30', border: 'border-fuchsia-600', text: 'text-fuchsia-900 dark:text-fuchsia-200' },
 };
 
 const nodeTypeLabels: Record<string, string> = {
+  // P0 기본 노드
   condition: '조건',
   action: '액션',
   if_else: 'If/Else',
   loop: '반복',
   parallel: '병렬',
   trigger: '트리거',
+  // P1 비즈니스 노드
+  data: '데이터',
+  judgment: '판정',
+  bi: 'BI 분석',
+  mcp: 'MCP 도구',
+  wait: '대기',
+  approval: '승인',
+  // P2 고급 노드
+  compensation: '보상',
+  deploy: '배포',
+  rollback: '롤백',
+  simulate: '시뮬레이션',
 };
 
 const nodeTypeIcons: Record<string, typeof AlertTriangle> = {
+  // P0 기본 노드
   condition: AlertTriangle,
   action: Zap,
   if_else: Split,
   loop: Repeat,
   parallel: Layers,
   trigger: Play,
+  // P1 비즈니스 노드
+  data: Database,
+  judgment: Brain,
+  bi: BarChart3,
+  mcp: Plug,
+  wait: Pause,
+  approval: UserCheck,
+  // P2 고급 노드
+  compensation: Undo2,
+  deploy: Rocket,
+  rollback: RotateCcw,
+  simulate: FlaskConical,
 };
 
 // 액션 한글 이름 매핑
@@ -167,6 +223,7 @@ function CustomNode({ data, selected }: { data: CustomNodeData; selected?: boole
   const getSummary = () => {
     const config = data.config;
     switch (data.nodeType) {
+      // P0 기본 노드
       case 'condition':
         return (config.condition as string) || '조건 미설정';
       case 'action': {
@@ -196,6 +253,57 @@ function CustomNode({ data, selected }: { data: CustomNodeData; selected?: boole
       }
       case 'trigger':
         return (config.type as string) === 'manual' ? '수동 실행' : (config.type as string) || '트리거';
+      // P1 비즈니스 노드
+      case 'data': {
+        const sourceType = config.source_type as string;
+        if (sourceType === 'sensor') return '센서 데이터';
+        if (sourceType === 'connector') return (config.connection as string) || '커넥터';
+        if (sourceType === 'api') return (config.url as string)?.slice(0, 20) || 'API';
+        return '데이터 조회';
+      }
+      case 'judgment': {
+        const policyType = (config.policy as Record<string, unknown>)?.type as string;
+        if (policyType === 'RULE_ONLY') return '룰 기반 판정';
+        if (policyType === 'LLM_ONLY') return 'LLM 판정';
+        return 'Hybrid 판정';
+      }
+      case 'bi': {
+        const analysisType = (config.analysis as Record<string, unknown>)?.type as string;
+        return analysisType || 'BI 분석';
+      }
+      case 'mcp': {
+        const toolName = config.tool_name as string;
+        return toolName || 'MCP 도구';
+      }
+      case 'wait': {
+        const waitType = config.wait_type as string;
+        if (waitType === 'duration') return `${config.duration_seconds || 0}초 대기`;
+        if (waitType === 'event') return `이벤트 대기`;
+        if (waitType === 'schedule') return 'cron 대기';
+        return '대기';
+      }
+      case 'approval': {
+        const title = config.title as string;
+        return title || '승인 요청';
+      }
+      // P2 고급 노드
+      case 'compensation':
+        return '보상 트랜잭션';
+      case 'deploy': {
+        const deployType = config.deploy_type as string;
+        if (deployType === 'ruleset') return '룰셋 배포';
+        if (deployType === 'model') return '모델 배포';
+        if (deployType === 'workflow') return '워크플로우 배포';
+        return '배포';
+      }
+      case 'rollback': {
+        const targetType = config.target_type as string;
+        return `${targetType || ''} 롤백`;
+      }
+      case 'simulate': {
+        const scenarios = config.scenarios as unknown[];
+        return `${scenarios?.length || 0}개 시나리오`;
+      }
       default:
         return data.label;
     }
@@ -278,43 +386,77 @@ function CustomNode({ data, selected }: { data: CustomNodeData; selected?: boole
 // ============ Node Palette (드래그 소스) ============
 
 // 팔레트에서 사용하는 노드 타입 (trigger 제외)
-type PaletteNodeType = 'condition' | 'action' | 'if_else' | 'loop' | 'parallel';
+type PaletteNodeType =
+  // P0 기본
+  | 'condition' | 'action' | 'if_else' | 'loop' | 'parallel'
+  // P1 비즈니스
+  | 'data' | 'judgment' | 'bi' | 'mcp' | 'wait' | 'approval'
+  // P2 고급
+  | 'compensation' | 'deploy' | 'rollback' | 'simulate';
+
+// 노드 카테고리 정의
+const nodeCategories: { label: string; types: PaletteNodeType[] }[] = [
+  { label: '기본', types: ['condition', 'action', 'if_else', 'loop', 'parallel'] },
+  { label: '비즈니스', types: ['data', 'judgment', 'bi', 'mcp', 'wait', 'approval'] },
+  { label: '고급', types: ['compensation', 'deploy', 'rollback', 'simulate'] },
+];
 
 interface NodePaletteProps {
   onDragStart: (event: React.DragEvent, nodeType: PaletteNodeType) => void;
 }
 
 function NodePalette({ onDragStart }: NodePaletteProps) {
-  const nodeTypes: PaletteNodeType[] = ['condition', 'action', 'if_else', 'loop', 'parallel'];
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
+    '기본': true,
+    '비즈니스': false,
+    '고급': false,
+  });
+
+  const toggleCategory = (label: string) => {
+    setExpandedCategories(prev => ({ ...prev, [label]: !prev[label] }));
+  };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
         노드 추가
       </h3>
-      <div className="space-y-1">
-        {nodeTypes.map((type) => {
-          const colors = nodeTypeColors[type];
-          const Icon = nodeTypeIcons[type];
-          return (
-            <div
-              key={type}
-              draggable
-              onDragStart={(e) => onDragStart(e, type)}
-              className={`
-                flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-grab
-                ${colors.bg} ${colors.border}
-                hover:shadow-md transition-shadow
-              `}
-            >
-              <Icon className={`w-4 h-4 ${colors.text}`} />
-              <span className={`text-sm font-medium ${colors.text}`}>
-                {nodeTypeLabels[type]}
-              </span>
+      {nodeCategories.map((category) => (
+        <div key={category.label} className="space-y-1">
+          <button
+            onClick={() => toggleCategory(category.label)}
+            className="flex items-center justify-between w-full text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+          >
+            <span>{category.label}</span>
+            <span className="text-slate-400">{expandedCategories[category.label] ? '−' : '+'}</span>
+          </button>
+          {expandedCategories[category.label] && (
+            <div className="space-y-1 pl-1">
+              {category.types.map((type) => {
+                const colors = nodeTypeColors[type];
+                const Icon = nodeTypeIcons[type];
+                return (
+                  <div
+                    key={type}
+                    draggable
+                    onDragStart={(e) => onDragStart(e, type)}
+                    className={`
+                      flex items-center gap-2 px-2 py-1.5 rounded-lg border cursor-grab
+                      ${colors.bg} ${colors.border}
+                      hover:shadow-md transition-shadow text-xs
+                    `}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${colors.text}`} />
+                    <span className={`font-medium ${colors.text}`}>
+                      {nodeTypeLabels[type]}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -351,7 +493,7 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
   return (
     <div className={`${panelWidth} bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 flex flex-col ${maxHeight}`}>
       <div className="flex items-center justify-between p-3 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-        <h3 className="text-sm font-semibold">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           {nodeTypeLabels[nodeType] || '노드'} 설정
         </h3>
         <div className="flex items-center gap-1">
@@ -476,6 +618,699 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
             failFast={(data.config.fail_fast as boolean) || false}
             onFailFastChange={(value) => updateConfig('fail_fast', value)}
           />
+        )}
+
+        {/* ============ P1 비즈니스 노드 ============ */}
+
+        {/* DATA 노드 - 데이터 소스 설정 */}
+        {nodeType === 'data' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">소스 타입</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.source_type as string) || 'sensor'}
+                onChange={(e) => updateConfig('source_type', e.target.value)}
+              >
+                <option value="sensor">센서 데이터</option>
+                <option value="connector">데이터 커넥터</option>
+                <option value="api">외부 API</option>
+                <option value="query">SQL 쿼리</option>
+              </select>
+            </div>
+
+            {(data.config.source_type === 'sensor' || !data.config.source_type) && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">센서 ID (쉼표 구분)</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                    placeholder="SENSOR_001, SENSOR_002"
+                    value={((data.config.source as Record<string, unknown>)?.sensor_ids as string[])?.join(', ') || ''}
+                    onChange={(e) => updateConfig('source', {
+                      ...(data.config.source as Record<string, unknown> || {}),
+                      sensor_ids: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">조회 기간</label>
+                  <select
+                    className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                    value={((data.config.source as Record<string, unknown>)?.time_range as string) || '1h'}
+                    onChange={(e) => updateConfig('source', {
+                      ...(data.config.source as Record<string, unknown> || {}),
+                      time_range: e.target.value
+                    })}
+                  >
+                    <option value="15m">15분</option>
+                    <option value="1h">1시간</option>
+                    <option value="6h">6시간</option>
+                    <option value="24h">24시간</option>
+                    <option value="7d">7일</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            {data.config.source_type === 'connector' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">커넥터 ID</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                    placeholder="UUID"
+                    value={((data.config.source as Record<string, unknown>)?.connection as string) || ''}
+                    onChange={(e) => updateConfig('source', {
+                      ...(data.config.source as Record<string, unknown> || {}),
+                      connection: e.target.value
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">쿼리</label>
+                  <textarea
+                    className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                    rows={3}
+                    placeholder="SELECT * FROM ..."
+                    value={((data.config.source as Record<string, unknown>)?.query as string) || ''}
+                    onChange={(e) => updateConfig('source', {
+                      ...(data.config.source as Record<string, unknown> || {}),
+                      query: e.target.value
+                    })}
+                  />
+                </div>
+              </>
+            )}
+
+            {data.config.source_type === 'api' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">API URL</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                    placeholder="https://api.example.com/data"
+                    value={((data.config.source as Record<string, unknown>)?.url as string) || ''}
+                    onChange={(e) => updateConfig('source', {
+                      ...(data.config.source as Record<string, unknown> || {}),
+                      url: e.target.value
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">HTTP 메서드</label>
+                  <select
+                    className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                    value={((data.config.source as Record<string, unknown>)?.method as string) || 'GET'}
+                    onChange={(e) => updateConfig('source', {
+                      ...(data.config.source as Record<string, unknown> || {}),
+                      method: e.target.value
+                    })}
+                  >
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">결과 변수명</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                placeholder="data"
+                value={((data.config.output as Record<string, unknown>)?.variable as string) || 'data'}
+                onChange={(e) => updateConfig('output', { variable: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* JUDGMENT 노드 - 판단 정책 설정 */}
+        {nodeType === 'judgment' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">판단 정책</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={((data.config.policy as Record<string, unknown>)?.type as string) || 'HYBRID'}
+                onChange={(e) => updateConfig('policy', {
+                  ...(data.config.policy as Record<string, unknown> || {}),
+                  type: e.target.value
+                })}
+              >
+                <option value="RULE_ONLY">룰 전용</option>
+                <option value="LLM_ONLY">LLM 전용</option>
+                <option value="HYBRID">하이브리드 (권장)</option>
+              </select>
+            </div>
+
+            {((data.config.policy as Record<string, unknown>)?.type !== 'LLM_ONLY') && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">룰 팩 ID</label>
+                <input
+                  type="text"
+                  className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                  placeholder="규칙 팩 UUID (선택)"
+                  value={((data.config.policy as Record<string, unknown>)?.rule_pack_id as string) || ''}
+                  onChange={(e) => updateConfig('policy', {
+                    ...(data.config.policy as Record<string, unknown> || {}),
+                    rule_pack_id: e.target.value
+                  })}
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">입력 데이터 (JSON)</label>
+              <textarea
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                rows={3}
+                placeholder='{"temperature": "{{sensor.temp}}"}'
+                value={JSON.stringify(data.config.input || {}, null, 2)}
+                onChange={(e) => {
+                  try {
+                    updateConfig('input', JSON.parse(e.target.value));
+                  } catch {
+                    // JSON 파싱 실패 시 무시
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">결과 변수명</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                placeholder="judgment_result"
+                value={((data.config.output as Record<string, unknown>)?.variable as string) || 'judgment_result'}
+                onChange={(e) => updateConfig('output', { variable: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* BI 노드 - 분석 설정 */}
+        {nodeType === 'bi' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">분석 타입</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={((data.config.analysis as Record<string, unknown>)?.type as string) || 'trend'}
+                onChange={(e) => updateConfig('analysis', {
+                  ...(data.config.analysis as Record<string, unknown> || {}),
+                  type: e.target.value
+                })}
+              >
+                <option value="trend">추이 분석</option>
+                <option value="comparison">비교 분석</option>
+                <option value="distribution">분포 분석</option>
+                <option value="correlation">상관 분석</option>
+                <option value="anomaly">이상 탐지</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">메트릭 (쉼표 구분)</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="temperature, pressure, vibration"
+                value={((data.config.analysis as Record<string, unknown>)?.metrics as string[])?.join(', ') || ''}
+                onChange={(e) => updateConfig('analysis', {
+                  ...(data.config.analysis as Record<string, unknown> || {}),
+                  metrics: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">분석 기간</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={((data.config.analysis as Record<string, unknown>)?.time_range as string) || '24h'}
+                onChange={(e) => updateConfig('analysis', {
+                  ...(data.config.analysis as Record<string, unknown> || {}),
+                  time_range: e.target.value
+                })}
+              >
+                <option value="1h">1시간</option>
+                <option value="6h">6시간</option>
+                <option value="24h">24시간</option>
+                <option value="7d">7일</option>
+                <option value="30d">30일</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">결과 변수명</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                placeholder="bi_result"
+                value={((data.config.output as Record<string, unknown>)?.variable as string) || 'bi_result'}
+                onChange={(e) => updateConfig('output', { variable: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* MCP 노드 - 외부 도구 호출 설정 */}
+        {nodeType === 'mcp' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">MCP 서버 ID</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="MCP 서버 UUID"
+                value={(data.config.mcp_server_id as string) || ''}
+                onChange={(e) => updateConfig('mcp_server_id', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">도구 이름</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="weather_api, database_query 등"
+                value={(data.config.tool_name as string) || ''}
+                onChange={(e) => updateConfig('tool_name', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">파라미터 (JSON)</label>
+              <textarea
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                rows={3}
+                placeholder='{"location": "Seoul"}'
+                value={JSON.stringify(data.config.parameters || {}, null, 2)}
+                onChange={(e) => {
+                  try {
+                    updateConfig('parameters', JSON.parse(e.target.value));
+                  } catch {
+                    // JSON 파싱 실패 시 무시
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">타임아웃 (ms)</label>
+              <input
+                type="number"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                min={1000}
+                max={300000}
+                step={1000}
+                value={(data.config.timeout_ms as number) || 30000}
+                onChange={(e) => updateConfig('timeout_ms', parseInt(e.target.value))}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">결과 변수명</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                placeholder="mcp_result"
+                value={(data.config.output_variable as string) || 'mcp_result'}
+                onChange={(e) => updateConfig('output_variable', e.target.value)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* WAIT 노드 - 대기 설정 */}
+        {nodeType === 'wait' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대기 타입</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.wait_type as string) || 'duration'}
+                onChange={(e) => updateConfig('wait_type', e.target.value)}
+              >
+                <option value="duration">시간 대기</option>
+                <option value="event">이벤트 대기</option>
+                <option value="schedule">스케줄 대기</option>
+              </select>
+            </div>
+
+            {(data.config.wait_type === 'duration' || !data.config.wait_type) && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대기 시간 (초)</label>
+                <input
+                  type="number"
+                  className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                  min={1}
+                  max={86400}
+                  value={(data.config.duration_seconds as number) || 60}
+                  onChange={(e) => updateConfig('duration_seconds', parseInt(e.target.value))}
+                />
+              </div>
+            )}
+
+            {data.config.wait_type === 'event' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">이벤트 타입</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                    placeholder="sensor.alert, approval.complete 등"
+                    value={(data.config.event_type as string) || ''}
+                    onChange={(e) => updateConfig('event_type', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">타임아웃 (초)</label>
+                  <input
+                    type="number"
+                    className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                    min={60}
+                    max={86400}
+                    value={(data.config.timeout_seconds as number) || 3600}
+                    onChange={(e) => updateConfig('timeout_seconds', parseInt(e.target.value))}
+                  />
+                </div>
+              </>
+            )}
+
+            {data.config.wait_type === 'schedule' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Cron 표현식</label>
+                <input
+                  type="text"
+                  className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                  placeholder="0 9 * * * (매일 오전 9시)"
+                  value={(data.config.schedule_cron as string) || ''}
+                  onChange={(e) => updateConfig('schedule_cron', e.target.value)}
+                />
+                <p className="text-xs text-slate-500 mt-1">분 시 일 월 요일</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* APPROVAL 노드 - 승인 설정 */}
+        {nodeType === 'approval' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">승인 제목</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="워크플로우 승인 요청"
+                value={(data.config.title as string) || ''}
+                onChange={(e) => updateConfig('title', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">설명</label>
+              <textarea
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                rows={2}
+                placeholder="승인 요청에 대한 상세 설명"
+                value={(data.config.description as string) || ''}
+                onChange={(e) => updateConfig('description', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">승인자 (이메일, 쉼표 구분)</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="admin@company.com, manager@company.com"
+                value={(data.config.approvers as string[])?.join(', ') || ''}
+                onChange={(e) => updateConfig('approvers', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">알림 채널</label>
+              <div className="flex gap-3">
+                <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={(data.config.notification as string[])?.includes('email') ?? true}
+                    onChange={(e) => {
+                      const current = (data.config.notification as string[]) || ['email'];
+                      if (e.target.checked) {
+                        updateConfig('notification', [...current, 'email']);
+                      } else {
+                        updateConfig('notification', current.filter(n => n !== 'email'));
+                      }
+                    }}
+                  />
+                  이메일
+                </label>
+                <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={(data.config.notification as string[])?.includes('slack') ?? false}
+                    onChange={(e) => {
+                      const current = (data.config.notification as string[]) || [];
+                      if (e.target.checked) {
+                        updateConfig('notification', [...current, 'slack']);
+                      } else {
+                        updateConfig('notification', current.filter(n => n !== 'slack'));
+                      }
+                    }}
+                  />
+                  Slack
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">타임아웃 (시간)</label>
+              <input
+                type="number"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                min={1}
+                max={168}
+                value={(data.config.timeout_hours as number) || 24}
+                onChange={(e) => updateConfig('timeout_hours', parseInt(e.target.value))}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ============ P2 고급 노드 ============ */}
+
+        {/* COMPENSATION 노드 - 보상 트랜잭션 설정 */}
+        {nodeType === 'compensation' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">보상 전략</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.strategy as string) || 'reverse'}
+                onChange={(e) => updateConfig('strategy', e.target.value)}
+              >
+                <option value="reverse">역순 실행</option>
+                <option value="selective">선택적 보상</option>
+                <option value="custom">커스텀</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대상 노드 ID (쉼표 구분)</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                placeholder="node_1, node_2, node_3"
+                value={(data.config.nodes as string[])?.join(', ') || ''}
+                onChange={(e) => updateConfig('nodes', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+              />
+              <p className="text-xs text-slate-500 mt-1">비워두면 모든 실행된 노드 대상</p>
+            </div>
+          </div>
+        )}
+
+        {/* DEPLOY 노드 - 배포 설정 */}
+        {nodeType === 'deploy' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">배포 타입</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.deploy_type as string) || 'ruleset'}
+                onChange={(e) => updateConfig('deploy_type', e.target.value)}
+              >
+                <option value="ruleset">룰셋 배포</option>
+                <option value="model">모델 배포</option>
+                <option value="workflow">워크플로우 배포</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대상 ID</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="배포할 대상의 UUID"
+                value={(data.config.target_id as string) || ''}
+                onChange={(e) => updateConfig('target_id', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">환경</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.environment as string) || 'production'}
+                onChange={(e) => updateConfig('environment', e.target.value)}
+              >
+                <option value="development">개발 (Development)</option>
+                <option value="staging">스테이징 (Staging)</option>
+                <option value="production">운영 (Production)</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* ROLLBACK 노드 - 롤백 설정 */}
+        {nodeType === 'rollback' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대상 타입</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.target_type as string) || 'workflow'}
+                onChange={(e) => updateConfig('target_type', e.target.value)}
+              >
+                <option value="workflow">워크플로우</option>
+                <option value="ruleset">룰셋</option>
+                <option value="model">모델</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대상 ID</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="롤백할 대상의 UUID"
+                value={(data.config.target_id as string) || ''}
+                onChange={(e) => updateConfig('target_id', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">버전 (선택)</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="비워두면 이전 버전으로"
+                value={(data.config.version as string) || ''}
+                onChange={(e) => updateConfig('version', e.target.value || null)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* SIMULATE 노드 - 시뮬레이션 설정 */}
+        {nodeType === 'simulate' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대상 노드 (쉼표 구분)</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                placeholder="node_1, node_2"
+                value={(data.config.target_nodes as string[])?.join(', ') || ''}
+                onChange={(e) => updateConfig('target_nodes', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">시뮬레이션 시나리오 (JSON)</label>
+              <textarea
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                rows={4}
+                placeholder={`[
+  {"name": "고온 시나리오", "overrides": {"temp": 90}},
+  {"name": "정상 시나리오", "overrides": {"temp": 70}}
+]`}
+                value={JSON.stringify(data.config.scenarios || [], null, 2)}
+                onChange={(e) => {
+                  try {
+                    updateConfig('scenarios', JSON.parse(e.target.value));
+                  } catch {
+                    // JSON 파싱 실패 시 무시
+                  }
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* TRIGGER 노드 - 트리거 설정 (추가) */}
+        {nodeType === 'trigger' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">트리거 타입</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.trigger_type as string) || 'manual'}
+                onChange={(e) => updateConfig('trigger_type', e.target.value)}
+              >
+                <option value="manual">수동 실행</option>
+                <option value="schedule">스케줄 (Cron)</option>
+                <option value="event">이벤트 기반</option>
+                <option value="webhook">웹훅</option>
+              </select>
+            </div>
+
+            {data.config.trigger_type === 'schedule' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Cron 표현식</label>
+                <input
+                  type="text"
+                  className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                  placeholder="0 * * * * (매시 정각)"
+                  value={(data.config.schedule_cron as string) || ''}
+                  onChange={(e) => updateConfig('schedule_cron', e.target.value)}
+                />
+              </div>
+            )}
+
+            {data.config.trigger_type === 'event' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">이벤트 타입</label>
+                <input
+                  type="text"
+                  className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                  placeholder="sensor.alert, order.created 등"
+                  value={(data.config.event_type as string) || ''}
+                  onChange={(e) => updateConfig('event_type', e.target.value)}
+                />
+              </div>
+            )}
+
+            {data.config.trigger_type === 'webhook' && (
+              <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  웹훅 URL이 자동 생성됩니다.
+                </p>
+                <code className="text-xs font-mono text-blue-600">
+                  POST /api/v1/workflows/webhook/{'{workflow_id}'}
+                </code>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -982,7 +1817,11 @@ function flowToDSL(
       config: {},
     },
     nodes: rootNodes,
-  };
+    // 글로벌 설정 포함
+    timeout_seconds: globalSettings.timeout_seconds,
+    max_retry: globalSettings.max_retry,
+    tags: globalSettings.tags,
+  } as WorkflowDSL & { timeout_seconds: number; max_retry: number; tags: string[] };
 }
 
 // DSL → Flow 노드/엣지 변환 (중첩 구조 지원)
@@ -1091,6 +1930,19 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
   const [workflowDescription, setWorkflowDescription] = useState(dsl.description || '');
   const [triggerType, setTriggerType] = useState<'manual' | 'event' | 'schedule'>(dsl.trigger.type);
 
+  // 글로벌 설정 (workflow-level settings)
+  const [globalSettings, setGlobalSettings] = useState<{
+    timeout_seconds: number;
+    max_retry: number;
+    tags: string[];
+  }>({
+    timeout_seconds: (dsl as unknown as { timeout_seconds?: number }).timeout_seconds || 3600,
+    max_retry: (dsl as unknown as { max_retry?: number }).max_retry || 3,
+    tags: (dsl as unknown as { tags?: string[] }).tags || [],
+  });
+  const [showGlobalSettings, setShowGlobalSettings] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+
   // Flow 상태 (any 타입 사용하여 호환성 문제 해결)
   const initialFlow = useMemo(() => dslToFlow(dsl), []);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialFlow.nodes as Node[]);
@@ -1126,6 +1978,12 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
     setWorkflowName(newDsl.name);
     setWorkflowDescription(newDsl.description || '');
     setTriggerType(newDsl.trigger.type);
+    // 글로벌 설정 동기화
+    setGlobalSettings({
+      timeout_seconds: (newDsl as unknown as { timeout_seconds?: number }).timeout_seconds || 3600,
+      max_retry: (newDsl as unknown as { max_retry?: number }).max_retry || 3,
+      tags: (newDsl as unknown as { tags?: string[] }).tags || [],
+    });
     const flow = dslToFlow(newDsl);
     setNodes(flow.nodes as Node[]);
     setEdges(flow.edges);
@@ -1220,6 +2078,7 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
   // 노드 타입별 기본 config
   function getDefaultConfig(type: WorkflowNode['type']): Record<string, unknown> {
     switch (type) {
+      // P0 기본 노드
       case 'condition':
         return { condition: '' };
       case 'action':
@@ -1230,6 +2089,68 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
         return { loop_type: 'for', count: 1, nodes: [] };
       case 'parallel':
         return { branches: [[]], fail_fast: false };
+      // P1 비즈니스 노드
+      case 'data':
+        return {
+          source_type: 'sensor',
+          source: { sensor_ids: [], time_range: '1h' },
+          output: { variable: 'data' },
+        };
+      case 'judgment':
+        return {
+          policy: { type: 'HYBRID', rule_pack_id: '' },
+          input: {},
+          output: { variable: 'judgment_result' },
+        };
+      case 'bi':
+        return {
+          analysis: { type: 'trend', metrics: [], dimensions: [], time_range: '24h' },
+          output: { variable: 'bi_result' },
+        };
+      case 'mcp':
+        return {
+          mcp_server_id: '',
+          tool_name: '',
+          parameters: {},
+          timeout_ms: 30000,
+          output_variable: 'mcp_result',
+        };
+      case 'wait':
+        return {
+          wait_type: 'duration',
+          duration_seconds: 60,
+        };
+      case 'approval':
+        return {
+          title: '승인 요청',
+          description: '',
+          approvers: [],
+          notification: ['email'],
+          timeout_hours: 24,
+        };
+      // P2 고급 노드
+      case 'compensation':
+        return {
+          strategy: 'reverse',  // reverse | custom
+          nodes: [],
+        };
+      case 'deploy':
+        return {
+          deploy_type: 'ruleset',  // ruleset | model | workflow
+          target_id: '',
+          environment: 'production',
+        };
+      case 'rollback':
+        return {
+          target_type: 'workflow',
+          target_id: '',
+          version: null,  // null = 이전 버전
+        };
+      case 'simulate':
+        return {
+          scenarios: [],
+          target_nodes: [],
+        };
       default:
         return {};
     }
@@ -1430,6 +2351,18 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
             </div>
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setShowGlobalSettings(!showGlobalSettings)}
+                className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+                  showGlobalSettings
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                }`}
+                title="글로벌 설정"
+              >
+                <Settings className="w-4 h-4" />
+                설정
+              </button>
+              <button
                 onClick={() => setShowPreview(!showPreview)}
                 className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
                   showPreview
@@ -1448,6 +2381,100 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
               </button>
             </div>
           </div>
+
+          {/* 글로벌 설정 패널 */}
+          {showGlobalSettings && (
+            <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 타임아웃 설정 */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                    <Timer className="w-4 h-4" />
+                    <label className="text-sm font-medium">타임아웃</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={globalSettings.timeout_seconds}
+                      onChange={(e) => setGlobalSettings(prev => ({
+                        ...prev,
+                        timeout_seconds: parseInt(e.target.value) || 3600
+                      }))}
+                      min={60}
+                      max={86400}
+                      className="w-24 px-2 py-1 text-sm border rounded dark:bg-slate-800 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                    />
+                    <span className="text-xs text-slate-500">초</span>
+                  </div>
+                </div>
+
+                {/* 최대 재시도 설정 */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                    <RefreshCw className="w-4 h-4" />
+                    <label className="text-sm font-medium">최대 재시도</label>
+                  </div>
+                  <input
+                    type="number"
+                    value={globalSettings.max_retry}
+                    onChange={(e) => setGlobalSettings(prev => ({
+                      ...prev,
+                      max_retry: parseInt(e.target.value) || 3
+                    }))}
+                    min={0}
+                    max={10}
+                    className="w-16 px-2 py-1 text-sm border rounded dark:bg-slate-800 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                {/* 태그 설정 */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                    <Tag className="w-4 h-4" />
+                    <label className="text-sm font-medium">태그</label>
+                  </div>
+                  <div className="flex-1 flex flex-wrap items-center gap-1">
+                    {globalSettings.tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full"
+                      >
+                        {tag}
+                        <button
+                          onClick={() => setGlobalSettings(prev => ({
+                            ...prev,
+                            tags: prev.tags.filter((_, i) => i !== idx)
+                          }))}
+                          className="hover:text-red-500"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && tagInput.trim()) {
+                          e.preventDefault();
+                          if (!globalSettings.tags.includes(tagInput.trim())) {
+                            setGlobalSettings(prev => ({
+                              ...prev,
+                              tags: [...prev.tags, tagInput.trim()]
+                            }));
+                          }
+                          setTagInput('');
+                        }
+                      }}
+                      placeholder="Enter로 추가..."
+                      className="w-24 px-2 py-0.5 text-xs border rounded dark:bg-slate-800 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* React Flow Canvas */}
           <div className="flex-1 outline-none" ref={reactFlowWrapper} tabIndex={0} onKeyDown={onKeyDown}>

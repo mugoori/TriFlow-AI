@@ -37,6 +37,8 @@ import {
   ScrollText,
   Activity,
   Edit,
+  UserCheck,
+  History,
 } from 'lucide-react';
 import {
   workflowService,
@@ -49,6 +51,8 @@ import {
 import { ActionDetailModal } from '@/components/workflow/ActionDetailModal';
 import { WorkflowEditor } from '@/components/workflow/WorkflowEditor';
 import { FlowEditor } from '@/components/workflow/FlowEditor';
+import { ApprovalPanel } from '@/components/workflow/ApprovalPanel';
+import { VersionPanel } from '@/components/workflow/VersionPanel';
 import type { WorkflowDSL } from '@/services/workflowService';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -142,6 +146,13 @@ export function WorkflowsPage() {
   const [showLogPanel, setShowLogPanel] = useState(false);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // 승인 패널
+  const [showApprovalPanel, setShowApprovalPanel] = useState(false);
+
+  // 버전 관리 패널
+  const [showVersionPanel, setShowVersionPanel] = useState(false);
+  const [versionPanelWorkflow, setVersionPanelWorkflow] = useState<Workflow | null>(null);
 
   // 워크플로우 목록 로드
   const loadWorkflows = useCallback(async () => {
@@ -529,6 +540,17 @@ export function WorkflowsPage() {
               실행 로그
             </button>
             <button
+              onClick={() => setShowApprovalPanel(!showApprovalPanel)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                showApprovalPanel
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              승인 대기
+            </button>
+            <button
               onClick={loadWorkflows}
               disabled={loading}
               className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
@@ -869,6 +891,11 @@ export function WorkflowsPage() {
           </Card>
         )}
 
+        {/* 승인 대기 패널 */}
+        {showApprovalPanel && (
+          <ApprovalPanel className="mb-4" />
+        )}
+
         {/* 워크플로우 목록 */}
         <Card>
           <CardHeader className="pb-3">
@@ -989,6 +1016,17 @@ export function WorkflowsPage() {
                                 title="편집"
                               >
                                 <Edit className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVersionPanelWorkflow(workflow);
+                                  setShowVersionPanel(true);
+                                }}
+                                className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                                title="버전 관리"
+                              >
+                                <History className="w-4 h-4 text-blue-600" />
                               </button>
                               <button
                                 onClick={(e) => handleDeleteWorkflow(workflow, e)}
@@ -1131,6 +1169,35 @@ export function WorkflowsPage() {
           onSave={handleSaveWorkflow}
           onCancel={handleCloseEditor}
         />
+
+        {/* 버전 관리 모달 */}
+        {showVersionPanel && versionPanelWorkflow && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="relative w-full max-w-2xl max-h-[80vh] overflow-auto">
+              <VersionPanel
+                workflowId={versionPanelWorkflow.workflow_id}
+                workflowName={versionPanelWorkflow.name}
+                currentVersion={versionPanelWorkflow.version}
+                onVersionChange={() => {
+                  loadWorkflows();
+                }}
+              />
+              <button
+                onClick={() => {
+                  setShowVersionPanel(false);
+                  setVersionPanelWorkflow(null);
+                }}
+                className="absolute top-2 right-2 p-2 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                title="닫기"
+              >
+                <span className="sr-only">닫기</span>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -957,3 +957,1078 @@ async def test_condition(
         "result": result,
         "message": message,
     }
+
+
+# ============ 워크플로우 승인 API ============
+
+class ApprovalDecision(BaseModel):
+    """승인/거부 결정 요청"""
+    comment: Optional[str] = Field(None, description="결정 코멘트")
+
+
+class ApprovalResponse(BaseModel):
+    """승인 응답"""
+    approval_id: str
+    status: str
+    decided_by: Optional[str]
+    decided_at: Optional[datetime]
+    comment: Optional[str]
+
+
+class ApprovalListItem(BaseModel):
+    """승인 목록 항목"""
+    approval_id: str
+    workflow_id: str
+    workflow_name: Optional[str]
+    node_id: str
+    title: str
+    description: Optional[str]
+    approval_type: str
+    approvers: List[Dict[str, Any]]
+    status: str
+    timeout_at: Optional[datetime]
+    created_at: datetime
+
+
+class ApprovalListResponse(BaseModel):
+    """승인 목록 응답"""
+    approvals: List[ApprovalListItem]
+    total: int
+
+
+@router.get("/approvals", response_model=ApprovalListResponse)
+async def list_pending_approvals(
+    status: Optional[str] = Query("pending", description="상태 필터 (pending, approved, rejected, timeout, all)"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """
+    승인 대기 목록 조회
+    """
+    from sqlalchemy import text
+
+    try:
+        # 상태 필터
+        status_filter = ""
+        if status and status != "all":
+            status_filter = "AND a.status = :status"
+
+        query = text(f"""
+            SELECT
+                a.approval_id,
+                a.workflow_id,
+                w.name as workflow_name,
+                a.node_id,
+                a.title,
+                a.description,
+                a.approval_type,
+                a.approvers,
+                a.status,
+                a.timeout_at,
+                a.created_at
+            FROM core.workflow_approvals a
+            LEFT JOIN core.workflows w ON a.workflow_id = w.workflow_id
+            WHERE 1=1 {status_filter}
+            ORDER BY a.created_at DESC
+            LIMIT :limit OFFSET :offset
+        """)
+
+        params = {"limit": limit, "offset": offset}
+        if status and status != "all":
+            params["status"] = status
+
+        result = db.execute(query, params)
+        rows = result.fetchall()
+
+        # 전체 개수 조회
+        count_query = text(f"""
+            SELECT COUNT(*) FROM core.workflow_approvals a
+            WHERE 1=1 {status_filter}
+        """)
+        count_params = {}
+        if status and status != "all":
+            count_params["status"] = status
+        total = db.execute(count_query, count_params).scalar() or 0
+
+        approvals = []
+        for row in rows:
+            approvers = row.approvers if isinstance(row.approvers, list) else []
+            approvals.append(ApprovalListItem(
+                approval_id=str(row.approval_id),
+                workflow_id=str(row.workflow_id),
+                workflow_name=row.workflow_name,
+                node_id=row.node_id,
+                title=row.title,
+                description=row.description,
+                approval_type=row.approval_type,
+                approvers=approvers,
+                status=row.status,
+                timeout_at=row.timeout_at,
+                created_at=row.created_at,
+            ))
+
+        return ApprovalListResponse(approvals=approvals, total=total)
+
+    except Exception as e:
+        # 테이블이 없는 경우
+        if "relation" in str(e) and "does not exist" in str(e):
+            return ApprovalListResponse(approvals=[], total=0)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/approvals/{approval_id}")
+async def get_approval_detail(
+    approval_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    승인 요청 상세 조회
+    """
+    from sqlalchemy import text
+
+    try:
+        query = text("""
+            SELECT
+                a.*,
+                w.name as workflow_name,
+                w.dsl_definition
+            FROM core.workflow_approvals a
+            LEFT JOIN core.workflows w ON a.workflow_id = w.workflow_id
+            WHERE a.approval_id = :approval_id
+        """)
+
+        result = db.execute(query, {"approval_id": str(approval_id)})
+        row = result.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+
+        return {
+            "approval_id": str(row.approval_id),
+            "workflow_id": str(row.workflow_id),
+            "workflow_name": row.workflow_name,
+            "instance_id": str(row.instance_id) if row.instance_id else None,
+            "node_id": row.node_id,
+            "approval_type": row.approval_type,
+            "title": row.title,
+            "description": row.description,
+            "approvers": row.approvers if isinstance(row.approvers, list) else [],
+            "quorum_count": row.quorum_count,
+            "status": row.status,
+            "decided_by": str(row.decided_by) if row.decided_by else None,
+            "decided_at": row.decided_at.isoformat() if row.decided_at else None,
+            "decision_comment": row.decision_comment,
+            "notification_channels": row.notification_channels if isinstance(row.notification_channels, list) else [],
+            "timeout_at": row.timeout_at.isoformat() if row.timeout_at else None,
+            "auto_approve_on_timeout": row.auto_approve_on_timeout,
+            "context_data": row.context_data if isinstance(row.context_data, dict) else {},
+            "created_at": row.created_at.isoformat(),
+            "updated_at": row.updated_at.isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/approvals/{approval_id}/approve", response_model=ApprovalResponse)
+async def approve_workflow(
+    approval_id: UUID,
+    body: ApprovalDecision,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 승인
+
+    승인 요청을 승인합니다. 승인 상태가 'pending'인 경우에만 가능합니다.
+    """
+    import json
+    from sqlalchemy import text
+
+    try:
+        # 현재 상태 확인
+        check_query = text("""
+            SELECT status FROM core.workflow_approvals
+            WHERE approval_id = :approval_id
+        """)
+        result = db.execute(check_query, {"approval_id": str(approval_id)})
+        row = result.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+
+        if row.status != "pending":
+            raise HTTPException(
+                status_code=400,
+                detail=f"이미 처리된 요청입니다 (현재 상태: {row.status})"
+            )
+
+        # 승인 처리
+        update_query = text("""
+            UPDATE core.workflow_approvals
+            SET status = 'approved',
+                decided_at = NOW(),
+                decision_comment = :comment,
+                updated_at = NOW()
+            WHERE approval_id = :approval_id
+            RETURNING approval_id, status, decided_by, decided_at, decision_comment
+        """)
+
+        result = db.execute(update_query, {
+            "approval_id": str(approval_id),
+            "comment": body.comment,
+        })
+        db.commit()
+
+        updated_row = result.fetchone()
+
+        # Redis 캐시 업데이트
+        try:
+            from app.services.cache_service import CacheService
+            if CacheService.is_available():
+                CacheService.set(
+                    f"wf:approval:{approval_id}",
+                    json.dumps({
+                        "status": "approved",
+                        "decided_at": datetime.utcnow().isoformat(),
+                        "decision_comment": body.comment,
+                    }),
+                    expire_seconds=3600
+                )
+        except Exception:
+            pass
+
+        return ApprovalResponse(
+            approval_id=str(updated_row.approval_id),
+            status="approved",
+            decided_by=str(updated_row.decided_by) if updated_row.decided_by else None,
+            decided_at=updated_row.decided_at,
+            comment=updated_row.decision_comment,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/approvals/{approval_id}/reject", response_model=ApprovalResponse)
+async def reject_workflow(
+    approval_id: UUID,
+    body: ApprovalDecision,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 거부
+
+    승인 요청을 거부합니다. 승인 상태가 'pending'인 경우에만 가능합니다.
+    """
+    import json
+    from sqlalchemy import text
+
+    try:
+        # 현재 상태 확인
+        check_query = text("""
+            SELECT status FROM core.workflow_approvals
+            WHERE approval_id = :approval_id
+        """)
+        result = db.execute(check_query, {"approval_id": str(approval_id)})
+        row = result.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+
+        if row.status != "pending":
+            raise HTTPException(
+                status_code=400,
+                detail=f"이미 처리된 요청입니다 (현재 상태: {row.status})"
+            )
+
+        # 거부 처리
+        update_query = text("""
+            UPDATE core.workflow_approvals
+            SET status = 'rejected',
+                decided_at = NOW(),
+                decision_comment = :comment,
+                updated_at = NOW()
+            WHERE approval_id = :approval_id
+            RETURNING approval_id, status, decided_by, decided_at, decision_comment
+        """)
+
+        result = db.execute(update_query, {
+            "approval_id": str(approval_id),
+            "comment": body.comment,
+        })
+        db.commit()
+
+        updated_row = result.fetchone()
+
+        # Redis 캐시 업데이트
+        try:
+            from app.services.cache_service import CacheService
+            if CacheService.is_available():
+                CacheService.set(
+                    f"wf:approval:{approval_id}",
+                    json.dumps({
+                        "status": "rejected",
+                        "decided_at": datetime.utcnow().isoformat(),
+                        "decision_comment": body.comment,
+                    }),
+                    expire_seconds=3600
+                )
+        except Exception:
+            pass
+
+        return ApprovalResponse(
+            approval_id=str(updated_row.approval_id),
+            status="rejected",
+            decided_by=str(updated_row.decided_by) if updated_row.decided_by else None,
+            decided_at=updated_row.decided_at,
+            comment=updated_row.decision_comment,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/approvals/{approval_id}/cancel", response_model=ApprovalResponse)
+async def cancel_approval(
+    approval_id: UUID,
+    body: ApprovalDecision,
+    db: Session = Depends(get_db),
+):
+    """
+    승인 요청 취소
+
+    승인 요청을 취소합니다. 워크플로우 소유자 또는 관리자만 가능합니다.
+    """
+    import json
+    from sqlalchemy import text
+
+    try:
+        # 현재 상태 확인
+        check_query = text("""
+            SELECT status FROM core.workflow_approvals
+            WHERE approval_id = :approval_id
+        """)
+        result = db.execute(check_query, {"approval_id": str(approval_id)})
+        row = result.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+
+        if row.status != "pending":
+            raise HTTPException(
+                status_code=400,
+                detail=f"이미 처리된 요청입니다 (현재 상태: {row.status})"
+            )
+
+        # 취소 처리
+        update_query = text("""
+            UPDATE core.workflow_approvals
+            SET status = 'cancelled',
+                decided_at = NOW(),
+                decision_comment = :comment,
+                updated_at = NOW()
+            WHERE approval_id = :approval_id
+            RETURNING approval_id, status, decided_by, decided_at, decision_comment
+        """)
+
+        result = db.execute(update_query, {
+            "approval_id": str(approval_id),
+            "comment": body.comment or "Cancelled by user",
+        })
+        db.commit()
+
+        updated_row = result.fetchone()
+
+        # Redis 캐시 업데이트
+        try:
+            from app.services.cache_service import CacheService
+            if CacheService.is_available():
+                CacheService.set(
+                    f"wf:approval:{approval_id}",
+                    json.dumps({
+                        "status": "cancelled",
+                        "decided_at": datetime.utcnow().isoformat(),
+                        "decision_comment": body.comment or "Cancelled by user",
+                    }),
+                    expire_seconds=3600
+                )
+        except Exception:
+            pass
+
+        return ApprovalResponse(
+            approval_id=str(updated_row.approval_id),
+            status="cancelled",
+            decided_by=str(updated_row.decided_by) if updated_row.decided_by else None,
+            decided_at=updated_row.decided_at,
+            comment=updated_row.decision_comment,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ 워크플로우 상태 머신 API ============
+
+class WorkflowStateResponse(BaseModel):
+    """워크플로우 상태 응답"""
+    instance_id: str
+    state: str
+    previous_state: Optional[str] = None
+    updated_at: Optional[str] = None
+    reason: Optional[str] = None
+    exists: bool = True
+
+
+class WorkflowStateHistoryItem(BaseModel):
+    """상태 전이 히스토리 항목"""
+    from_state: Optional[str] = None
+    to_state: str
+    reason: Optional[str] = None
+    transitioned_at: str
+
+
+class WorkflowStateHistoryResponse(BaseModel):
+    """상태 전이 히스토리 응답"""
+    instance_id: str
+    history: List[WorkflowStateHistoryItem]
+    total: int
+
+
+class CheckpointInfo(BaseModel):
+    """체크포인트 정보"""
+    checkpoint_id: str
+    node_id: str
+    created_at: str
+    expires_at: str
+
+
+class CheckpointListResponse(BaseModel):
+    """체크포인트 목록 응답"""
+    instance_id: str
+    checkpoints: List[CheckpointInfo]
+    total: int
+
+
+class RecoveryInfoResponse(BaseModel):
+    """복구 정보 응답"""
+    instance_id: str
+    checkpoint_id: Optional[str] = None
+    resume_from_node: Optional[str] = None
+    checkpoint_created_at: Optional[str] = None
+    can_resume: bool = False
+
+
+class ResumeWorkflowRequest(BaseModel):
+    """워크플로우 재개 요청"""
+    checkpoint_id: Optional[str] = Field(None, description="특정 체크포인트 ID (없으면 최신)")
+    additional_input: Optional[Dict[str, Any]] = Field(None, description="추가 입력 데이터")
+
+
+@router.get("/instances/{instance_id}/state", response_model=WorkflowStateResponse)
+async def get_instance_state(instance_id: str):
+    """
+    워크플로우 인스턴스 상태 조회
+
+    - instance_id: 워크플로우 인스턴스 ID
+    """
+    from app.services.workflow_engine import workflow_state_machine
+
+    state_info = workflow_state_machine.get_state(instance_id)
+
+    return WorkflowStateResponse(
+        instance_id=instance_id,
+        state=state_info.get("state", "unknown"),
+        previous_state=state_info.get("previous_state"),
+        updated_at=state_info.get("updated_at"),
+        reason=state_info.get("reason"),
+        exists=state_info.get("exists", False),
+    )
+
+
+@router.get("/instances/{instance_id}/history", response_model=WorkflowStateHistoryResponse)
+async def get_instance_state_history(
+    instance_id: str,
+    limit: int = Query(50, ge=1, le=200, description="최대 조회 개수")
+):
+    """
+    워크플로우 인스턴스 상태 전이 히스토리 조회
+    """
+    from app.services.workflow_engine import workflow_state_machine
+
+    history = workflow_state_machine.get_history(instance_id, limit)
+
+    return WorkflowStateHistoryResponse(
+        instance_id=instance_id,
+        history=[
+            WorkflowStateHistoryItem(
+                from_state=item.get("from_state"),
+                to_state=item.get("to_state", "unknown"),
+                reason=item.get("reason"),
+                transitioned_at=item.get("transitioned_at", ""),
+            )
+            for item in history
+        ],
+        total=len(history),
+    )
+
+
+@router.get("/instances/{instance_id}/checkpoints", response_model=CheckpointListResponse)
+async def list_instance_checkpoints(
+    instance_id: str,
+    limit: int = Query(10, ge=1, le=50, description="최대 조회 개수")
+):
+    """
+    워크플로우 인스턴스의 체크포인트 목록 조회
+    """
+    from app.services.workflow_engine import checkpoint_manager
+
+    checkpoints = await checkpoint_manager.list_checkpoints(instance_id, limit)
+
+    return CheckpointListResponse(
+        instance_id=instance_id,
+        checkpoints=[
+            CheckpointInfo(
+                checkpoint_id=cp.get("checkpoint_id", ""),
+                node_id=cp.get("node_id", ""),
+                created_at=cp.get("created_at", ""),
+                expires_at=cp.get("expires_at", ""),
+            )
+            for cp in checkpoints
+        ],
+        total=len(checkpoints),
+    )
+
+
+@router.get("/instances/{instance_id}/recovery", response_model=RecoveryInfoResponse)
+async def get_instance_recovery_info(instance_id: str):
+    """
+    워크플로우 인스턴스 복구 정보 조회
+
+    워크플로우 재개 시 어디서부터 시작할지 정보 제공
+    """
+    from app.services.workflow_engine import checkpoint_manager
+
+    recovery_info = await checkpoint_manager.get_recovery_info(instance_id)
+
+    if not recovery_info:
+        return RecoveryInfoResponse(
+            instance_id=instance_id,
+            can_resume=False,
+        )
+
+    return RecoveryInfoResponse(
+        instance_id=instance_id,
+        checkpoint_id=recovery_info.get("checkpoint_id"),
+        resume_from_node=recovery_info.get("resume_from_node"),
+        checkpoint_created_at=recovery_info.get("checkpoint_created_at"),
+        can_resume=recovery_info.get("can_resume", False),
+    )
+
+
+@router.post("/instances/{instance_id}/resume")
+async def resume_workflow_instance(
+    instance_id: str,
+    body: ResumeWorkflowRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    대기 중인 워크플로우 인스턴스 재개
+
+    체크포인트에서 워크플로우를 재개합니다.
+    """
+    from app.services.workflow_engine import (
+        workflow_engine,
+        workflow_state_machine,
+        checkpoint_manager,
+        WorkflowState,
+    )
+
+    # 1. 현재 상태 확인
+    state_info = workflow_state_machine.get_state(instance_id)
+    if not state_info.get("exists"):
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    current_state = state_info.get("state")
+    if current_state not in ["waiting", "paused"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot resume instance in state: {current_state}"
+        )
+
+    # 2. 복구 정보 확인
+    recovery_info = await checkpoint_manager.get_recovery_info(instance_id)
+    if not recovery_info or not recovery_info.get("can_resume"):
+        raise HTTPException(
+            status_code=400,
+            detail="No checkpoint available for resume"
+        )
+
+    # 3. 원본 워크플로우 조회
+    context = recovery_info.get("context", {})
+    workflow_id = context.get("workflow_id")
+
+    if not workflow_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Workflow ID not found in checkpoint"
+        )
+
+    workflow = db.query(Workflow).filter(
+        Workflow.workflow_id == UUID(workflow_id)
+    ).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Original workflow not found")
+
+    # 4. 워크플로우 재개 실행
+    dsl = workflow.dsl_definition
+    input_data = {
+        **(context.get("input_data", {})),
+        **(body.additional_input or {})
+    }
+
+    result = await workflow_engine.execute_workflow(
+        workflow_id=workflow_id,
+        dsl=dsl,
+        input_data=input_data,
+        instance_id=instance_id,
+        resume_from_checkpoint=True,
+    )
+
+    return {
+        "success": True,
+        "instance_id": instance_id,
+        "status": result.get("status"),
+        "resumed_from_node": recovery_info.get("resume_from_node"),
+        "nodes_executed": result.get("nodes_executed"),
+        "result": result,
+    }
+
+
+@router.post("/instances/{instance_id}/pause")
+async def pause_workflow_instance(instance_id: str):
+    """
+    실행 중인 워크플로우 인스턴스 일시 중지
+    """
+    from app.services.workflow_engine import (
+        workflow_state_machine,
+        WorkflowState,
+        InvalidStateTransition,
+    )
+
+    state_info = workflow_state_machine.get_state(instance_id)
+    if not state_info.get("exists"):
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    try:
+        await workflow_state_machine.transition(
+            instance_id,
+            WorkflowState.PAUSED,
+            reason="Manually paused by user"
+        )
+    except InvalidStateTransition as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "success": True,
+        "instance_id": instance_id,
+        "state": "paused",
+        "message": "Workflow instance paused",
+    }
+
+
+@router.post("/instances/{instance_id}/cancel")
+async def cancel_workflow_instance(instance_id: str):
+    """
+    워크플로우 인스턴스 취소
+    """
+    from app.services.workflow_engine import (
+        workflow_state_machine,
+        checkpoint_manager,
+        WorkflowState,
+        InvalidStateTransition,
+    )
+
+    state_info = workflow_state_machine.get_state(instance_id)
+    if not state_info.get("exists"):
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    try:
+        await workflow_state_machine.transition(
+            instance_id,
+            WorkflowState.CANCELLED,
+            reason="Cancelled by user"
+        )
+
+        # 체크포인트 삭제
+        await checkpoint_manager.delete_checkpoint(instance_id)
+
+    except InvalidStateTransition as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "success": True,
+        "instance_id": instance_id,
+        "state": "cancelled",
+        "message": "Workflow instance cancelled",
+    }
+
+
+# ============ Version Management API ============
+
+
+class WorkflowVersionCreate(BaseModel):
+    """버전 생성 요청"""
+    change_log: Optional[str] = None
+
+
+class WorkflowVersionResponse(BaseModel):
+    """버전 응답"""
+    version_id: str
+    workflow_id: str
+    version: int
+    dsl_definition: Dict[str, Any]
+    change_log: Optional[str]
+    status: str
+    created_by: Optional[str]
+    published_at: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowVersionListResponse(BaseModel):
+    """버전 목록 응답"""
+    versions: List[WorkflowVersionResponse]
+    total: int
+
+
+class WorkflowVersionPublish(BaseModel):
+    """버전 배포 요청"""
+    pass  # 별도 필드 없음, 인증된 사용자 정보 사용
+
+
+@router.get("/{workflow_id}/versions", response_model=WorkflowVersionListResponse)
+async def list_workflow_versions(
+    workflow_id: str,
+    status: Optional[str] = Query(None, description="버전 상태 필터 (draft, active, deprecated, archived)"),
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 버전 목록 조회
+    """
+    from sqlalchemy import text
+
+    # 워크플로우 존재 확인
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    # 버전 목록 조회
+    query = """
+        SELECT
+            version_id::text,
+            workflow_id::text,
+            version,
+            dsl_definition,
+            change_log,
+            status,
+            created_by::text,
+            published_at,
+            created_at
+        FROM core.workflow_versions
+        WHERE workflow_id = :workflow_id
+    """
+    params = {"workflow_id": workflow_id}
+
+    if status:
+        query += " AND status = :status"
+        params["status"] = status
+
+    query += " ORDER BY version DESC"
+
+    result = db.execute(text(query), params)
+    rows = result.fetchall()
+
+    versions = []
+    for row in rows:
+        versions.append({
+            "version_id": row[0],
+            "workflow_id": row[1],
+            "version": row[2],
+            "dsl_definition": row[3] if isinstance(row[3], dict) else {},
+            "change_log": row[4],
+            "status": row[5],
+            "created_by": row[6],
+            "published_at": row[7],
+            "created_at": row[8],
+        })
+
+    return {"versions": versions, "total": len(versions)}
+
+
+@router.post("/{workflow_id}/versions", response_model=WorkflowVersionResponse)
+async def create_workflow_version(
+    workflow_id: str,
+    body: WorkflowVersionCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    새 워크플로우 버전 생성 (현재 DSL 스냅샷)
+    """
+    from sqlalchemy import text
+
+    # 워크플로우 조회
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    # 다음 버전 번호 조회
+    next_version_query = """
+        SELECT core.get_next_workflow_version(:workflow_id)
+    """
+    result = db.execute(text(next_version_query), {"workflow_id": workflow_id})
+    next_version = result.scalar()
+
+    # 버전 생성
+    version_id = str(uuid4())
+    insert_query = """
+        INSERT INTO core.workflow_versions (
+            version_id, tenant_id, workflow_id, version, dsl_definition,
+            change_log, status, created_at
+        )
+        VALUES (
+            :version_id, :tenant_id, :workflow_id, :version, CAST(:dsl_definition AS jsonb),
+            :change_log, 'draft', NOW()
+        )
+        RETURNING version_id::text, workflow_id::text, version, dsl_definition,
+                  change_log, status, created_by::text, published_at, created_at
+    """
+
+    import json
+    dsl_json = json.dumps(workflow.dsl_definition) if workflow.dsl_definition else "{}"
+
+    result = db.execute(
+        text(insert_query),
+        {
+            "version_id": version_id,
+            "tenant_id": str(workflow.tenant_id) if workflow.tenant_id else "446e39b3-455e-4ca9-817a-4913921eb41d",
+            "workflow_id": workflow_id,
+            "version": next_version,
+            "dsl_definition": dsl_json,
+            "change_log": body.change_log,
+        },
+    )
+    db.commit()
+
+    row = result.fetchone()
+
+    return {
+        "version_id": row[0],
+        "workflow_id": row[1],
+        "version": row[2],
+        "dsl_definition": row[3] if isinstance(row[3], dict) else {},
+        "change_log": row[4],
+        "status": row[5],
+        "created_by": row[6],
+        "published_at": row[7],
+        "created_at": row[8],
+    }
+
+
+@router.get("/{workflow_id}/versions/{version}", response_model=WorkflowVersionResponse)
+async def get_workflow_version(
+    workflow_id: str,
+    version: int,
+    db: Session = Depends(get_db),
+):
+    """
+    특정 워크플로우 버전 조회
+    """
+    from sqlalchemy import text
+
+    query = """
+        SELECT
+            version_id::text,
+            workflow_id::text,
+            version,
+            dsl_definition,
+            change_log,
+            status,
+            created_by::text,
+            published_at,
+            created_at
+        FROM core.workflow_versions
+        WHERE workflow_id = :workflow_id AND version = :version
+    """
+
+    result = db.execute(text(query), {"workflow_id": workflow_id, "version": version})
+    row = result.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    return {
+        "version_id": row[0],
+        "workflow_id": row[1],
+        "version": row[2],
+        "dsl_definition": row[3] if isinstance(row[3], dict) else {},
+        "change_log": row[4],
+        "status": row[5],
+        "created_by": row[6],
+        "published_at": row[7],
+        "created_at": row[8],
+    }
+
+
+@router.post("/{workflow_id}/versions/{version}/publish")
+async def publish_workflow_version(
+    workflow_id: str,
+    version: int,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 버전 배포 (active로 변경, 이전 active 버전은 deprecated)
+    """
+    from sqlalchemy import text
+
+    # 버전 존재 확인
+    check_query = """
+        SELECT version_id, status FROM core.workflow_versions
+        WHERE workflow_id = :workflow_id AND version = :version
+    """
+    result = db.execute(text(check_query), {"workflow_id": workflow_id, "version": version})
+    row = result.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    if row[1] == "active":
+        return {"success": True, "message": "Version is already active"}
+
+    # 이전 active 버전 deprecated로 변경
+    deprecate_query = """
+        UPDATE core.workflow_versions
+        SET status = 'deprecated'
+        WHERE workflow_id = :workflow_id AND status = 'active'
+    """
+    db.execute(text(deprecate_query), {"workflow_id": workflow_id})
+
+    # 현재 버전 active로 변경
+    publish_query = """
+        UPDATE core.workflow_versions
+        SET status = 'active', published_at = NOW()
+        WHERE workflow_id = :workflow_id AND version = :version
+    """
+    db.execute(text(publish_query), {"workflow_id": workflow_id, "version": version})
+
+    # workflows 테이블의 current_version 업데이트
+    update_workflow_query = """
+        UPDATE core.workflows
+        SET current_version = :version, updated_at = NOW()
+        WHERE workflow_id = :workflow_id
+    """
+    db.execute(text(update_workflow_query), {"workflow_id": workflow_id, "version": version})
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Version {version} published successfully",
+        "workflow_id": workflow_id,
+        "version": version,
+    }
+
+
+@router.post("/{workflow_id}/versions/{version}/rollback")
+async def rollback_workflow_version(
+    workflow_id: str,
+    version: int,
+    db: Session = Depends(get_db),
+):
+    """
+    특정 버전으로 워크플로우 롤백 (해당 버전의 DSL을 현재 워크플로우에 적용)
+    """
+    from sqlalchemy import text
+
+    # 버전 조회
+    query = """
+        SELECT version_id, dsl_definition FROM core.workflow_versions
+        WHERE workflow_id = :workflow_id AND version = :version
+    """
+    result = db.execute(text(query), {"workflow_id": workflow_id, "version": version})
+    row = result.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    dsl_definition = row[1]
+
+    # 워크플로우 DSL 업데이트
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow.dsl_definition = dsl_definition
+    flag_modified(workflow, "dsl_definition")
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Rolled back to version {version}",
+        "workflow_id": workflow_id,
+        "version": version,
+    }
+
+
+@router.delete("/{workflow_id}/versions/{version}")
+async def delete_workflow_version(
+    workflow_id: str,
+    version: int,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 버전 삭제 (active 버전은 삭제 불가)
+    """
+    from sqlalchemy import text
+
+    # 버전 조회
+    query = """
+        SELECT version_id, status FROM core.workflow_versions
+        WHERE workflow_id = :workflow_id AND version = :version
+    """
+    result = db.execute(text(query), {"workflow_id": workflow_id, "version": version})
+    row = result.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    if row[1] == "active":
+        raise HTTPException(status_code=400, detail="Cannot delete active version")
+
+    # 버전 삭제
+    delete_query = """
+        DELETE FROM core.workflow_versions
+        WHERE workflow_id = :workflow_id AND version = :version
+    """
+    db.execute(text(delete_query), {"workflow_id": workflow_id, "version": version})
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Version {version} deleted",
+        "workflow_id": workflow_id,
+    }

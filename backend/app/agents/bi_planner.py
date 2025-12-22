@@ -6,8 +6,13 @@ V2 Phase 2 확장:
 - RANK 분석 (상위/하위 N개, 백분위)
 - PREDICT 분석 (이동평균, 선형회귀)
 - WHAT_IF 시뮬레이션
+
+V2 Phase 3 확장 (GenBI):
+- refine_chart: 차트 수정 (Refinement Loop)
+- generate_insight: AI 인사이트 생성 (Executive Summary)
 """
 from typing import Any, Dict, List
+import json
 import logging
 from pathlib import Path
 from uuid import UUID
@@ -257,6 +262,58 @@ class BIPlannerAgent(BaseAgent):
                     "required": ["tenant_id", "metric", "dimension", "baseline_value", "scenario_changes"],
                 },
             },
+            # V2 Phase 3 (GenBI): Chart Refinement
+            {
+                "name": "refine_chart",
+                "description": "기존 차트를 사용자 지시에 따라 수정합니다. 차트 유형 변경(막대→라인), 색상 변경, 제목 수정, 축 레이블 변경 등에 사용합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "original_config": {
+                            "type": "object",
+                            "description": "원본 차트 설정 (ChartConfig JSON)",
+                        },
+                        "instruction": {
+                            "type": "string",
+                            "description": "수정 지시 (예: '막대 차트로 바꿔줘', '제목을 월별 생산량으로 변경')",
+                        },
+                        "preserve_data": {
+                            "type": "boolean",
+                            "description": "데이터 유지 여부 (기본 true)",
+                            "default": True,
+                        },
+                    },
+                    "required": ["original_config", "instruction"],
+                },
+            },
+            # V2 Phase 3 (GenBI): AI Insight Generation
+            {
+                "name": "generate_insight",
+                "description": "차트/데이터에 대한 AI 인사이트를 생성합니다. AWS QuickSight GenBI 스타일의 Fact/Reasoning/Action 구조로 Executive Summary를 생성합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "data": {
+                            "type": "array",
+                            "description": "분석할 데이터 (JSON 배열)",
+                        },
+                        "chart_config": {
+                            "type": "object",
+                            "description": "관련 차트 설정 (선택)",
+                        },
+                        "focus_metrics": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "집중 분석할 메트릭 이름 목록",
+                        },
+                        "time_range": {
+                            "type": "string",
+                            "description": "분석 기간 (예: '24h', '7d')",
+                        },
+                    },
+                    "required": ["data"],
+                },
+            },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
@@ -317,6 +374,23 @@ class BIPlannerAgent(BaseAgent):
                 baseline_value=tool_input["baseline_value"],
                 scenario_changes=tool_input["scenario_changes"],
                 time_range_days=tool_input.get("time_range_days", 30),
+            )
+
+        # V2 Phase 3 (GenBI): Chart Refinement
+        elif tool_name == "refine_chart":
+            return self._refine_chart(
+                original_config=tool_input["original_config"],
+                instruction=tool_input["instruction"],
+                preserve_data=tool_input.get("preserve_data", True),
+            )
+
+        # V2 Phase 3 (GenBI): AI Insight Generation
+        elif tool_name == "generate_insight":
+            return self._generate_insight(
+                data=tool_input["data"],
+                chart_config=tool_input.get("chart_config"),
+                focus_metrics=tool_input.get("focus_metrics"),
+                time_range=tool_input.get("time_range"),
             )
 
         else:
@@ -705,4 +779,228 @@ class BIPlannerAgent(BaseAgent):
                 "success": False,
                 "error": str(e),
                 "analysis_type": "what_if",
+            }
+
+    # =========================================
+    # V2 Phase 3 (GenBI): Chart Refinement & Insight
+    # =========================================
+
+    def _refine_chart(
+        self,
+        original_config: Dict[str, Any],
+        instruction: str,
+        preserve_data: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        차트 수정 (Refinement Loop)
+        LLM을 사용하여 사용자 지시에 따라 차트 설정을 수정
+        """
+        from anthropic import Anthropic
+        from app.config import settings
+
+        try:
+            client = Anthropic(api_key=settings.anthropic_api_key)
+
+            system_prompt = """당신은 차트 수정 전문가입니다.
+사용자의 지시에 따라 차트 설정을 수정합니다.
+
+## 차트 유형
+- line: 라인 차트 (추세, 시계열)
+- bar: 막대 차트 (비교, 카테고리)
+- pie: 파이 차트 (비율, 구성)
+- area: 영역 차트 (누적, 추세)
+- scatter: 산점도 (상관관계)
+- table: 테이블 (상세 데이터)
+
+## 수정 가능 항목
+- type: 차트 유형 변경
+- title: 제목 변경
+- xAxis.label, yAxis.label: 축 레이블 변경
+- colors: 색상 변경
+
+## 출력 형식
+반드시 다음 JSON 형식으로 출력하세요:
+```json
+{
+  "refined_config": { ... 수정된 차트 설정 ... },
+  "changes_made": ["변경사항1", "변경사항2"]
+}
+```
+"""
+
+            user_message = f"""다음 차트 설정을 수정해주세요.
+
+## 원본 차트 설정
+```json
+{json.dumps(original_config, indent=2, ensure_ascii=False)}
+```
+
+## 수정 지시
+{instruction}
+
+## 옵션
+- 데이터 유지: {preserve_data}
+
+위 지시에 따라 차트 설정을 수정하고 JSON 형식으로 출력해주세요."""
+
+            response = client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=2048,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
+
+            content = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    content += block.text
+
+            # JSON 파싱
+            json_start = content.find("{")
+            json_end = content.rfind("}") + 1
+            if json_start != -1 and json_end > json_start:
+                result = json.loads(content[json_start:json_end])
+
+                # 데이터 유지 옵션 처리
+                if preserve_data and "data" in original_config:
+                    result["refined_config"]["data"] = original_config["data"]
+
+                logger.info(f"Chart refined: {result.get('changes_made', [])}")
+
+                return {
+                    "success": True,
+                    "refined_config": result.get("refined_config", original_config),
+                    "changes_made": result.get("changes_made", []),
+                }
+            else:
+                raise ValueError("No valid JSON in response")
+
+        except Exception as e:
+            logger.error(f"Chart refinement error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "refined_config": original_config,
+                "changes_made": [],
+            }
+
+    def _generate_insight(
+        self,
+        data: List[Dict[str, Any]],
+        chart_config: Dict[str, Any] = None,
+        focus_metrics: List[str] = None,
+        time_range: str = None,
+    ) -> Dict[str, Any]:
+        """
+        AI 인사이트 생성 (Executive Summary)
+        AWS QuickSight GenBI 스타일의 Fact/Reasoning/Action 구조
+        """
+        from anthropic import Anthropic
+        from app.config import settings
+
+        try:
+            client = Anthropic(api_key=settings.anthropic_api_key)
+
+            system_prompt = """당신은 제조 데이터 분석 전문가입니다.
+주어진 데이터를 분석하여 AWS QuickSight GenBI 스타일의 Executive Summary를 생성합니다.
+
+## 출력 형식
+반드시 다음 JSON 형식으로 출력하세요:
+
+```json
+{
+  "title": "인사이트 제목",
+  "summary": "핵심 요약 (1-2문장)",
+  "facts": [
+    {
+      "metric_name": "메트릭 이름",
+      "current_value": 숫자,
+      "change_percent": 변화율 또는 null,
+      "trend": "up" | "down" | "stable",
+      "period": "측정 기간",
+      "unit": "단위"
+    }
+  ],
+  "reasoning": {
+    "analysis": "분석 내용 (2-3문장)",
+    "contributing_factors": ["원인1", "원인2"],
+    "confidence": 0.0 ~ 1.0
+  },
+  "actions": [
+    {
+      "priority": "high" | "medium" | "low",
+      "action": "권장 조치",
+      "expected_impact": "예상 효과"
+    }
+  ]
+}
+```
+
+## 제조 도메인 임계값
+- 온도: 70°C 초과 주의, 80°C 초과 위험
+- 압력: 8 bar 초과 주의, 10 bar 초과 위험
+- 생산 효율: 90% 이상 목표
+"""
+
+            data_str = json.dumps(data[:50], indent=2, ensure_ascii=False, default=str)
+
+            user_message = f"""다음 데이터를 분석하여 Executive Summary를 생성해주세요.
+
+## 데이터
+```json
+{data_str}
+```
+
+## 분석 기간
+{time_range or "최근 24시간"}
+"""
+
+            if focus_metrics:
+                user_message += f"\n## 집중 분석 메트릭\n{', '.join(focus_metrics)}\n"
+
+            if chart_config:
+                user_message += f"\n## 차트 정보\n유형: {chart_config.get('type', 'unknown')}\n목적: {chart_config.get('analysis_goal', 'N/A')}\n"
+
+            response = client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=2048,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
+
+            content = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    content += block.text
+
+            # JSON 파싱
+            json_start = content.find("{")
+            json_end = content.rfind("}") + 1
+            if json_start != -1 and json_end > json_start:
+                insight = json.loads(content[json_start:json_end])
+
+                logger.info(
+                    f"Insight generated: {len(insight.get('facts', []))} facts, "
+                    f"{len(insight.get('actions', []))} actions"
+                )
+
+                return {
+                    "success": True,
+                    "insight": insight,
+                }
+            else:
+                raise ValueError("No valid JSON in response")
+
+        except Exception as e:
+            logger.error(f"Insight generation error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "insight": {
+                    "title": "분석 오류",
+                    "summary": str(e),
+                    "facts": [],
+                    "reasoning": {"analysis": "분석을 완료할 수 없습니다.", "contributing_factors": [], "confidence": 0},
+                    "actions": [],
+                },
             }

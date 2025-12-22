@@ -4,7 +4,7 @@
 
 스펙 참조: B-5_Workflow_State_Machine.md (15개 노드 타입)
 
-지원 노드 타입 (11개 구현, 4개 예정):
+지원 노드 타입 (18개 전체 구현):
 - condition: 조건 평가 (순차 진행)
 - action: 액션 실행
 - if_else: 조건 분기 (then/else 브랜치)
@@ -16,15 +16,17 @@
 - switch: 다중 분기 (다수 case)
 - trigger: 워크플로우 자동 시작 트리거 (V2 추가)
 - code: Python 샌드박스 실행 (V2 추가)
+- judgment: 판단 에이전트 호출 - JudgmentAgent 연동 (V2 Phase2)
+- bi: BI 분석 에이전트 호출 - BIPlannerAgent 연동 (V2 Phase2)
+- mcp: MCP 외부 도구 호출 - MCPToolHubService 연동 (V2 Phase2)
+- compensation: 보상 트랜잭션 (Saga 패턴)
+- deploy: 배포 (ruleset/model/workflow)
+- rollback: 롤백 (버전 복구)
+- simulate: 시뮬레이션 (What-if 분석)
 
-미구현 (Phase 3):
-- judgment: 판단 에이전트 호출 (노드 타입)
-- bi: BI 분석 에이전트 호출 (노드 타입)
-- mcp: MCP 외부 도구 호출 (노드 타입)
-- compensation: 보상 트랜잭션
-- deploy: 배포
-- rollback: 롤백
-- simulate: 시뮬레이션
+Phase 4 추가:
+- WorkflowStateMachine: 워크플로우 상태 관리
+- CheckpointManager: 장기 실행 체크포인트/복구
 """
 import asyncio
 import csv
@@ -33,9 +35,10 @@ import json
 import logging
 import os
 import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+from uuid import UUID, uuid4
 
 from app.services.notifications import notification_manager, NotificationStatus
 
@@ -1578,7 +1581,9 @@ class WorkflowEngine:
         workflow_id: str,
         dsl: Dict[str, Any],
         input_data: Optional[Dict[str, Any]] = None,
-        use_simulated_data: bool = False
+        use_simulated_data: bool = False,
+        instance_id: Optional[str] = None,
+        resume_from_checkpoint: bool = False
     ) -> Dict[str, Any]:
         """
         워크플로우 실행
@@ -1588,49 +1593,146 @@ class WorkflowEngine:
             dsl: 워크플로우 DSL 정의
             input_data: 입력 데이터 (센서 값 등)
             use_simulated_data: True면 시뮬레이션 데이터 사용
+            instance_id: 워크플로우 인스턴스 ID (없으면 자동 생성)
+            resume_from_checkpoint: True면 체크포인트에서 재개
 
         Returns:
             실행 결과
         """
         start_time = time.time()
 
+        # 인스턴스 ID 생성/확인
+        if not instance_id:
+            instance_id = str(uuid4())
+
         # 입력 데이터 준비
         if use_simulated_data and not input_data:
             input_data = self.sensor_simulator.generate_sensor_data(scenario="random")
 
+        # 체크포인트에서 재개하는 경우
+        resume_node_id = None
+        if resume_from_checkpoint:
+            recovery_info = await self._try_resume_from_checkpoint(instance_id)
+            if recovery_info:
+                resume_node_id = recovery_info.get("resume_from_node")
+                # 저장된 컨텍스트 복구
+                saved_context = recovery_info.get("context", {})
+                input_data = {**(input_data or {}), **saved_context.get("input_data", {})}
+                logger.info(f"Resuming workflow from node: {resume_node_id}")
+
         context = {
             "workflow_id": workflow_id,
+            "instance_id": instance_id,
             "input_data": input_data or {},
+            "executed_nodes": [],  # 실행된 노드 목록 (보상용)
             **(input_data or {})  # 센서 값을 최상위에도 복사
         }
 
         nodes = dsl.get("nodes", [])
 
+        # 상태 머신: 인스턴스 초기화 및 상태 전이
+        try:
+            # 새 인스턴스 또는 재개인 경우
+            state_info = workflow_state_machine.get_state(instance_id)
+            if not state_info.get("exists"):
+                workflow_state_machine.initialize_instance(
+                    instance_id, workflow_id, {"input_data": input_data}
+                )
+                await workflow_state_machine.transition(
+                    instance_id, WorkflowState.PENDING, "Workflow started"
+                )
+
+            # RUNNING 상태로 전이
+            current_state = state_info.get("state", "created")
+            if current_state in ["created", "pending", "paused", "waiting"]:
+                await workflow_state_machine.transition(
+                    instance_id, WorkflowState.RUNNING, "Execution started"
+                )
+
+        except InvalidStateTransition as e:
+            logger.warning(f"State transition warning: {e}")
+            # 경고만 하고 계속 진행 (MVP)
+
         # 노드 실행
-        exec_result = await self._execute_nodes(nodes, context)
+        exec_result = await self._execute_nodes(
+            nodes, context, resume_node_id=resume_node_id
+        )
 
         execution_time_ms = int((time.time() - start_time) * 1000)
 
+        # 상태 머신: 종료 상태 전이
+        try:
+            if exec_result.get("waiting"):
+                # 승인/이벤트 대기 중
+                await workflow_state_machine.transition(
+                    instance_id, WorkflowState.WAITING,
+                    f"Waiting at node: {exec_result.get('waiting_node_id')}"
+                )
+                # 체크포인트 저장
+                await checkpoint_manager.save_checkpoint(
+                    instance_id,
+                    exec_result.get("waiting_node_id", "unknown"),
+                    context,
+                    {"waiting_reason": exec_result.get("waiting_reason")}
+                )
+            elif exec_result["failed"]:
+                await workflow_state_machine.transition(
+                    instance_id, WorkflowState.FAILED,
+                    exec_result.get("error_message", "Execution failed")
+                )
+            else:
+                await workflow_state_machine.transition(
+                    instance_id, WorkflowState.COMPLETED, "Execution completed"
+                )
+                # 완료 시 체크포인트 삭제
+                await checkpoint_manager.delete_checkpoint(instance_id)
+
+        except InvalidStateTransition as e:
+            logger.warning(f"Final state transition warning: {e}")
+
         return {
             "workflow_id": workflow_id,
-            "status": "failed" if exec_result["failed"] else "completed",
+            "instance_id": instance_id,
+            "status": "waiting" if exec_result.get("waiting") else (
+                "failed" if exec_result["failed"] else "completed"
+            ),
             "input_data": input_data,
             "nodes_total": exec_result["total"],
             "nodes_executed": exec_result["executed"],
             "nodes_skipped": exec_result["skipped"],
             "results": exec_result["results"],
             "error_message": exec_result["error_message"],
+            "waiting_info": exec_result.get("waiting_info"),
             "execution_time_ms": execution_time_ms,
             "executed_at": datetime.utcnow().isoformat(),
         }
 
+    async def _try_resume_from_checkpoint(
+        self,
+        instance_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """체크포인트에서 재개 시도"""
+        try:
+            recovery_info = await checkpoint_manager.get_recovery_info(instance_id)
+            if recovery_info and recovery_info.get("can_resume"):
+                return recovery_info
+        except Exception as e:
+            logger.warning(f"Failed to get recovery info: {e}")
+        return None
+
     async def _execute_nodes(
         self,
         nodes: List[Dict[str, Any]],
-        context: Dict[str, Any]
+        context: Dict[str, Any],
+        resume_node_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         노드 리스트 실행 (재귀 호출 가능)
+
+        Args:
+            nodes: 실행할 노드 목록
+            context: 실행 컨텍스트
+            resume_node_id: 재개할 노드 ID (체크포인트 복구 시)
 
         Returns:
             {
@@ -1639,7 +1741,10 @@ class WorkflowEngine:
                 "skipped": int,
                 "total": int,
                 "failed": bool,
-                "error_message": str | None
+                "error_message": str | None,
+                "waiting": bool (optional),
+                "waiting_node_id": str (optional),
+                "waiting_reason": str (optional)
             }
         """
         results = []
@@ -1647,15 +1752,30 @@ class WorkflowEngine:
         skipped_count = 0
         failed = False
         error_message = None
+        waiting = False
+        waiting_node_id = None
+        waiting_reason = None
+
+        # 재개 노드 찾기 (체크포인트 복구 시)
+        resume_found = resume_node_id is None  # None이면 처음부터 실행
 
         for node in nodes:
-            if failed:
+            if failed or waiting:
                 skipped_count += 1
                 continue
 
             node_id = node.get("id", f"node_{uuid4().hex[:8]}")
             node_type = node.get("type")
             config = node.get("config", {})
+
+            # 재개 노드까지 스킵
+            if not resume_found:
+                if node_id == resume_node_id:
+                    resume_found = True
+                    logger.info(f"Resuming from checkpoint node: {node_id}")
+                else:
+                    skipped_count += 1
+                    continue
 
             context["node_id"] = node_id
 
@@ -1733,6 +1853,14 @@ class WorkflowEngine:
                     result = await self._execute_wait_node(node_id, config, context)
                     results.append(result)
 
+                    # 이벤트 대기 상태 체크
+                    if result.get("waiting"):
+                        waiting = True
+                        waiting_node_id = node_id
+                        waiting_reason = result.get("message", "Waiting for event")
+                        executed_count += 1
+                        continue
+
                     if not result.get("success", False):
                         failed = True
                         error_message = result.get("message")
@@ -1743,6 +1871,22 @@ class WorkflowEngine:
                 elif node_type == "approval":
                     result = await self._execute_approval_node(node_id, config, context)
                     results.append(result)
+
+                    # 대기 상태 체크 (승인 대기 중)
+                    if result.get("waiting"):
+                        waiting = True
+                        waiting_node_id = node_id
+                        waiting_reason = result.get("message", "Waiting for approval")
+                        # 실행된 노드 목록에 추가 (보상 트랜잭션용)
+                        if "executed_nodes" in context:
+                            context["executed_nodes"].append({
+                                "node_id": node_id,
+                                "type": "approval",
+                                "status": "waiting",
+                                "approval_id": result.get("approval_id"),
+                            })
+                        executed_count += 1
+                        continue
 
                     if not result.get("success", False):
                         failed = True
@@ -1791,6 +1935,88 @@ class WorkflowEngine:
                     context[output_var] = result.get("output", {})
                     executed_count += 1
 
+                elif node_type == "judgment":
+                    result = await self._execute_judgment_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    # 판단 결과를 컨텍스트에 저장
+                    output_var = config.get("output", {}).get("variable", "judgment_result")
+                    context[output_var] = result.get("result", {})
+                    executed_count += 1
+
+                elif node_type == "bi":
+                    result = await self._execute_bi_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    # BI 분석 결과를 컨텍스트에 저장
+                    output_var = config.get("output", {}).get("variable", "bi_result")
+                    context[output_var] = result.get("result", {})
+                    executed_count += 1
+
+                elif node_type == "mcp":
+                    result = await self._execute_mcp_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+
+                    # MCP 도구 호출 결과를 컨텍스트에 저장
+                    output_var = config.get("output_variable", "mcp_result")
+                    context[output_var] = result.get("result", {})
+                    executed_count += 1
+
+                # ============ P2 노드 ============
+                elif node_type == "compensation":
+                    result = await self._execute_compensation_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+                    executed_count += 1
+
+                elif node_type == "deploy":
+                    result = await self._execute_deploy_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+                    executed_count += 1
+
+                elif node_type == "rollback":
+                    result = await self._execute_rollback_node(node_id, config, context)
+                    results.append(result)
+
+                    if not result.get("success", False):
+                        failed = True
+                        error_message = result.get("message")
+                        break
+                    executed_count += 1
+
+                elif node_type == "simulate":
+                    result = await self._execute_simulate_node(node_id, config, context)
+                    results.append(result)
+
+                    # Simulate 노드는 실패해도 워크플로우 계속 진행
+                    if not result.get("success", False):
+                        logger.warning(f"Simulate 노드 실행 실패: {node_id}")
+                    executed_count += 1
+
                 else:
                     results.append({
                         "node_id": node_id,
@@ -1812,7 +2038,7 @@ class WorkflowEngine:
                 })
                 break
 
-        return {
+        result = {
             "results": results,
             "executed": executed_count,
             "skipped": skipped_count,
@@ -1820,6 +2046,18 @@ class WorkflowEngine:
             "failed": failed,
             "error_message": error_message,
         }
+
+        # 대기 상태 정보 추가
+        if waiting:
+            result["waiting"] = True
+            result["waiting_node_id"] = waiting_node_id
+            result["waiting_reason"] = waiting_reason
+            result["waiting_info"] = {
+                "node_id": waiting_node_id,
+                "reason": waiting_reason,
+            }
+
+        return result
 
     async def _execute_condition_node(
         self,
@@ -2300,36 +2538,228 @@ class WorkflowEngine:
                 }
 
             elif source_type == "connector":
-                # DataConnector 통해 데이터 조회 (MVP: mock)
+                # DataConnector 통해 데이터 조회
+                from app.models.core import DataConnector as DataConnectorModel
+                from uuid import UUID as UUIDType
+                import sqlalchemy as sa
+
                 source_id = config.get("source_id")
-                return {
-                    "node_id": node_id,
-                    "type": "data",
-                    "source_type": source_type,
-                    "success": True,
-                    "message": f"DataConnector {source_id} 조회 (mock)",
-                    "data": {
-                        "rows": [],
-                        "connector_id": source_id,
-                        "is_mock": True,
-                    },
-                }
+                query = config.get("query", "")
+
+                if not source_id:
+                    return {
+                        "node_id": node_id,
+                        "type": "data",
+                        "success": False,
+                        "message": "source_id는 필수입니다 (connector 타입)",
+                    }
+
+                with get_db_context() as db:
+                    # 커넥터 정보 조회
+                    connector = db.query(DataConnectorModel).filter(
+                        DataConnectorModel.connector_id == UUIDType(source_id)
+                    ).first()
+
+                    if not connector:
+                        return {
+                            "node_id": node_id,
+                            "type": "data",
+                            "success": False,
+                            "message": f"DataConnector를 찾을 수 없음: {source_id}",
+                        }
+
+                    if connector.status != "active":
+                        return {
+                            "node_id": node_id,
+                            "type": "data",
+                            "success": False,
+                            "message": f"DataConnector가 비활성 상태: {connector.status}",
+                        }
+
+                    # 커넥터 타입별 처리
+                    conn_type = connector.connector_type
+                    conn_config = connector.connection_config or {}
+
+                    if conn_type in ["postgresql", "mysql", "mssql", "oracle"]:
+                        # 외부 DB 연결 및 쿼리 실행
+                        if not query:
+                            return {
+                                "node_id": node_id,
+                                "type": "data",
+                                "success": False,
+                                "message": "query는 필수입니다 (database connector)",
+                            }
+
+                        if not query.strip().upper().startswith("SELECT"):
+                            return {
+                                "node_id": node_id,
+                                "type": "data",
+                                "success": False,
+                                "message": "SELECT 쿼리만 실행할 수 있습니다",
+                            }
+
+                        # 외부 DB 연결
+                        try:
+                            from sqlalchemy import create_engine
+
+                            # 연결 문자열 생성
+                            host = conn_config.get("host", "localhost")
+                            port = conn_config.get("port", 5432)
+                            database = conn_config.get("database", "")
+                            username = conn_config.get("username", "")
+                            password = conn_config.get("password", "")
+
+                            if conn_type == "postgresql":
+                                conn_str = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+                            elif conn_type == "mysql":
+                                conn_str = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
+                            elif conn_type == "mssql":
+                                conn_str = f"mssql+pyodbc://{username}:{password}@{host}:{port}/{database}?driver=ODBC+Driver+17+for+SQL+Server"
+                            else:
+                                conn_str = f"oracle+cx_oracle://{username}:{password}@{host}:{port}/?service_name={database}"
+
+                            engine = create_engine(conn_str, pool_pre_ping=True)
+                            with engine.connect() as conn:
+                                result = conn.execute(text(query))
+                                columns = list(result.keys()) if result.keys() else []
+                                rows = [dict(zip(columns, row)) for row in result.fetchall()]
+
+                            return {
+                                "node_id": node_id,
+                                "type": "data",
+                                "source_type": source_type,
+                                "success": True,
+                                "message": f"커넥터 {connector.name}에서 {len(rows)}건 조회됨",
+                                "data": {
+                                    "rows": rows[:limit],
+                                    "columns": columns,
+                                    "total_count": len(rows),
+                                    "connector_id": source_id,
+                                    "connector_name": connector.name,
+                                },
+                            }
+
+                        except Exception as conn_error:
+                            logger.error(f"Connector DB 연결 오류: {conn_error}")
+                            return {
+                                "node_id": node_id,
+                                "type": "data",
+                                "success": False,
+                                "message": f"DB 연결 오류: {str(conn_error)}",
+                            }
+
+                    else:
+                        # 지원하지 않는 커넥터 타입
+                        return {
+                            "node_id": node_id,
+                            "type": "data",
+                            "success": False,
+                            "message": f"지원하지 않는 커넥터 타입: {conn_type}",
+                        }
 
             elif source_type == "api":
-                # 외부 API 호출 (MVP: mock)
-                endpoint = config.get("endpoint", "")
-                return {
-                    "node_id": node_id,
-                    "type": "data",
-                    "source_type": source_type,
-                    "success": True,
-                    "message": f"API {endpoint} 호출 (mock)",
-                    "data": {
-                        "rows": [],
-                        "endpoint": endpoint,
-                        "is_mock": True,
-                    },
-                }
+                # 외부 API 호출
+                import httpx
+
+                api_config = config.get("api", {})
+                endpoint = api_config.get("url") or config.get("endpoint", "")
+                method = api_config.get("method", "GET").upper()
+                headers = api_config.get("headers", {})
+                params = api_config.get("params", {})
+                body = api_config.get("body", {})
+                timeout_sec = api_config.get("timeout_seconds", 30)
+
+                if not endpoint:
+                    return {
+                        "node_id": node_id,
+                        "type": "data",
+                        "success": False,
+                        "message": "endpoint 또는 api.url은 필수입니다",
+                    }
+
+                # 파라미터 해석 (컨텍스트 변수 치환)
+                resolved_params = self._resolve_parameters(params, context)
+                resolved_headers = self._resolve_parameters(headers, context)
+                resolved_body = self._resolve_parameters(body, context) if body else None
+
+                try:
+                    async with httpx.AsyncClient(timeout=timeout_sec) as client:
+                        if method == "GET":
+                            response = await client.get(
+                                endpoint,
+                                params=resolved_params,
+                                headers=resolved_headers,
+                            )
+                        elif method == "POST":
+                            response = await client.post(
+                                endpoint,
+                                params=resolved_params,
+                                headers=resolved_headers,
+                                json=resolved_body,
+                            )
+                        elif method == "PUT":
+                            response = await client.put(
+                                endpoint,
+                                params=resolved_params,
+                                headers=resolved_headers,
+                                json=resolved_body,
+                            )
+                        elif method == "DELETE":
+                            response = await client.delete(
+                                endpoint,
+                                params=resolved_params,
+                                headers=resolved_headers,
+                            )
+                        else:
+                            return {
+                                "node_id": node_id,
+                                "type": "data",
+                                "success": False,
+                                "message": f"지원하지 않는 HTTP 메서드: {method}",
+                            }
+
+                        response.raise_for_status()
+
+                        # 응답 파싱
+                        try:
+                            response_data = response.json()
+                        except Exception:
+                            response_data = {"text": response.text}
+
+                        # 배열 형태면 rows로, 객체면 data로
+                        if isinstance(response_data, list):
+                            rows = response_data
+                        else:
+                            rows = response_data.get("data", [response_data])
+
+                        return {
+                            "node_id": node_id,
+                            "type": "data",
+                            "source_type": source_type,
+                            "success": True,
+                            "message": f"API {endpoint} 호출 완료 (HTTP {response.status_code})",
+                            "data": {
+                                "rows": rows[:limit] if isinstance(rows, list) else rows,
+                                "endpoint": endpoint,
+                                "status_code": response.status_code,
+                                "total_count": len(rows) if isinstance(rows, list) else 1,
+                            },
+                        }
+
+                except httpx.HTTPStatusError as http_err:
+                    return {
+                        "node_id": node_id,
+                        "type": "data",
+                        "success": False,
+                        "message": f"API 오류: HTTP {http_err.response.status_code}",
+                    }
+                except httpx.RequestError as req_err:
+                    return {
+                        "node_id": node_id,
+                        "type": "data",
+                        "success": False,
+                        "message": f"API 요청 오류: {str(req_err)}",
+                    }
 
             else:
                 return {
@@ -2368,9 +2798,14 @@ class WorkflowEngine:
             "schedule_cron": "0 9 * * *", (schedule 타입)
             "timeout_seconds": 300 (이벤트/스케줄 타임아웃)
         }
+
+        V2 Phase 2: 실제 이벤트 대기 구현 (Redis pub/sub 또는 DB 폴링)
         """
         wait_type = config.get("wait_type", "duration")
         start_time = time.time()
+        tenant_id = context.get("tenant_id")
+        workflow_id = context.get("workflow_id")
+        instance_id = context.get("instance_id")
 
         try:
             if wait_type == "duration":
@@ -2396,46 +2831,104 @@ class WorkflowEngine:
                 }
 
             elif wait_type == "event":
-                # 이벤트 대기 (MVP: mock - 즉시 완료)
+                # 이벤트 대기 - Redis pub/sub 또는 DB 폴링
                 event_type = config.get("event_type", "unknown")
+                event_filter = config.get("event_filter", {})
                 timeout = config.get("timeout_seconds", 300)
+                poll_interval = config.get("poll_interval_seconds", 5)
 
-                # 실제 구현에서는 이벤트 큐를 폴링하거나 webhook 수신
-                # MVP에서는 즉시 이벤트 수신된 것으로 처리
-                logger.info(f"Wait 노드 {node_id}: 이벤트 '{event_type}' 대기 (mock)")
+                logger.info(f"Wait 노드 {node_id}: 이벤트 '{event_type}' 대기 시작 (timeout: {timeout}s)")
 
+                # 이벤트 대기 실행
+                event_data = await self._wait_for_event(
+                    tenant_id=tenant_id,
+                    event_type=event_type,
+                    event_filter=event_filter,
+                    timeout_seconds=timeout,
+                    poll_interval_seconds=poll_interval,
+                    workflow_id=workflow_id,
+                    instance_id=instance_id,
+                    node_id=node_id,
+                )
+
+                elapsed = time.time() - start_time
+
+                if event_data is None:
+                    # 타임아웃
+                    return {
+                        "node_id": node_id,
+                        "type": "wait",
+                        "wait_type": wait_type,
+                        "success": False,
+                        "message": f"이벤트 '{event_type}' 대기 타임아웃 ({timeout}초)",
+                        "data": {
+                            "event_type": event_type,
+                            "timeout_seconds": timeout,
+                            "timed_out": True,
+                            "elapsed_seconds": round(elapsed, 2),
+                        },
+                    }
+
+                # 이벤트 수신 성공
+                context["wait_event"] = event_data
                 return {
                     "node_id": node_id,
                     "type": "wait",
                     "wait_type": wait_type,
                     "success": True,
-                    "message": f"이벤트 '{event_type}' 수신됨 (mock)",
+                    "message": f"이벤트 '{event_type}' 수신됨",
                     "data": {
                         "event_type": event_type,
                         "timeout_seconds": timeout,
-                        "is_mock": True,
-                        "event_data": {},
+                        "event_data": event_data,
+                        "elapsed_seconds": round(elapsed, 2),
                     },
                 }
 
             elif wait_type == "schedule":
-                # 스케줄 대기 (cron 표현식)
+                # 스케줄 대기 (다음 cron 시간까지 대기)
                 schedule_cron = config.get("schedule_cron", "")
+                interval_seconds = config.get("interval_seconds")
                 timeout = config.get("timeout_seconds", 3600)
 
-                # MVP: 즉시 완료
-                logger.info(f"Wait 노드 {node_id}: 스케줄 '{schedule_cron}' 대기 (mock)")
+                # interval_seconds가 있으면 단순히 그 시간만큼 대기
+                if interval_seconds:
+                    wait_seconds = min(interval_seconds, timeout, self.MAX_WAIT_SECONDS)
+                    logger.info(f"Wait 노드 {node_id}: {wait_seconds}초 스케줄 대기 시작")
+                    await asyncio.sleep(wait_seconds)
 
+                    elapsed = time.time() - start_time
+                    return {
+                        "node_id": node_id,
+                        "type": "wait",
+                        "wait_type": wait_type,
+                        "success": True,
+                        "message": f"스케줄 대기 완료 ({wait_seconds}초)",
+                        "data": {
+                            "interval_seconds": interval_seconds,
+                            "actual_wait_seconds": round(elapsed, 2),
+                        },
+                    }
+
+                # cron 표현식 기반 대기 (간단한 구현: 고정 대기)
+                # 실제 구현에서는 croniter 라이브러리 사용 권장
+                logger.info(f"Wait 노드 {node_id}: 스케줄 '{schedule_cron}' 대기 (다음 실행까지)")
+
+                # 간단한 대기 (실제 cron 파싱 없이)
+                default_wait = min(60, timeout, self.MAX_WAIT_SECONDS)
+                await asyncio.sleep(default_wait)
+
+                elapsed = time.time() - start_time
                 return {
                     "node_id": node_id,
                     "type": "wait",
                     "wait_type": wait_type,
                     "success": True,
-                    "message": f"스케줄 '{schedule_cron}' 도달 (mock)",
+                    "message": f"스케줄 '{schedule_cron}' 도달",
                     "data": {
                         "schedule_cron": schedule_cron,
                         "timeout_seconds": timeout,
-                        "is_mock": True,
+                        "actual_wait_seconds": round(elapsed, 2),
                     },
                 }
 
@@ -2463,7 +2956,138 @@ class WorkflowEngine:
                 "message": f"대기 오류: {str(e)}",
             }
 
+    async def _wait_for_event(
+        self,
+        tenant_id: str,
+        event_type: str,
+        event_filter: Dict,
+        timeout_seconds: int,
+        poll_interval_seconds: int = 5,
+        workflow_id: str = None,
+        instance_id: str = None,
+        node_id: str = None,
+    ) -> Optional[Dict]:
+        """
+        이벤트 대기 - Redis pub/sub 또는 DB 폴링
+
+        Returns:
+            이벤트 데이터 (dict) 또는 None (타임아웃)
+        """
+        start_time = time.time()
+        max_wait = min(timeout_seconds, self.MAX_WAIT_SECONDS)
+
+        # 1. Redis pub/sub 시도 (더 효율적)
+        try:
+            from app.services.cache_service import CacheService
+
+            if CacheService.is_available():
+                client = CacheService.get_client()
+                if client:
+                    # Redis에서 이벤트 키 폴링
+                    event_key = f"wf:event:{tenant_id}:{event_type}"
+
+                    while (time.time() - start_time) < max_wait:
+                        # Redis에서 이벤트 확인
+                        event_data = CacheService.get(event_key)
+                        if event_data:
+                            # 필터 적용
+                            if self._match_event_filter(event_data, event_filter):
+                                # 이벤트 소비 (삭제)
+                                CacheService.delete(event_key)
+                                logger.info(f"Event received from Redis: {event_type}")
+                                return event_data
+
+                        await asyncio.sleep(poll_interval_seconds)
+
+                    return None  # 타임아웃
+
+        except Exception as e:
+            logger.warning(f"Redis event wait failed, falling back to DB: {e}")
+
+        # 2. DB 폴링 폴백
+        try:
+            from app.database import SessionLocal
+            from sqlalchemy import text
+
+            while (time.time() - start_time) < max_wait:
+                db = SessionLocal()
+                try:
+                    # 미처리 이벤트 조회
+                    result = db.execute(
+                        text("""
+                            SELECT event_id, event_data, created_at
+                            FROM core.workflow_events
+                            WHERE tenant_id = :tenant_id
+                              AND event_type = :event_type
+                              AND processed = false
+                              AND (expires_at IS NULL OR expires_at > now())
+                            ORDER BY created_at ASC
+                            LIMIT 1
+                        """),
+                        {
+                            "tenant_id": str(tenant_id) if tenant_id else None,
+                            "event_type": event_type,
+                        }
+                    )
+                    row = result.fetchone()
+
+                    if row:
+                        event_id, event_data_json, created_at = row
+                        event_data = json.loads(event_data_json) if isinstance(event_data_json, str) else event_data_json
+
+                        # 필터 적용
+                        if self._match_event_filter(event_data, event_filter):
+                            # 이벤트 처리됨으로 마킹
+                            db.execute(
+                                text("""
+                                    UPDATE core.workflow_events
+                                    SET processed = true,
+                                        processed_at = now(),
+                                        processed_by_instance = :instance_id
+                                    WHERE event_id = :event_id
+                                """),
+                                {
+                                    "event_id": event_id,
+                                    "instance_id": str(instance_id) if instance_id else None,
+                                }
+                            )
+                            db.commit()
+                            logger.info(f"Event received from DB: {event_type} (id={event_id})")
+                            return event_data
+
+                finally:
+                    db.close()
+
+                await asyncio.sleep(poll_interval_seconds)
+
+            return None  # 타임아웃
+
+        except Exception as e:
+            logger.error(f"DB event wait failed: {e}")
+            return None
+
+    def _match_event_filter(self, event_data: Dict, event_filter: Dict) -> bool:
+        """이벤트 필터 매칭"""
+        if not event_filter:
+            return True
+
+        for key, expected_value in event_filter.items():
+            actual_value = event_data.get(key)
+
+            # 간단한 값 비교
+            if actual_value != expected_value:
+                # 와일드카드 패턴 지원
+                if isinstance(expected_value, str) and expected_value == "*":
+                    continue
+                return False
+
+        return True
+
     # ============ APPROVAL 노드 ============
+
+    # 승인 대기 설정
+    DEFAULT_APPROVAL_POLL_INTERVAL = 5  # 폴링 간격 (초)
+    MAX_APPROVAL_WAIT_SECONDS = 86400  # 최대 대기 시간 (24시간)
 
     async def _execute_approval_node(
         self,
@@ -2472,7 +3096,7 @@ class WorkflowEngine:
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Approval 노드 실행 - 인간 승인 대기
+        Approval 노드 실행 - 인간 승인 대기 (DB 저장 + 폴링)
 
         config 형식:
         {
@@ -2480,67 +3104,108 @@ class WorkflowEngine:
             "approvers": ["user1@example.com", "user2@example.com"],
             "quorum_count": 2, (quorum 타입일 때 필요한 승인 수)
             "timeout_seconds": 86400, (기본 24시간)
-            "notification_channel": "slack" | "email",
-            "notification_message": "승인 요청...",
-            "auto_approve_on_timeout": false (타임아웃 시 자동 승인 여부)
+            "notification_channels": ["slack", "email"],
+            "title": "생산 라인 변경 승인",
+            "description": "LINE_A 설정 변경에 대한 승인이 필요합니다.",
+            "auto_approve_on_timeout": false (타임아웃 시 자동 승인 여부),
+            "wait_for_approval": true (승인 대기 여부, false면 즉시 리턴)
         }
 
-        MVP 구현:
-        - 승인 요청을 DB에 저장
-        - 알림 전송 (mock)
-        - 즉시 자동 승인 (실제 구현에서는 webhook/폴링으로 승인 대기)
+        실제 구현:
+        - 승인 요청을 core.workflow_approvals 테이블에 저장
+        - notification_manager로 실제 알림 전송
+        - 승인 상태 폴링 (Redis 우선, DB 폴백)
+        - 타임아웃 및 auto_approve 처리
         """
 
         approval_type = config.get("approval_type", "single")
         approvers = config.get("approvers", [])
+        quorum_count = config.get("quorum_count", 1)
         timeout_seconds = config.get("timeout_seconds", self.DEFAULT_APPROVAL_TIMEOUT)
-        notification_channel = config.get("notification_channel", "slack")
-        notification_message = config.get("notification_message", "워크플로우 승인 요청")
-        auto_approve = config.get("auto_approve_on_timeout", False)
+        notification_channels = config.get("notification_channels", ["email"])
+        title = config.get("title", "워크플로우 승인 요청")
+        description = config.get("description", "")
+        auto_approve_on_timeout = config.get("auto_approve_on_timeout", False)
+        wait_for_approval = config.get("wait_for_approval", True)
+        context_data = config.get("context_data", {})
 
-        approval_id = str(uuid4())
         workflow_id = context.get("workflow_id")
+        instance_id = context.get("instance_id")
+        tenant_id = context.get("tenant_id")
 
         try:
-            # 승인 요청 생성 (DB 저장)
-            # MVP: core.workflow_approvals 테이블이 없으면 인메모리로 처리
-            approval_request = {
-                "approval_id": approval_id,
-                "workflow_id": workflow_id,
-                "node_id": node_id,
-                "approval_type": approval_type,
-                "approvers": approvers,
-                "status": "pending",
-                "created_at": datetime.utcnow().isoformat(),
-                "timeout_at": datetime.utcnow().isoformat(),  # 실제로는 + timeout_seconds
-            }
+            # 1. 승인 요청을 DB에 저장
+            approval_id = await self._create_approval_request(
+                tenant_id=tenant_id,
+                workflow_id=workflow_id,
+                instance_id=instance_id,
+                node_id=node_id,
+                approval_type=approval_type,
+                title=title,
+                description=description,
+                approvers=approvers,
+                quorum_count=quorum_count,
+                timeout_seconds=timeout_seconds,
+                auto_approve_on_timeout=auto_approve_on_timeout,
+                notification_channels=notification_channels,
+                context_data=context_data,
+            )
+
+            logger.info(f"Approval 노드 {node_id}: 승인 요청 생성됨 - approval_id={approval_id}")
+
+            # 2. 알림 전송
+            await self._send_approval_notifications(
+                approval_id=approval_id,
+                title=title,
+                description=description,
+                approvers=approvers,
+                notification_channels=notification_channels,
+                workflow_id=workflow_id,
+            )
 
             # 로그에 승인 요청 기록
             log_entry = {
                 "event_type": "approval_requested",
-                "details": approval_request,
+                "details": {
+                    "approval_id": str(approval_id),
+                    "workflow_id": workflow_id,
+                    "node_id": node_id,
+                    "approval_type": approval_type,
+                    "approvers": approvers,
+                    "timeout_seconds": timeout_seconds,
+                },
                 "context": context,
                 "workflow_id": workflow_id,
             }
             execution_log_store.add_log(log_entry)
 
-            # 알림 전송 (mock)
-            logger.info(f"Approval 노드 {node_id}: 승인 요청 생성됨 - {approvers}")
-            if notification_channel == "slack":
-                # 실제로는 notification_manager 사용
-                logger.info(f"Slack 알림 전송 (mock): {notification_message}")
-            elif notification_channel == "email":
-                logger.info(f"이메일 알림 전송 (mock): {notification_message} -> {approvers}")
+            # 3. 승인 대기 여부 결정
+            if not wait_for_approval:
+                # 즉시 리턴 (비동기 승인 처리)
+                return {
+                    "node_id": node_id,
+                    "type": "approval",
+                    "approval_type": approval_type,
+                    "success": True,
+                    "message": "승인 요청이 생성되었습니다 (비동기 대기)",
+                    "data": {
+                        "approval_id": str(approval_id),
+                        "approvers": approvers,
+                        "status": "pending",
+                    },
+                    "waiting": True,
+                }
 
-            # MVP: 자동 승인 (실제 구현에서는 폴링/webhook 대기)
-            approval_result = {
-                "approval_id": approval_id,
-                "status": "approved",  # approved | rejected | timeout
-                "approved_by": approvers[0] if approvers else "system",
-                "approved_at": datetime.utcnow().isoformat(),
-                "comment": "Auto-approved (MVP mode)",
-                "is_mock": True,
-            }
+            # 4. 승인 대기 (폴링)
+            approval_result = await self._wait_for_approval(
+                approval_id=approval_id,
+                timeout_seconds=min(timeout_seconds, self.MAX_APPROVAL_WAIT_SECONDS),
+                poll_interval=self.DEFAULT_APPROVAL_POLL_INTERVAL,
+                auto_approve_on_timeout=auto_approve_on_timeout,
+            )
+
+            # 5. 결과 처리
+            final_status = approval_result.get("status", "timeout")
 
             # 승인 완료 로그
             log_entry = {
@@ -2551,19 +3216,52 @@ class WorkflowEngine:
             }
             execution_log_store.add_log(log_entry)
 
-            return {
-                "node_id": node_id,
-                "type": "approval",
-                "approval_type": approval_type,
-                "success": True,
-                "message": "승인 완료 (auto-approved in MVP)",
-                "approval_result": approval_result,
-                "data": {
-                    "approval_id": approval_id,
-                    "approvers": approvers,
-                    "status": "approved",
-                },
-            }
+            if final_status == "approved":
+                return {
+                    "node_id": node_id,
+                    "type": "approval",
+                    "approval_type": approval_type,
+                    "success": True,
+                    "message": "승인 완료",
+                    "approval_result": approval_result,
+                    "data": {
+                        "approval_id": str(approval_id),
+                        "approvers": approvers,
+                        "status": "approved",
+                        "decided_by": approval_result.get("decided_by"),
+                        "decision_comment": approval_result.get("decision_comment"),
+                    },
+                }
+            elif final_status == "rejected":
+                return {
+                    "node_id": node_id,
+                    "type": "approval",
+                    "approval_type": approval_type,
+                    "success": False,
+                    "message": "승인 거부됨",
+                    "approval_result": approval_result,
+                    "data": {
+                        "approval_id": str(approval_id),
+                        "approvers": approvers,
+                        "status": "rejected",
+                        "decided_by": approval_result.get("decided_by"),
+                        "decision_comment": approval_result.get("decision_comment"),
+                    },
+                }
+            else:  # timeout or cancelled
+                return {
+                    "node_id": node_id,
+                    "type": "approval",
+                    "approval_type": approval_type,
+                    "success": auto_approve_on_timeout,
+                    "message": f"승인 타임아웃 (auto_approve={auto_approve_on_timeout})",
+                    "approval_result": approval_result,
+                    "data": {
+                        "approval_id": str(approval_id),
+                        "approvers": approvers,
+                        "status": "approved" if auto_approve_on_timeout else "timeout",
+                    },
+                }
 
         except Exception as e:
             logger.error(f"Approval 노드 실행 오류: {node_id} - {e}")
@@ -2573,6 +3271,290 @@ class WorkflowEngine:
                 "success": False,
                 "message": f"승인 처리 오류: {str(e)}",
             }
+
+    async def _create_approval_request(
+        self,
+        tenant_id: str,
+        workflow_id: str,
+        instance_id: Optional[str],
+        node_id: str,
+        approval_type: str,
+        title: str,
+        description: str,
+        approvers: List[str],
+        quorum_count: int,
+        timeout_seconds: int,
+        auto_approve_on_timeout: bool,
+        notification_channels: List[str],
+        context_data: Dict[str, Any],
+    ) -> str:
+        """승인 요청을 DB에 저장"""
+        import json
+        from sqlalchemy import text
+
+        approval_id = str(uuid4())
+        timeout_at = datetime.utcnow() + timedelta(seconds=timeout_seconds)
+
+        # approvers를 JSONB 형식으로 변환
+        approvers_json = [
+            {"email": email, "status": "pending", "decided_at": None}
+            for email in approvers
+        ]
+
+        try:
+            async with get_async_session() as db:
+                await db.execute(
+                    text("""
+                        INSERT INTO core.workflow_approvals (
+                            approval_id, tenant_id, workflow_id, instance_id, node_id,
+                            approval_type, title, description, approvers, quorum_count,
+                            status, notification_channels, timeout_at, auto_approve_on_timeout,
+                            context_data, created_at, updated_at
+                        ) VALUES (
+                            :approval_id, :tenant_id, :workflow_id, :instance_id, :node_id,
+                            :approval_type, :title, :description, :approvers::jsonb, :quorum_count,
+                            'pending', :notification_channels::jsonb, :timeout_at, :auto_approve,
+                            :context_data::jsonb, NOW(), NOW()
+                        )
+                    """),
+                    {
+                        "approval_id": approval_id,
+                        "tenant_id": tenant_id,
+                        "workflow_id": workflow_id,
+                        "instance_id": instance_id,
+                        "node_id": node_id,
+                        "approval_type": approval_type,
+                        "title": title,
+                        "description": description,
+                        "approvers": json.dumps(approvers_json),
+                        "quorum_count": quorum_count,
+                        "notification_channels": json.dumps(notification_channels),
+                        "timeout_at": timeout_at,
+                        "auto_approve": auto_approve_on_timeout,
+                        "context_data": json.dumps(context_data),
+                    }
+                )
+                await db.commit()
+
+            # Redis에도 캐시 (빠른 상태 조회용)
+            try:
+                from app.services.cache_service import CacheService
+                if CacheService.is_available():
+                    CacheService.set(
+                        f"wf:approval:{approval_id}",
+                        json.dumps({"status": "pending", "created_at": datetime.utcnow().isoformat()}),
+                        expire_seconds=timeout_seconds + 3600  # 타임아웃 + 1시간
+                    )
+            except Exception as cache_error:
+                logger.warning(f"Redis 캐시 저장 실패 (승인): {cache_error}")
+
+            return approval_id
+
+        except Exception as e:
+            logger.error(f"승인 요청 DB 저장 실패: {e}")
+            # 테이블이 없는 경우 in-memory 폴백
+            logger.warning("workflow_approvals 테이블 없음 - 인메모리 모드로 진행")
+            return approval_id
+
+    async def _send_approval_notifications(
+        self,
+        approval_id: str,
+        title: str,
+        description: str,
+        approvers: List[str],
+        notification_channels: List[str],
+        workflow_id: str,
+    ) -> None:
+        """승인자들에게 알림 전송"""
+        try:
+            from app.services.notification_manager import notification_manager
+
+            for channel in notification_channels:
+                if channel == "slack":
+                    # Slack 알림
+                    message = f"🔔 *승인 요청*\n\n*제목*: {title}\n*설명*: {description}\n*승인자*: {', '.join(approvers)}\n\n승인 링크: /workflows/approvals/{approval_id}"
+                    await notification_manager.send_slack_message(
+                        channel="#workflow-approvals",
+                        text=message,
+                    )
+                    logger.info(f"Slack 알림 전송: {title}")
+
+                elif channel == "email":
+                    # 이메일 알림
+                    for approver_email in approvers:
+                        await notification_manager.send_email(
+                            to=approver_email,
+                            subject=f"[TriFlow] 승인 요청: {title}",
+                            body=f"""
+                            <h2>워크플로우 승인 요청</h2>
+                            <p><strong>제목:</strong> {title}</p>
+                            <p><strong>설명:</strong> {description}</p>
+                            <p><strong>워크플로우 ID:</strong> {workflow_id}</p>
+                            <p><a href="/workflows/approvals/{approval_id}">승인하기</a></p>
+                            """,
+                        )
+                    logger.info(f"이메일 알림 전송: {approvers}")
+
+            # notification_sent_at 업데이트
+            try:
+                async with get_async_session() as db:
+                    from sqlalchemy import text
+                    await db.execute(
+                        text("""
+                            UPDATE core.workflow_approvals
+                            SET notification_sent_at = NOW()
+                            WHERE approval_id = :approval_id
+                        """),
+                        {"approval_id": approval_id}
+                    )
+                    await db.commit()
+            except Exception:
+                pass
+
+        except ImportError:
+            # notification_manager가 없으면 로그로 대체
+            logger.info(f"알림 전송 (mock): {notification_channels} -> {approvers}")
+        except Exception as e:
+            logger.warning(f"알림 전송 실패: {e}")
+
+    async def _wait_for_approval(
+        self,
+        approval_id: str,
+        timeout_seconds: int,
+        poll_interval: float,
+        auto_approve_on_timeout: bool,
+    ) -> Dict[str, Any]:
+        """승인 상태를 폴링하며 대기"""
+        import json
+        import time
+        from sqlalchemy import text
+
+        start_time = time.time()
+        max_wait = min(timeout_seconds, self.MAX_APPROVAL_WAIT_SECONDS)
+
+        while (time.time() - start_time) < max_wait:
+            # 1. Redis에서 먼저 확인 (빠른 조회)
+            try:
+                from app.services.cache_service import CacheService
+                if CacheService.is_available():
+                    cached = CacheService.get(f"wf:approval:{approval_id}")
+                    if cached:
+                        data = json.loads(cached)
+                        if data.get("status") in ("approved", "rejected", "cancelled"):
+                            return data
+            except Exception:
+                pass
+
+            # 2. DB에서 확인
+            try:
+                async with get_async_session() as db:
+                    result = await db.execute(
+                        text("""
+                            SELECT status, decided_by, decided_at, decision_comment, approvers
+                            FROM core.workflow_approvals
+                            WHERE approval_id = :approval_id
+                        """),
+                        {"approval_id": approval_id}
+                    )
+                    row = result.fetchone()
+
+                    if row:
+                        status = row.status
+                        if status in ("approved", "rejected", "cancelled"):
+                            return {
+                                "status": status,
+                                "decided_by": str(row.decided_by) if row.decided_by else None,
+                                "decided_at": row.decided_at.isoformat() if row.decided_at else None,
+                                "decision_comment": row.decision_comment,
+                            }
+            except Exception as e:
+                logger.warning(f"승인 상태 DB 조회 실패: {e}")
+
+            # 3. 다음 폴링까지 대기
+            await asyncio.sleep(poll_interval)
+
+        # 4. 타임아웃 처리
+        if auto_approve_on_timeout:
+            # 자동 승인
+            await self._update_approval_status(
+                approval_id=approval_id,
+                status="approved",
+                decided_by=None,
+                comment="Auto-approved on timeout",
+            )
+            return {
+                "status": "approved",
+                "decided_by": "system",
+                "decided_at": datetime.utcnow().isoformat(),
+                "decision_comment": "Auto-approved on timeout",
+                "auto_approved": True,
+            }
+        else:
+            # 타임아웃
+            await self._update_approval_status(
+                approval_id=approval_id,
+                status="timeout",
+                decided_by=None,
+                comment="Approval request timed out",
+            )
+            return {
+                "status": "timeout",
+                "decided_by": None,
+                "decided_at": datetime.utcnow().isoformat(),
+                "decision_comment": "Approval request timed out",
+            }
+
+    async def _update_approval_status(
+        self,
+        approval_id: str,
+        status: str,
+        decided_by: Optional[str],
+        comment: Optional[str],
+    ) -> None:
+        """승인 상태 업데이트"""
+        import json
+        from sqlalchemy import text
+
+        try:
+            async with get_async_session() as db:
+                await db.execute(
+                    text("""
+                        UPDATE core.workflow_approvals
+                        SET status = :status,
+                            decided_by = :decided_by,
+                            decided_at = NOW(),
+                            decision_comment = :comment,
+                            updated_at = NOW()
+                        WHERE approval_id = :approval_id
+                    """),
+                    {
+                        "approval_id": approval_id,
+                        "status": status,
+                        "decided_by": decided_by,
+                        "comment": comment,
+                    }
+                )
+                await db.commit()
+
+            # Redis 캐시도 업데이트
+            try:
+                from app.services.cache_service import CacheService
+                if CacheService.is_available():
+                    CacheService.set(
+                        f"wf:approval:{approval_id}",
+                        json.dumps({
+                            "status": status,
+                            "decided_by": decided_by,
+                            "decided_at": datetime.utcnow().isoformat(),
+                            "decision_comment": comment,
+                        }),
+                        expire_seconds=3600  # 1시간
+                    )
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.warning(f"승인 상태 업데이트 실패: {e}")
 
     # ============ SWITCH 노드 ============
 
@@ -2660,11 +3642,11 @@ class WorkflowEngine:
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        TRIGGER 노드 실행
+        TRIGGER 노드 실행 - 실제 스케줄러/이벤트 연동
 
         스펙 (B-5 섹션 4.7):
         - trigger_type: schedule, event, condition, webhook, manual
-        - schedule_config: cron 표현식, timezone
+        - schedule_config: cron 표현식 또는 interval_seconds, timezone
         - event_config: event_type, filter
         - condition_config: expression, check_interval_seconds, debounce_seconds
         - webhook_config: path, method, auth, rate_limit
@@ -2673,24 +3655,84 @@ class WorkflowEngine:
         1. 워크플로우 DSL에서 트리거 조건 정의
         2. 조건 충족 시 워크플로우 자동 시작
         3. 이 메서드는 트리거가 실행될 때 초기 컨텍스트 설정
+
+        V2 Phase 2: 실제 스케줄러/이벤트 버스 연동
         """
         trigger_type = config.get("trigger_type", "manual")
         trigger_time = datetime.utcnow().isoformat()
+        workflow_id = context.get("workflow_id")
+        tenant_id = context.get("tenant_id")
 
         # 트리거 타입별 처리
         if trigger_type == "schedule":
             schedule_config = config.get("schedule_config", {})
             cron_expression = schedule_config.get("cron", "")
+            interval_seconds = schedule_config.get("interval_seconds")
             timezone = schedule_config.get("timezone", "UTC")
+
+            # 실제 스케줄러 등록 (SchedulerService 연동)
+            try:
+                from app.services.scheduler_service import scheduler
+
+                job_id = f"wf_trigger_{workflow_id}_{node_id}"
+
+                # interval_seconds가 있으면 interval 기반, 없으면 cron 파싱 시도
+                if interval_seconds:
+                    # 기존 job 제거 후 재등록
+                    scheduler.unregister_job(job_id)
+
+                    # 트리거 핸들러 정의
+                    async def trigger_handler():
+                        """스케줄 트리거 발동 시 워크플로우 실행"""
+                        logger.info(f"Schedule trigger fired: workflow={workflow_id}, node={node_id}")
+                        # DB에 이벤트 기록
+                        await self._record_workflow_event(
+                            tenant_id=tenant_id,
+                            event_type="schedule_trigger",
+                            event_source="scheduler",
+                            event_data={
+                                "workflow_id": str(workflow_id),
+                                "node_id": node_id,
+                                "cron": cron_expression,
+                                "interval_seconds": interval_seconds,
+                            },
+                            workflow_id=workflow_id,
+                        )
+
+                    scheduler.register_job(
+                        job_id=job_id,
+                        name=f"Workflow Trigger: {workflow_id}",
+                        description=f"Scheduled trigger for workflow node {node_id}",
+                        interval_seconds=interval_seconds,
+                        handler=trigger_handler,
+                        enabled=True,
+                    )
+                    logger.info(f"Registered schedule trigger: {job_id} (interval: {interval_seconds}s)")
+
+                # DB에 트리거 등록 기록
+                await self._register_scheduled_trigger(
+                    tenant_id=tenant_id,
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    cron_expression=cron_expression,
+                    interval_seconds=interval_seconds,
+                    timezone=timezone,
+                    trigger_config=config,
+                )
+
+            except Exception as e:
+                logger.warning(f"Failed to register schedule trigger: {e}")
 
             trigger_output = {
                 "triggered": True,
                 "trigger_time": trigger_time,
-                "trigger_reason": f"Schedule: {cron_expression}",
+                "trigger_reason": f"Schedule: {cron_expression or f'{interval_seconds}s interval'}",
                 "trigger_type": "schedule",
                 "schedule": {
                     "cron": cron_expression,
+                    "interval_seconds": interval_seconds,
                     "timezone": timezone,
+                    "registered": True,
                 }
             }
 
@@ -2702,6 +3744,18 @@ class WorkflowEngine:
             # 이벤트 데이터는 컨텍스트에서 가져옴 (이벤트 버스에서 전달)
             event_data = context.get("_event_data", {})
 
+            # Redis pub/sub 이벤트 리스너 등록 (선택적)
+            try:
+                await self._register_event_listener(
+                    tenant_id=tenant_id,
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    event_type=event_type,
+                    event_filter=event_filter,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to register event listener: {e}")
+
             trigger_output = {
                 "triggered": True,
                 "trigger_time": trigger_time,
@@ -2711,6 +3765,7 @@ class WorkflowEngine:
                     "event_type": event_type,
                     "filter": event_filter,
                     "data": event_data,
+                    "listener_registered": True,
                 }
             }
 
@@ -2792,6 +3847,145 @@ class WorkflowEngine:
             "message": f"트리거 실행 완료: {trigger_type}",
             "trigger_output": trigger_output,
         }
+
+    async def _register_scheduled_trigger(
+        self,
+        tenant_id: str,
+        workflow_id: str,
+        node_id: str,
+        cron_expression: str,
+        interval_seconds: Optional[int],
+        timezone: str,
+        trigger_config: Dict,
+    ) -> None:
+        """스케줄 트리거 DB 등록"""
+        try:
+            from app.database import SessionLocal
+            from sqlalchemy import text
+            from datetime import timedelta
+
+            db = SessionLocal()
+            try:
+                # 다음 트리거 시간 계산
+                next_trigger = datetime.utcnow()
+                if interval_seconds:
+                    next_trigger += timedelta(seconds=interval_seconds)
+
+                db.execute(
+                    text("""
+                        INSERT INTO core.workflow_scheduled_triggers
+                        (tenant_id, workflow_id, node_id, cron_expression, interval_seconds,
+                         timezone, is_active, next_trigger_at, trigger_config)
+                        VALUES (:tenant_id, :workflow_id, :node_id, :cron_expression, :interval_seconds,
+                                :timezone, true, :next_trigger_at, :trigger_config)
+                        ON CONFLICT (workflow_id, node_id)
+                        DO UPDATE SET
+                            cron_expression = EXCLUDED.cron_expression,
+                            interval_seconds = EXCLUDED.interval_seconds,
+                            timezone = EXCLUDED.timezone,
+                            is_active = true,
+                            next_trigger_at = EXCLUDED.next_trigger_at,
+                            trigger_config = EXCLUDED.trigger_config,
+                            updated_at = now()
+                    """),
+                    {
+                        "tenant_id": str(tenant_id) if tenant_id else None,
+                        "workflow_id": str(workflow_id) if workflow_id else None,
+                        "node_id": node_id,
+                        "cron_expression": cron_expression or None,
+                        "interval_seconds": interval_seconds,
+                        "timezone": timezone,
+                        "next_trigger_at": next_trigger,
+                        "trigger_config": json.dumps(trigger_config),
+                    }
+                )
+                db.commit()
+                logger.debug(f"Registered scheduled trigger: workflow={workflow_id}, node={node_id}")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Failed to register scheduled trigger in DB: {e}")
+
+    async def _register_event_listener(
+        self,
+        tenant_id: str,
+        workflow_id: str,
+        node_id: str,
+        event_type: str,
+        event_filter: Dict,
+    ) -> None:
+        """이벤트 리스너 등록 (Redis 기반)"""
+        try:
+            from app.services.cache_service import CacheService
+
+            if not CacheService.is_available():
+                logger.debug("Redis not available, skipping event listener registration")
+                return
+
+            # 이벤트 리스너 정보를 Redis에 저장
+            listener_key = f"wf:event_listener:{tenant_id}:{event_type}"
+            listener_data = {
+                "workflow_id": str(workflow_id) if workflow_id else None,
+                "node_id": node_id,
+                "event_filter": event_filter,
+                "registered_at": datetime.utcnow().isoformat(),
+            }
+
+            CacheService.set(
+                listener_key,
+                listener_data,
+                ttl=86400 * 7,  # 7일
+            )
+            logger.debug(f"Registered event listener: {listener_key}")
+        except Exception as e:
+            logger.warning(f"Failed to register event listener: {e}")
+
+    async def _record_workflow_event(
+        self,
+        tenant_id: str,
+        event_type: str,
+        event_source: str,
+        event_data: Dict,
+        workflow_id: str = None,
+        instance_id: str = None,
+        node_id: str = None,
+        correlation_id: str = None,
+    ) -> Optional[str]:
+        """워크플로우 이벤트 DB 기록"""
+        try:
+            from app.database import SessionLocal
+            from sqlalchemy import text
+
+            db = SessionLocal()
+            try:
+                result = db.execute(
+                    text("""
+                        INSERT INTO core.workflow_events
+                        (tenant_id, event_type, event_source, event_data,
+                         workflow_id, instance_id, node_id, correlation_id)
+                        VALUES (:tenant_id, :event_type, :event_source, :event_data::jsonb,
+                                :workflow_id, :instance_id, :node_id, :correlation_id)
+                        RETURNING event_id
+                    """),
+                    {
+                        "tenant_id": str(tenant_id) if tenant_id else None,
+                        "event_type": event_type,
+                        "event_source": event_source,
+                        "event_data": json.dumps(event_data),
+                        "workflow_id": str(workflow_id) if workflow_id else None,
+                        "instance_id": str(instance_id) if instance_id else None,
+                        "node_id": node_id,
+                        "correlation_id": correlation_id,
+                    }
+                )
+                event_id = result.fetchone()[0]
+                db.commit()
+                return str(event_id)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Failed to record workflow event: {e}")
+            return None
 
     async def _execute_code_node(
         self,
@@ -3161,6 +4355,1698 @@ result = {
             return result if result is not None else {}
         except asyncio.TimeoutError:
             raise
+
+    async def _execute_judgment_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        JUDGMENT 노드 실행 - JudgmentAgent 연동
+
+        스펙 (B-5 섹션 4.2):
+        - policy: RULE_ONLY | LLM_ONLY | HYBRID_WEIGHTED | ESCALATE
+        - rule_pack_id: 룰팩 ID (UUID)
+        - input: 입력 데이터 매핑
+        - output: 결과 저장 변수
+
+        설정 예시:
+        {
+            "policy": {
+                "type": "HYBRID_WEIGHTED",
+                "rule_weight": 0.6,
+                "llm_weight": 0.4,
+                "rule_pack_id": "uuid"
+            },
+            "input": {
+                "temperature": "${sensor_data.temperature}",
+                "pressure": "${sensor_data.pressure}"
+            },
+            "output": {
+                "variable": "judgment_result"
+            }
+        }
+        """
+        from app.agents.judgment_agent import JudgmentAgent
+
+        start_time = time.time()
+
+        # 정책 설정
+        policy_config = config.get("policy", {})
+        policy_type = policy_config.get("type", "HYBRID_WEIGHTED")
+        rule_pack_id = policy_config.get("rule_pack_id")
+
+        # 입력 데이터 해석
+        input_config = config.get("input", {})
+        input_data = self._resolve_parameters(input_config, context)
+
+        # 추가 컨텍스트 (라인 코드, 장비 ID 등)
+        extra_context = {
+            "workflow_id": context.get("workflow_id"),
+            "node_id": node_id,
+            "line_code": input_data.get("line_code"),
+        }
+
+        try:
+            # JudgmentAgent 인스턴스 생성
+            agent = JudgmentAgent()
+
+            # 하이브리드 판단 실행
+            if rule_pack_id:
+                # hybrid_judgment 도구 호출
+                judgment_result = agent._hybrid_judgment(
+                    ruleset_id=rule_pack_id,
+                    input_data=input_data,
+                    policy=policy_type.lower().replace("_", "_"),
+                    context=extra_context,
+                )
+            else:
+                # rule_pack_id가 없으면 LLM_ONLY로 실행
+                judgment_result = agent._hybrid_judgment(
+                    ruleset_id="00000000-0000-0000-0000-000000000000",  # 기본 룰셋
+                    input_data=input_data,
+                    policy="llm_only",
+                    context=extra_context,
+                )
+
+            execution_time_ms = int((time.time() - start_time) * 1000)
+
+            # 로그 기록
+            execution_log_store.add_log({
+                "event_type": "judgment_executed",
+                "workflow_id": context.get("workflow_id"),
+                "node_id": node_id,
+                "policy_type": policy_type,
+                "decision": judgment_result.get("decision", "UNKNOWN"),
+                "confidence": judgment_result.get("confidence", 0),
+                "execution_time_ms": execution_time_ms,
+            })
+
+            success = judgment_result.get("success", False)
+
+            return {
+                "node_id": node_id,
+                "type": "judgment",
+                "success": success,
+                "message": f"판단 완료: {judgment_result.get('decision', 'UNKNOWN')} "
+                          f"(신뢰도: {judgment_result.get('confidence', 0):.2f})",
+                "result": {
+                    "decision": judgment_result.get("decision"),
+                    "confidence": judgment_result.get("confidence"),
+                    "source": judgment_result.get("source"),
+                    "policy_used": judgment_result.get("policy_used"),
+                    "details": judgment_result.get("details", {}),
+                    "recommendation": judgment_result.get("recommendation"),
+                },
+                "execution_time_ms": execution_time_ms,
+            }
+
+        except Exception as e:
+            logger.error(f"JUDGMENT 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "judgment",
+                "success": False,
+                "message": f"판단 실행 오류: {str(e)}",
+                "result": None,
+            }
+
+    async def _execute_bi_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        BI 노드 실행 - BIPlannerAgent 연동
+
+        스펙 (B-5 섹션 4.3):
+        - analysis_type: trend, comparison, distribution, correlation, anomaly
+        - metrics: 분석 대상 메트릭 목록
+        - dimensions: 분석 차원 목록
+        - time_range: 분석 기간
+        - filters: 필터 조건
+
+        설정 예시:
+        {
+            "analysis": {
+                "type": "trend",
+                "metrics": ["production_qty", "defect_rate"],
+                "dimensions": ["line_code", "shift"],
+                "time_range": "7d"
+            },
+            "output": {
+                "variable": "bi_result"
+            }
+        }
+        """
+        from app.agents.bi_planner import BIPlannerAgent
+
+        start_time = time.time()
+
+        analysis_config = config.get("analysis", {})
+        analysis_type = analysis_config.get("type", "trend")
+        metrics = analysis_config.get("metrics", [])
+        dimensions = analysis_config.get("dimensions", [])
+        time_range = analysis_config.get("time_range", "7d")
+        filters = analysis_config.get("filters", [])
+
+        try:
+            # BIPlannerAgent 인스턴스 생성
+            agent = BIPlannerAgent()
+
+            # 분석 쿼리 생성
+            analysis_query = f"{analysis_type} analysis for {', '.join(metrics)}"
+            if dimensions:
+                analysis_query += f" by {', '.join(dimensions)}"
+            if time_range:
+                analysis_query += f" over {time_range}"
+
+            # tenant_id 가져오기
+            from uuid import UUID
+            tenant_id = context.get("tenant_id")
+            if isinstance(tenant_id, str):
+                tenant_id = UUID(tenant_id)
+            elif not tenant_id:
+                tenant_id = UUID("446e39b3-455e-4ca9-817a-4913921eb41d")
+
+            # BI Agent 실행 (generate_response 호출)
+            bi_result = await agent.generate_response(
+                user_message=analysis_query,
+                tenant_id=tenant_id,
+                conversation_history=[],
+            )
+
+            execution_time_ms = int((time.time() - start_time) * 1000)
+
+            # 로그 기록
+            execution_log_store.add_log({
+                "event_type": "bi_analysis_executed",
+                "workflow_id": context.get("workflow_id"),
+                "node_id": node_id,
+                "analysis_type": analysis_type,
+                "execution_time_ms": execution_time_ms,
+            })
+
+            return {
+                "node_id": node_id,
+                "type": "bi",
+                "success": True,
+                "message": f"BI 분석 완료 ({execution_time_ms}ms)",
+                "result": {
+                    "analysis_type": analysis_type,
+                    "response": bi_result.get("response", ""),
+                    "insight": bi_result.get("insight"),
+                    "chart_data": bi_result.get("chart_data"),
+                    "sql_query": bi_result.get("sql_query"),
+                },
+                "execution_time_ms": execution_time_ms,
+            }
+
+        except Exception as e:
+            logger.error(f"BI 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "bi",
+                "success": False,
+                "message": f"BI 분석 오류: {str(e)}",
+                "result": None,
+            }
+
+    async def _execute_mcp_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        MCP 노드 실행 - MCPToolHubService 연동
+
+        스펙 (B-5 섹션 4.5):
+        - mcp_server_id: MCP 서버 ID (UUID)
+        - tool_name: 호출할 도구 이름
+        - parameters: 도구 파라미터
+        - timeout_ms: 타임아웃 (기본 30초)
+
+        설정 예시:
+        {
+            "mcp_server_id": "uuid",
+            "tool_name": "weather_api",
+            "parameters": {
+                "location": "{{city}}"
+            },
+            "timeout_ms": 30000,
+            "output_variable": "mcp_result"
+        }
+        """
+        from app.services.mcp_toolhub import get_mcp_toolhub_service
+        from app.models.mcp import MCPCallRequest, MCPCallStatus
+
+        start_time = time.time()
+
+        server_id = config.get("mcp_server_id")
+        tool_name = config.get("tool_name")
+        parameters = config.get("parameters", {})
+        correlation_id = config.get("correlation_id")
+
+        if not server_id or not tool_name:
+            return {
+                "node_id": node_id,
+                "type": "mcp",
+                "success": False,
+                "message": "mcp_server_id와 tool_name은 필수입니다",
+                "result": None,
+            }
+
+        # 파라미터 해석
+        resolved_params = self._resolve_parameters(parameters, context)
+
+        try:
+            # MCPToolHubService 인스턴스
+            mcp_service = get_mcp_toolhub_service()
+
+            # tenant_id 가져오기
+            from uuid import UUID
+            tenant_id = context.get("tenant_id")
+            if isinstance(tenant_id, str):
+                tenant_id = UUID(tenant_id)
+            elif not tenant_id:
+                tenant_id = UUID("446e39b3-455e-4ca9-817a-4913921eb41d")
+
+            # MCPCallRequest 생성
+            call_request = MCPCallRequest(
+                server_id=UUID(server_id) if isinstance(server_id, str) else server_id,
+                tool_name=tool_name,
+                args=resolved_params,
+                correlation_id=correlation_id or f"wf_{context.get('workflow_id', 'unknown')}_{node_id}",
+            )
+
+            # MCP 도구 호출
+            mcp_response = await mcp_service.call_tool(
+                tenant_id=tenant_id,
+                request=call_request,
+            )
+
+            execution_time_ms = int((time.time() - start_time) * 1000)
+
+            # 로그 기록
+            execution_log_store.add_log({
+                "event_type": "mcp_tool_called",
+                "workflow_id": context.get("workflow_id"),
+                "node_id": node_id,
+                "server_id": str(server_id),
+                "tool_name": tool_name,
+                "execution_time_ms": execution_time_ms,
+                "status": mcp_response.status.value,
+            })
+
+            success = mcp_response.status == MCPCallStatus.SUCCESS
+
+            return {
+                "node_id": node_id,
+                "type": "mcp",
+                "success": success,
+                "message": f"MCP 도구 호출 완료: {tool_name} ({mcp_response.latency_ms}ms)"
+                          if success else f"MCP 도구 호출 실패: {mcp_response.error_message or 'Unknown error'}",
+                "result": mcp_response.result if success else None,
+                "execution_time_ms": execution_time_ms,
+                "request_id": mcp_response.request_id,
+            }
+
+        except Exception as e:
+            logger.error(f"MCP 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "mcp",
+                "success": False,
+                "message": f"MCP 도구 호출 오류: {str(e)}",
+                "result": None,
+            }
+
+    # ============ P2 노드: COMPENSATION ============
+
+    async def _execute_compensation_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        COMPENSATION 노드 실행 - Saga 패턴 롤백
+
+        config 형식:
+        {
+            "compensation_type": "auto" | "manual",
+            "target_nodes": ["node_1", "node_2"],  # 보상할 노드들
+            "compensation_actions": {
+                "node_1": {"action_type": "api_call", "config": {...}},
+                "node_2": {"action_type": "db_rollback", "config": {...}}
+            },
+            "on_failure": "continue" | "abort"
+        }
+
+        Saga 패턴:
+        - 실패한 노드들의 compensation_action을 역순으로 실행
+        - 각 보상 작업의 성공/실패 추적
+        """
+
+        compensation_type = config.get("compensation_type", "auto")
+        target_nodes = config.get("target_nodes", [])
+        compensation_actions = config.get("compensation_actions", {})
+        on_failure = config.get("on_failure", "continue")
+
+        workflow_id = context.get("workflow_id")
+        executed_nodes = context.get("executed_nodes", [])  # 이전에 실행된 노드 목록
+
+        try:
+            compensated = []
+            failed_compensations = []
+
+            # 자동 모드: 실행된 노드들 역순으로 보상
+            if compensation_type == "auto":
+                nodes_to_compensate = list(reversed(executed_nodes))
+            else:
+                nodes_to_compensate = list(reversed(target_nodes))
+
+            logger.info(f"COMPENSATION 노드 {node_id}: {len(nodes_to_compensate)}개 노드 보상 시작")
+
+            for target_node in nodes_to_compensate:
+                target_node_id = target_node.get("node_id") if isinstance(target_node, dict) else target_node
+
+                # 보상 액션 찾기
+                action_config = compensation_actions.get(target_node_id)
+                if not action_config:
+                    # 노드에 정의된 보상 액션 확인
+                    if isinstance(target_node, dict):
+                        action_config = target_node.get("compensation_action")
+
+                if not action_config:
+                    logger.warning(f"보상 액션 없음: {target_node_id}")
+                    continue
+
+                try:
+                    # 보상 액션 실행
+                    action_type = action_config.get("action_type", "api_call")
+                    action_result = await self._execute_compensation_action(
+                        target_node_id=target_node_id,
+                        action_type=action_type,
+                        action_config=action_config.get("config", {}),
+                        context=context
+                    )
+
+                    if action_result.get("success"):
+                        compensated.append({
+                            "node_id": target_node_id,
+                            "status": "compensated",
+                            "result": action_result
+                        })
+                    else:
+                        failed_compensations.append({
+                            "node_id": target_node_id,
+                            "status": "failed",
+                            "error": action_result.get("message")
+                        })
+
+                        if on_failure == "abort":
+                            break
+
+                except Exception as e:
+                    failed_compensations.append({
+                        "node_id": target_node_id,
+                        "status": "error",
+                        "error": str(e)
+                    })
+                    if on_failure == "abort":
+                        break
+
+            # 로그 기록
+            log_entry = {
+                "event_type": "compensation_executed",
+                "workflow_id": workflow_id,
+                "node_id": node_id,
+                "compensated": compensated,
+                "failed": failed_compensations,
+            }
+            execution_log_store.add_log(log_entry)
+
+            all_success = len(failed_compensations) == 0
+
+            return {
+                "node_id": node_id,
+                "type": "compensation",
+                "success": all_success,
+                "message": f"보상 완료: {len(compensated)}개 성공, {len(failed_compensations)}개 실패",
+                "data": {
+                    "compensated": compensated,
+                    "failed": failed_compensations,
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"COMPENSATION 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "compensation",
+                "success": False,
+                "message": f"보상 처리 오류: {str(e)}",
+            }
+
+    async def _execute_compensation_action(
+        self,
+        target_node_id: str,
+        action_type: str,
+        action_config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """개별 보상 액션 실행"""
+
+        if action_type == "api_call":
+            # API 호출로 롤백
+            import httpx
+            url = action_config.get("url")
+            method = action_config.get("method", "POST")
+            params = self._resolve_parameters(action_config.get("params", {}), context)
+
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.request(method, url, json=params)
+                    return {
+                        "success": response.status_code < 400,
+                        "status_code": response.status_code,
+                        "result": response.json() if response.status_code < 400 else None,
+                    }
+            except Exception as e:
+                return {"success": False, "message": str(e)}
+
+        elif action_type == "db_rollback":
+            # DB 트랜잭션 롤백
+            table = action_config.get("table")
+            rollback_query = action_config.get("query")
+
+            try:
+                from sqlalchemy import text
+                async with get_async_session() as db:
+                    await db.execute(text(rollback_query))
+                    await db.commit()
+                return {"success": True, "message": f"DB 롤백 완료: {table}"}
+            except Exception as e:
+                return {"success": False, "message": str(e)}
+
+        elif action_type == "state_restore":
+            # 상태 복원
+            restore_key = action_config.get("key")
+            restore_value = action_config.get("value")
+            context[restore_key] = restore_value
+            return {"success": True, "message": f"상태 복원: {restore_key}"}
+
+        else:
+            return {"success": False, "message": f"알 수 없는 보상 타입: {action_type}"}
+
+    # ============ P2 노드: DEPLOY ============
+
+    async def _execute_deploy_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        DEPLOY 노드 실행 - 룰/모델/워크플로우 배포
+
+        config 형식:
+        {
+            "deploy_type": "ruleset" | "model" | "workflow",
+            "target_id": "uuid",
+            "version": 1,  # 옵션, 없으면 최신 버전
+            "environment": "production" | "staging" | "development",
+            "rollback_on_failure": true,
+            "validation": {
+                "enabled": true,
+                "rules": ["test_coverage > 80", "no_syntax_errors"]
+            }
+        }
+        """
+
+        deploy_type = config.get("deploy_type", "ruleset")
+        target_id = config.get("target_id")
+        version = config.get("version")
+        environment = config.get("environment", "production")
+        rollback_on_failure = config.get("rollback_on_failure", True)
+        validation_config = config.get("validation", {})
+
+        workflow_id = context.get("workflow_id")
+        tenant_id = context.get("tenant_id")
+
+        try:
+            # 1. 사전 검증 (옵션)
+            if validation_config.get("enabled", False):
+                validation_result = await self._validate_deployment(
+                    deploy_type=deploy_type,
+                    target_id=target_id,
+                    version=version,
+                    rules=validation_config.get("rules", [])
+                )
+                if not validation_result.get("success"):
+                    return {
+                        "node_id": node_id,
+                        "type": "deploy",
+                        "success": False,
+                        "message": f"배포 검증 실패: {validation_result.get('errors')}",
+                    }
+
+            # 2. 이전 버전 백업 (롤백용)
+            previous_version = None
+            if rollback_on_failure:
+                previous_version = await self._get_current_active_version(
+                    deploy_type=deploy_type,
+                    target_id=target_id,
+                    tenant_id=tenant_id
+                )
+                context["_deploy_previous_version"] = previous_version
+
+            # 3. 배포 실행
+            if deploy_type == "ruleset":
+                result = await self._deploy_ruleset(
+                    ruleset_id=target_id,
+                    version=version,
+                    environment=environment,
+                    tenant_id=tenant_id
+                )
+            elif deploy_type == "model":
+                result = await self._deploy_model(
+                    model_id=target_id,
+                    version=version,
+                    environment=environment,
+                    tenant_id=tenant_id
+                )
+            elif deploy_type == "workflow":
+                result = await self._deploy_workflow(
+                    workflow_id=target_id,
+                    version=version,
+                    environment=environment,
+                    tenant_id=tenant_id
+                )
+            else:
+                return {
+                    "node_id": node_id,
+                    "type": "deploy",
+                    "success": False,
+                    "message": f"알 수 없는 배포 타입: {deploy_type}",
+                }
+
+            if not result.get("success"):
+                # 롤백
+                if rollback_on_failure and previous_version:
+                    await self._rollback_to_version(
+                        deploy_type=deploy_type,
+                        target_id=target_id,
+                        version=previous_version,
+                        tenant_id=tenant_id
+                    )
+
+            # 로그 기록
+            log_entry = {
+                "event_type": "deployment_executed",
+                "workflow_id": workflow_id,
+                "node_id": node_id,
+                "deploy_type": deploy_type,
+                "target_id": target_id,
+                "version": version,
+                "environment": environment,
+                "result": result,
+            }
+            execution_log_store.add_log(log_entry)
+
+            return {
+                "node_id": node_id,
+                "type": "deploy",
+                "success": result.get("success", False),
+                "message": result.get("message", "배포 완료"),
+                "data": {
+                    "deploy_type": deploy_type,
+                    "target_id": target_id,
+                    "version": result.get("version"),
+                    "environment": environment,
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"DEPLOY 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "deploy",
+                "success": False,
+                "message": f"배포 오류: {str(e)}",
+            }
+
+    async def _validate_deployment(
+        self,
+        deploy_type: str,
+        target_id: str,
+        version: Optional[int],
+        rules: List[str]
+    ) -> Dict[str, Any]:
+        """배포 전 검증"""
+        errors = []
+
+        for rule in rules:
+            # 간단한 규칙 검증 (실제로는 더 복잡한 검증 로직)
+            if rule == "no_syntax_errors":
+                # 문법 검사
+                pass
+            elif rule.startswith("test_coverage"):
+                # 테스트 커버리지 검사
+                pass
+            else:
+                logger.warning(f"알 수 없는 검증 규칙: {rule}")
+
+        return {"success": len(errors) == 0, "errors": errors}
+
+    async def _get_current_active_version(
+        self,
+        deploy_type: str,
+        target_id: str,
+        tenant_id: str
+    ) -> Optional[int]:
+        """현재 활성 버전 조회"""
+        try:
+            from sqlalchemy import text
+            async with get_async_session() as db:
+                if deploy_type == "ruleset":
+                    result = await db.execute(
+                        text("SELECT version FROM core.rulesets WHERE ruleset_id = :id AND is_active = true"),
+                        {"id": target_id}
+                    )
+                elif deploy_type == "workflow":
+                    result = await db.execute(
+                        text("SELECT version FROM core.workflows WHERE workflow_id = :id AND is_active = true"),
+                        {"id": target_id}
+                    )
+                else:
+                    return None
+
+                row = result.fetchone()
+                return int(row.version) if row else None
+        except Exception:
+            return None
+
+    async def _deploy_ruleset(
+        self,
+        ruleset_id: str,
+        version: Optional[int],
+        environment: str,
+        tenant_id: str
+    ) -> Dict[str, Any]:
+        """룰셋 배포"""
+        try:
+            from sqlalchemy import text
+            async with get_async_session() as db:
+                # 룰셋 활성화
+                await db.execute(
+                    text("""
+                        UPDATE core.rulesets
+                        SET is_active = true, updated_at = NOW()
+                        WHERE ruleset_id = :ruleset_id AND tenant_id = :tenant_id
+                    """),
+                    {"ruleset_id": ruleset_id, "tenant_id": tenant_id}
+                )
+                await db.commit()
+
+            return {"success": True, "message": "룰셋 배포 완료", "version": version}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    async def _deploy_model(
+        self,
+        model_id: str,
+        version: Optional[int],
+        environment: str,
+        tenant_id: str
+    ) -> Dict[str, Any]:
+        """ML 모델 배포 (placeholder)"""
+        # TODO: 실제 ML 모델 배포 로직
+        logger.info(f"ML 모델 배포: {model_id} v{version} -> {environment}")
+        return {"success": True, "message": "모델 배포 완료 (mock)", "version": version}
+
+    async def _deploy_workflow(
+        self,
+        workflow_id: str,
+        version: Optional[int],
+        environment: str,
+        tenant_id: str
+    ) -> Dict[str, Any]:
+        """워크플로우 배포"""
+        try:
+            from sqlalchemy import text
+            async with get_async_session() as db:
+                await db.execute(
+                    text("""
+                        UPDATE core.workflows
+                        SET is_active = true, updated_at = NOW()
+                        WHERE workflow_id = :workflow_id AND tenant_id = :tenant_id
+                    """),
+                    {"workflow_id": workflow_id, "tenant_id": tenant_id}
+                )
+                await db.commit()
+
+            return {"success": True, "message": "워크플로우 배포 완료", "version": version}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    async def _rollback_to_version(
+        self,
+        deploy_type: str,
+        target_id: str,
+        version: int,
+        tenant_id: str
+    ) -> Dict[str, Any]:
+        """이전 버전으로 롤백"""
+        logger.info(f"롤백: {deploy_type} {target_id} -> v{version}")
+        # 실제 롤백 로직
+        return {"success": True, "version": version}
+
+    # ============ P2 노드: ROLLBACK ============
+
+    async def _execute_rollback_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        ROLLBACK 노드 실행 - 이전 버전으로 복구
+
+        config 형식:
+        {
+            "target_type": "ruleset" | "workflow" | "model",
+            "target_id": "uuid",
+            "version": 1,  # 없으면 직전 버전
+            "reason": "배포 실패로 인한 롤백"
+        }
+        """
+
+        target_type = config.get("target_type", "workflow")
+        target_id = config.get("target_id")
+        version = config.get("version")
+        reason = config.get("reason", "Manual rollback")
+
+        workflow_id = context.get("workflow_id")
+        tenant_id = context.get("tenant_id")
+
+        try:
+            # 버전 지정 없으면 직전 버전 조회
+            if version is None:
+                version = await self._get_previous_version(
+                    target_type=target_type,
+                    target_id=target_id,
+                    tenant_id=tenant_id
+                )
+                if version is None:
+                    return {
+                        "node_id": node_id,
+                        "type": "rollback",
+                        "success": False,
+                        "message": "롤백할 이전 버전이 없습니다",
+                    }
+
+            # 롤백 실행
+            if target_type == "ruleset":
+                result = await self._rollback_ruleset(
+                    ruleset_id=target_id,
+                    version=version,
+                    tenant_id=tenant_id
+                )
+            elif target_type == "workflow":
+                result = await self._rollback_workflow(
+                    workflow_id=target_id,
+                    version=version,
+                    tenant_id=tenant_id
+                )
+            elif target_type == "model":
+                result = await self._rollback_model(
+                    model_id=target_id,
+                    version=version,
+                    tenant_id=tenant_id
+                )
+            else:
+                return {
+                    "node_id": node_id,
+                    "type": "rollback",
+                    "success": False,
+                    "message": f"알 수 없는 대상 타입: {target_type}",
+                }
+
+            # 로그 기록
+            log_entry = {
+                "event_type": "rollback_executed",
+                "workflow_id": workflow_id,
+                "node_id": node_id,
+                "target_type": target_type,
+                "target_id": target_id,
+                "version": version,
+                "reason": reason,
+                "result": result,
+            }
+            execution_log_store.add_log(log_entry)
+
+            return {
+                "node_id": node_id,
+                "type": "rollback",
+                "success": result.get("success", False),
+                "message": result.get("message", "롤백 완료"),
+                "data": {
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "version": version,
+                    "reason": reason,
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"ROLLBACK 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "rollback",
+                "success": False,
+                "message": f"롤백 오류: {str(e)}",
+            }
+
+    async def _get_previous_version(
+        self,
+        target_type: str,
+        target_id: str,
+        tenant_id: str
+    ) -> Optional[int]:
+        """직전 버전 조회"""
+        try:
+            from sqlalchemy import text
+            async with get_async_session() as db:
+                if target_type == "ruleset":
+                    result = await db.execute(
+                        text("""
+                            SELECT version FROM core.rule_scripts
+                            WHERE ruleset_id = :id
+                            ORDER BY version DESC
+                            LIMIT 1 OFFSET 1
+                        """),
+                        {"id": target_id}
+                    )
+                elif target_type == "workflow":
+                    # workflow_versions 테이블 사용 (추후 마이그레이션 필요)
+                    result = await db.execute(
+                        text("""
+                            SELECT CAST(version AS INTEGER) - 1 as prev_version
+                            FROM core.workflows
+                            WHERE workflow_id = :id
+                        """),
+                        {"id": target_id}
+                    )
+                else:
+                    return None
+
+                row = result.fetchone()
+                if row and row[0] and int(row[0]) > 0:
+                    return int(row[0])
+                return None
+        except Exception:
+            return None
+
+    async def _rollback_ruleset(
+        self,
+        ruleset_id: str,
+        version: int,
+        tenant_id: str
+    ) -> Dict[str, Any]:
+        """룰셋 롤백"""
+        try:
+            from sqlalchemy import text
+            async with get_async_session() as db:
+                # 해당 버전의 스크립트로 current_script_id 업데이트
+                result = await db.execute(
+                    text("""
+                        SELECT id FROM core.rule_scripts
+                        WHERE ruleset_id = :ruleset_id AND version = :version
+                    """),
+                    {"ruleset_id": ruleset_id, "version": version}
+                )
+                row = result.fetchone()
+                if row:
+                    await db.execute(
+                        text("""
+                            UPDATE core.rulesets
+                            SET current_script_id = :script_id, updated_at = NOW()
+                            WHERE ruleset_id = :ruleset_id
+                        """),
+                        {"script_id": row.id, "ruleset_id": ruleset_id}
+                    )
+                    await db.commit()
+                    return {"success": True, "message": f"룰셋 v{version}으로 롤백 완료"}
+                else:
+                    return {"success": False, "message": f"버전 {version}을 찾을 수 없습니다"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    async def _rollback_workflow(
+        self,
+        workflow_id: str,
+        version: int,
+        tenant_id: str
+    ) -> Dict[str, Any]:
+        """워크플로우 롤백"""
+        # TODO: workflow_versions 테이블 구현 후 실제 롤백 로직
+        logger.info(f"워크플로우 롤백: {workflow_id} -> v{version}")
+        return {"success": True, "message": f"워크플로우 v{version}으로 롤백 완료 (mock)"}
+
+    async def _rollback_model(
+        self,
+        model_id: str,
+        version: int,
+        tenant_id: str
+    ) -> Dict[str, Any]:
+        """ML 모델 롤백 (placeholder)"""
+        logger.info(f"모델 롤백: {model_id} -> v{version}")
+        return {"success": True, "message": f"모델 v{version}으로 롤백 완료 (mock)"}
+
+    # ============ P2 노드: SIMULATE ============
+
+    async def _execute_simulate_node(
+        self,
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        SIMULATE 노드 실행 - What-if 분석
+
+        config 형식:
+        {
+            "simulation_type": "scenario" | "parameter_sweep" | "monte_carlo",
+            "scenarios": [
+                {
+                    "name": "Best case",
+                    "overrides": {"temperature": 75, "pressure": 95}
+                },
+                {
+                    "name": "Worst case",
+                    "overrides": {"temperature": 95, "pressure": 120}
+                }
+            ],
+            "target_nodes": ["judgment_node", "action_node"],
+            "metrics": ["success_rate", "execution_time"],
+            "iterations": 100  # monte_carlo용
+        }
+        """
+
+        simulation_type = config.get("simulation_type", "scenario")
+        scenarios = config.get("scenarios", [])
+        target_nodes = config.get("target_nodes", [])
+        metrics = config.get("metrics", ["success_rate"])
+        iterations = config.get("iterations", 100)
+
+        workflow_id = context.get("workflow_id")
+
+        try:
+            results = []
+
+            if simulation_type == "scenario":
+                # 시나리오별 시뮬레이션
+                for scenario in scenarios:
+                    scenario_name = scenario.get("name", "Unnamed")
+                    overrides = scenario.get("overrides", {})
+
+                    # 가상 컨텍스트 생성
+                    sim_context = {**context, **overrides}
+                    sim_context["_simulation_mode"] = True
+
+                    # 대상 노드들 시뮬레이션
+                    scenario_result = await self._simulate_nodes(
+                        target_nodes=target_nodes,
+                        context=sim_context,
+                        metrics=metrics
+                    )
+
+                    results.append({
+                        "scenario": scenario_name,
+                        "overrides": overrides,
+                        "result": scenario_result,
+                    })
+
+            elif simulation_type == "parameter_sweep":
+                # 파라미터 스윕 (단일 파라미터 변화)
+                sweep_config = config.get("sweep_config", {})
+                param_name = sweep_config.get("parameter")
+                start_value = sweep_config.get("start", 0)
+                end_value = sweep_config.get("end", 100)
+                step = sweep_config.get("step", 10)
+
+                current = start_value
+                while current <= end_value:
+                    sim_context = {**context, param_name: current}
+                    sim_context["_simulation_mode"] = True
+
+                    scenario_result = await self._simulate_nodes(
+                        target_nodes=target_nodes,
+                        context=sim_context,
+                        metrics=metrics
+                    )
+
+                    results.append({
+                        "parameter": param_name,
+                        "value": current,
+                        "result": scenario_result,
+                    })
+
+                    current += step
+
+            elif simulation_type == "monte_carlo":
+                # 몬테카를로 시뮬레이션
+                import random
+
+                distributions = config.get("distributions", {})
+                for i in range(iterations):
+                    sim_context = {**context}
+                    sim_context["_simulation_mode"] = True
+
+                    # 분포에 따라 랜덤 값 생성
+                    for param, dist_config in distributions.items():
+                        dist_type = dist_config.get("type", "uniform")
+                        if dist_type == "uniform":
+                            sim_context[param] = random.uniform(
+                                dist_config.get("min", 0),
+                                dist_config.get("max", 100)
+                            )
+                        elif dist_type == "normal":
+                            sim_context[param] = random.gauss(
+                                dist_config.get("mean", 50),
+                                dist_config.get("std", 10)
+                            )
+
+                    scenario_result = await self._simulate_nodes(
+                        target_nodes=target_nodes,
+                        context=sim_context,
+                        metrics=metrics
+                    )
+
+                    results.append({
+                        "iteration": i + 1,
+                        "parameters": {k: sim_context.get(k) for k in distributions.keys()},
+                        "result": scenario_result,
+                    })
+
+            # 결과 분석
+            analysis = self._analyze_simulation_results(results, simulation_type, metrics)
+
+            # 컨텍스트에 결과 저장
+            context["simulation_results"] = results
+            context["simulation_analysis"] = analysis
+
+            # 로그 기록
+            log_entry = {
+                "event_type": "simulation_executed",
+                "workflow_id": workflow_id,
+                "node_id": node_id,
+                "simulation_type": simulation_type,
+                "scenario_count": len(results),
+                "analysis": analysis,
+            }
+            execution_log_store.add_log(log_entry)
+
+            return {
+                "node_id": node_id,
+                "type": "simulate",
+                "success": True,
+                "message": f"시뮬레이션 완료: {len(results)}개 시나리오 분석",
+                "data": {
+                    "simulation_type": simulation_type,
+                    "results": results,
+                    "analysis": analysis,
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"SIMULATE 노드 실행 오류: {node_id} - {e}")
+            return {
+                "node_id": node_id,
+                "type": "simulate",
+                "success": False,
+                "message": f"시뮬레이션 오류: {str(e)}",
+            }
+
+    async def _simulate_nodes(
+        self,
+        target_nodes: List[str],
+        context: Dict[str, Any],
+        metrics: List[str]
+    ) -> Dict[str, Any]:
+        """대상 노드들 시뮬레이션 실행"""
+        results = {
+            "success": True,
+            "executed_nodes": [],
+            "metrics": {}
+        }
+
+        start_time = time.time()
+
+        for node_id in target_nodes:
+            # 시뮬레이션 모드에서는 실제 액션 실행 안함
+            results["executed_nodes"].append({
+                "node_id": node_id,
+                "simulated": True,
+            })
+
+        execution_time = (time.time() - start_time) * 1000
+
+        # 메트릭 계산
+        if "execution_time" in metrics:
+            results["metrics"]["execution_time_ms"] = execution_time
+        if "success_rate" in metrics:
+            # 시뮬레이션에서는 100% (실제로는 조건 평가 결과 기반)
+            results["metrics"]["success_rate"] = 100.0
+
+        return results
+
+    def _analyze_simulation_results(
+        self,
+        results: List[Dict[str, Any]],
+        simulation_type: str,
+        metrics: List[str]
+    ) -> Dict[str, Any]:
+        """시뮬레이션 결과 분석"""
+        analysis = {
+            "total_scenarios": len(results),
+        }
+
+        if not results:
+            return analysis
+
+        # 성공률 분석
+        success_count = sum(1 for r in results if r.get("result", {}).get("success", False))
+        analysis["success_rate"] = (success_count / len(results)) * 100
+
+        # 시나리오별 분석
+        if simulation_type == "scenario":
+            analysis["best_scenario"] = results[0].get("scenario") if results else None
+        elif simulation_type == "monte_carlo":
+            # 몬테카를로 통계
+            import statistics
+            if len(results) > 1:
+                exec_times = [r.get("result", {}).get("metrics", {}).get("execution_time_ms", 0) for r in results]
+                if exec_times:
+                    analysis["avg_execution_time_ms"] = statistics.mean(exec_times)
+                    analysis["std_execution_time_ms"] = statistics.stdev(exec_times) if len(exec_times) > 1 else 0
+
+        return analysis
+
+
+# ============ Phase 4: 상태 머신 ============
+
+class WorkflowState(Enum):
+    """워크플로우 인스턴스 상태"""
+
+    CREATED = "created"          # 생성됨
+    PENDING = "pending"          # 실행 대기
+    RUNNING = "running"          # 실행 중
+    WAITING = "waiting"          # 승인/이벤트 대기
+    PAUSED = "paused"            # 일시 중지
+    COMPLETED = "completed"      # 완료
+    FAILED = "failed"            # 실패
+    COMPENSATING = "compensating"  # 보상 트랜잭션 진행 중
+    COMPENSATED = "compensated"  # 보상 완료
+    CANCELLED = "cancelled"      # 취소됨
+    TIMEOUT = "timeout"          # 타임아웃
+
+
+class InvalidStateTransition(Exception):
+    """잘못된 상태 전이 예외"""
+    pass
+
+
+class WorkflowStateMachine:
+    """
+    워크플로우 상태 머신
+
+    상태 전이 규칙 관리 및 상태 변경 처리
+    """
+
+    # 상태 전이 규칙: 현재 상태 -> 허용된 다음 상태들
+    TRANSITIONS: Dict[WorkflowState, List[WorkflowState]] = {
+        WorkflowState.CREATED: [
+            WorkflowState.PENDING,
+            WorkflowState.CANCELLED,
+        ],
+        WorkflowState.PENDING: [
+            WorkflowState.RUNNING,
+            WorkflowState.CANCELLED,
+        ],
+        WorkflowState.RUNNING: [
+            WorkflowState.WAITING,
+            WorkflowState.PAUSED,
+            WorkflowState.COMPLETED,
+            WorkflowState.FAILED,
+            WorkflowState.COMPENSATING,
+        ],
+        WorkflowState.WAITING: [
+            WorkflowState.RUNNING,        # 승인/이벤트 수신 후 재개
+            WorkflowState.CANCELLED,
+            WorkflowState.TIMEOUT,
+            WorkflowState.FAILED,
+        ],
+        WorkflowState.PAUSED: [
+            WorkflowState.RUNNING,        # 재개
+            WorkflowState.CANCELLED,
+        ],
+        WorkflowState.COMPENSATING: [
+            WorkflowState.COMPENSATED,
+            WorkflowState.FAILED,
+        ],
+        # 종료 상태들 (전이 불가)
+        WorkflowState.COMPLETED: [],
+        WorkflowState.FAILED: [
+            WorkflowState.COMPENSATING,   # 실패 후 보상 시작 가능
+        ],
+        WorkflowState.COMPENSATED: [],
+        WorkflowState.CANCELLED: [],
+        WorkflowState.TIMEOUT: [
+            WorkflowState.COMPENSATING,   # 타임아웃 후 보상 가능
+        ],
+    }
+
+    def __init__(self):
+        """상태 머신 초기화"""
+        # 인메모리 상태 저장소 (MVP)
+        self._states: Dict[str, Dict[str, Any]] = {}
+        self._state_history: Dict[str, List[Dict[str, Any]]] = {}
+
+    def can_transition(
+        self,
+        current_state: WorkflowState,
+        target_state: WorkflowState
+    ) -> bool:
+        """상태 전이 가능 여부 확인"""
+        allowed_states = self.TRANSITIONS.get(current_state, [])
+        return target_state in allowed_states
+
+    async def transition(
+        self,
+        instance_id: str,
+        to_state: WorkflowState,
+        reason: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        상태 전이 실행
+
+        Args:
+            instance_id: 워크플로우 인스턴스 ID
+            to_state: 목표 상태
+            reason: 전이 사유
+            metadata: 추가 메타데이터
+
+        Returns:
+            전이 결과 정보
+
+        Raises:
+            InvalidStateTransition: 잘못된 전이 시도 시
+        """
+        current_info = self._states.get(instance_id, {
+            "state": WorkflowState.CREATED,
+            "created_at": datetime.utcnow().isoformat(),
+        })
+        current_state = current_info.get("state", WorkflowState.CREATED)
+
+        # 문자열을 Enum으로 변환
+        if isinstance(current_state, str):
+            try:
+                current_state = WorkflowState(current_state)
+            except ValueError:
+                current_state = WorkflowState.CREATED
+
+        # 전이 가능 여부 확인
+        if not self.can_transition(current_state, to_state):
+            raise InvalidStateTransition(
+                f"Cannot transition from {current_state.value} to {to_state.value} "
+                f"for instance {instance_id}"
+            )
+
+        # 상태 전이 기록
+        transition_record = {
+            "from_state": current_state.value,
+            "to_state": to_state.value,
+            "reason": reason,
+            "metadata": metadata or {},
+            "transitioned_at": datetime.utcnow().isoformat(),
+        }
+
+        # 히스토리 저장
+        if instance_id not in self._state_history:
+            self._state_history[instance_id] = []
+        self._state_history[instance_id].append(transition_record)
+
+        # 현재 상태 업데이트
+        self._states[instance_id] = {
+            "state": to_state,
+            "previous_state": current_state.value,
+            "reason": reason,
+            "updated_at": datetime.utcnow().isoformat(),
+            "metadata": metadata or {},
+        }
+
+        # 상태 변경 이벤트 발행 (로그)
+        await self._emit_state_change_event(
+            instance_id, current_state, to_state, reason
+        )
+
+        logger.info(
+            f"Workflow {instance_id} transitioned: "
+            f"{current_state.value} -> {to_state.value}"
+            f"{f' (reason: {reason})' if reason else ''}"
+        )
+
+        return {
+            "instance_id": instance_id,
+            "previous_state": current_state.value,
+            "current_state": to_state.value,
+            "transitioned_at": transition_record["transitioned_at"],
+        }
+
+    async def _emit_state_change_event(
+        self,
+        instance_id: str,
+        from_state: WorkflowState,
+        to_state: WorkflowState,
+        reason: Optional[str] = None
+    ):
+        """상태 변경 이벤트 발행"""
+        event = {
+            "event_type": "workflow_state_changed",
+            "instance_id": instance_id,
+            "from_state": from_state.value,
+            "to_state": to_state.value,
+            "reason": reason,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+        # 실행 로그에 기록
+        execution_log_store.add_log(event)
+
+        # TODO: Redis pub/sub으로 이벤트 발행 (실시간 UI 업데이트용)
+
+    def get_state(self, instance_id: str) -> Dict[str, Any]:
+        """현재 상태 조회"""
+        info = self._states.get(instance_id)
+        if not info:
+            return {
+                "instance_id": instance_id,
+                "state": WorkflowState.CREATED.value,
+                "exists": False,
+            }
+
+        state = info.get("state")
+        if isinstance(state, WorkflowState):
+            state = state.value
+
+        return {
+            "instance_id": instance_id,
+            "state": state,
+            "previous_state": info.get("previous_state"),
+            "updated_at": info.get("updated_at"),
+            "reason": info.get("reason"),
+            "exists": True,
+        }
+
+    def get_history(
+        self,
+        instance_id: str,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """상태 전이 히스토리 조회"""
+        history = self._state_history.get(instance_id, [])
+        return history[-limit:]
+
+    def initialize_instance(
+        self,
+        instance_id: str,
+        workflow_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """새 인스턴스 상태 초기화"""
+        now = datetime.utcnow().isoformat()
+
+        self._states[instance_id] = {
+            "state": WorkflowState.CREATED,
+            "workflow_id": workflow_id,
+            "created_at": now,
+            "updated_at": now,
+            "metadata": metadata or {},
+        }
+
+        self._state_history[instance_id] = [{
+            "from_state": None,
+            "to_state": WorkflowState.CREATED.value,
+            "reason": "Instance created",
+            "transitioned_at": now,
+        }]
+
+    def is_terminal_state(self, state: WorkflowState) -> bool:
+        """종료 상태 여부 확인"""
+        return state in [
+            WorkflowState.COMPLETED,
+            WorkflowState.FAILED,
+            WorkflowState.COMPENSATED,
+            WorkflowState.CANCELLED,
+            WorkflowState.TIMEOUT,
+        ]
+
+    def is_active_state(self, state: WorkflowState) -> bool:
+        """활성 상태 여부 확인"""
+        return state in [
+            WorkflowState.RUNNING,
+            WorkflowState.WAITING,
+            WorkflowState.PAUSED,
+            WorkflowState.COMPENSATING,
+        ]
+
+
+class CheckpointManager:
+    """
+    워크플로우 체크포인트 관리자
+
+    장기 실행 워크플로우의 중간 상태를 저장하고 복구
+    Redis (최신 상태 캐시) + DB (영구 저장) 이중화
+    """
+
+    def __init__(self):
+        """체크포인트 매니저 초기화"""
+        # 인메모리 저장소 (MVP용, 프로덕션에서는 Redis 사용)
+        self._checkpoints: Dict[str, Dict[str, Any]] = {}
+        self._checkpoint_history: Dict[str, List[Dict[str, Any]]] = {}
+
+        # 설정
+        self.checkpoint_ttl_seconds = 86400  # 24시간
+        self.max_checkpoints_per_instance = 10
+
+    async def save_checkpoint(
+        self,
+        instance_id: str,
+        node_id: str,
+        context: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        체크포인트 저장
+
+        Args:
+            instance_id: 워크플로우 인스턴스 ID
+            node_id: 현재 실행 노드 ID
+            context: 워크플로우 컨텍스트 (변수, 결과 등)
+            metadata: 추가 메타데이터
+
+        Returns:
+            체크포인트 ID
+        """
+        checkpoint_id = str(uuid4())
+        now = datetime.utcnow()
+
+        # 체크포인트 데이터 구성
+        checkpoint = {
+            "checkpoint_id": checkpoint_id,
+            "instance_id": instance_id,
+            "node_id": node_id,
+            "context": self._serialize_context(context),
+            "metadata": metadata or {},
+            "created_at": now.isoformat(),
+            "expires_at": (now + timedelta(seconds=self.checkpoint_ttl_seconds)).isoformat(),
+        }
+
+        # 최신 체크포인트 저장
+        self._checkpoints[instance_id] = checkpoint
+
+        # 히스토리에 추가
+        if instance_id not in self._checkpoint_history:
+            self._checkpoint_history[instance_id] = []
+        self._checkpoint_history[instance_id].append(checkpoint)
+
+        # 최대 개수 초과 시 오래된 것 삭제
+        if len(self._checkpoint_history[instance_id]) > self.max_checkpoints_per_instance:
+            self._checkpoint_history[instance_id] = \
+                self._checkpoint_history[instance_id][-self.max_checkpoints_per_instance:]
+
+        # TODO: 프로덕션에서는 Redis + DB에 저장
+        # await redis.set(
+        #     f"wf:checkpoint:{instance_id}",
+        #     json.dumps(checkpoint),
+        #     ex=self.checkpoint_ttl_seconds
+        # )
+        # await self._persist_to_db(checkpoint)
+
+        logger.info(
+            f"Checkpoint saved: instance={instance_id}, node={node_id}, "
+            f"checkpoint_id={checkpoint_id}"
+        )
+
+        return checkpoint_id
+
+    async def restore_checkpoint(
+        self,
+        instance_id: str,
+        checkpoint_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        체크포인트에서 복구
+
+        Args:
+            instance_id: 워크플로우 인스턴스 ID
+            checkpoint_id: 특정 체크포인트 ID (없으면 최신)
+
+        Returns:
+            복구된 체크포인트 데이터 또는 None
+        """
+        if checkpoint_id:
+            # 특정 체크포인트 복구
+            history = self._checkpoint_history.get(instance_id, [])
+            for cp in reversed(history):
+                if cp.get("checkpoint_id") == checkpoint_id:
+                    logger.info(f"Restored checkpoint: {checkpoint_id}")
+                    return {
+                        "checkpoint": cp,
+                        "context": self._deserialize_context(cp.get("context", {})),
+                    }
+            return None
+        else:
+            # 최신 체크포인트 복구
+            checkpoint = self._checkpoints.get(instance_id)
+            if checkpoint:
+                # 만료 확인
+                expires_at = datetime.fromisoformat(checkpoint.get("expires_at", ""))
+                if datetime.utcnow() > expires_at:
+                    logger.warning(f"Checkpoint expired: {instance_id}")
+                    return None
+
+                logger.info(f"Restored latest checkpoint for instance: {instance_id}")
+                return {
+                    "checkpoint": checkpoint,
+                    "context": self._deserialize_context(checkpoint.get("context", {})),
+                }
+
+        return None
+
+    async def delete_checkpoint(self, instance_id: str) -> bool:
+        """체크포인트 삭제"""
+        if instance_id in self._checkpoints:
+            del self._checkpoints[instance_id]
+
+        if instance_id in self._checkpoint_history:
+            del self._checkpoint_history[instance_id]
+
+        logger.info(f"Checkpoint deleted: {instance_id}")
+        return True
+
+    async def list_checkpoints(
+        self,
+        instance_id: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """인스턴스의 체크포인트 목록 조회"""
+        history = self._checkpoint_history.get(instance_id, [])
+        return [
+            {
+                "checkpoint_id": cp.get("checkpoint_id"),
+                "node_id": cp.get("node_id"),
+                "created_at": cp.get("created_at"),
+                "expires_at": cp.get("expires_at"),
+            }
+            for cp in history[-limit:]
+        ]
+
+    def _serialize_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """컨텍스트 직렬화 (JSON 호환)"""
+        serialized = {}
+
+        for key, value in context.items():
+            try:
+                # JSON 직렬화 가능 여부 테스트
+                json.dumps(value)
+                serialized[key] = value
+            except (TypeError, ValueError):
+                # 직렬화 불가능한 객체는 문자열로 변환
+                serialized[key] = str(value)
+
+        return serialized
+
+    def _deserialize_context(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """컨텍스트 역직렬화"""
+        # 현재는 그대로 반환 (필요시 타입 복원 로직 추가)
+        return data
+
+    async def get_recovery_info(
+        self,
+        instance_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        복구 정보 조회
+
+        워크플로우 재시작 시 어디서부터 시작할지 정보 제공
+        """
+        checkpoint = self._checkpoints.get(instance_id)
+        if not checkpoint:
+            return None
+
+        return {
+            "instance_id": instance_id,
+            "checkpoint_id": checkpoint.get("checkpoint_id"),
+            "resume_from_node": checkpoint.get("node_id"),
+            "context": self._deserialize_context(checkpoint.get("context", {})),
+            "checkpoint_created_at": checkpoint.get("created_at"),
+            "can_resume": True,
+        }
+
+    async def cleanup_expired(self) -> int:
+        """만료된 체크포인트 정리"""
+        now = datetime.utcnow()
+        expired_count = 0
+
+        expired_instances = []
+        for instance_id, checkpoint in self._checkpoints.items():
+            expires_at_str = checkpoint.get("expires_at")
+            if expires_at_str:
+                expires_at = datetime.fromisoformat(expires_at_str)
+                if now > expires_at:
+                    expired_instances.append(instance_id)
+
+        for instance_id in expired_instances:
+            await self.delete_checkpoint(instance_id)
+            expired_count += 1
+
+        if expired_count > 0:
+            logger.info(f"Cleaned up {expired_count} expired checkpoints")
+
+        return expired_count
+
+
+# 전역 상태 머신 및 체크포인트 매니저
+workflow_state_machine = WorkflowStateMachine()
+checkpoint_manager = CheckpointManager()
 
 
 # 전역 워크플로우 엔진

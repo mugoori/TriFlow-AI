@@ -1344,3 +1344,719 @@ async def get_chart_types():
         "output_formats": ["chartjs", "echarts", "raw"],
         "data_sources": ["production", "defect", "oee", "inventory"],
     }
+
+
+# ========== GenBI: AI Insights (Executive Summary) ==========
+
+
+@router.post("/insights")
+async def create_insight(
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """
+    AI 인사이트 생성 (Executive Summary)
+
+    AWS QuickSight GenBI 스타일의 Fact/Reasoning/Action 구조로 인사이트 생성
+
+    Request Body:
+    - source_type: "chart" | "dashboard" | "dataset"
+    - source_id: UUID (선택)
+    - source_data: Dict (선택, 직접 데이터 전달)
+    - focus_metrics: List[str] (선택)
+    - time_range: str (선택, 예: "24h", "7d")
+    """
+    from app.services.insight_service import get_insight_service
+    from app.schemas.bi_insight import InsightRequest
+
+    insight_service = get_insight_service()
+
+    try:
+        insight_request = InsightRequest(
+            source_type=request.get("source_type", "dashboard"),
+            source_id=request.get("source_id"),
+            source_data=request.get("source_data"),
+            focus_metrics=request.get("focus_metrics"),
+            time_range=request.get("time_range"),
+            comparison_period=request.get("comparison_period"),
+        )
+
+        insight = await insight_service.generate_insight(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            request=insight_request,
+        )
+
+        return {
+            "success": True,
+            "insight": {
+                "insight_id": str(insight.insight_id),
+                "title": insight.title,
+                "summary": insight.summary,
+                "facts": [f.model_dump() for f in insight.facts],
+                "reasoning": insight.reasoning.model_dump(),
+                "actions": [a.model_dump() for a in insight.actions],
+                "generated_at": insight.generated_at.isoformat(),
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to generate insight: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/insights")
+async def list_insights(
+    current_user: User = Depends(get_current_user),
+    source_type: Optional[str] = Query(None, description="소스 유형 필터"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """인사이트 목록 조회"""
+    from app.services.insight_service import get_insight_service
+
+    insight_service = get_insight_service()
+
+    insights = await insight_service.get_insights(
+        tenant_id=current_user.tenant_id,
+        source_type=source_type,
+        limit=limit,
+        offset=offset,
+    )
+
+    return {
+        "insights": [
+            {
+                "insight_id": str(i.insight_id),
+                "title": i.title,
+                "summary": i.summary,
+                "source_type": i.source_type,
+                "fact_count": len(i.facts),
+                "action_count": len(i.actions),
+                "feedback_score": i.feedback_score,
+                "generated_at": i.generated_at.isoformat(),
+            }
+            for i in insights
+        ],
+        "total": len(insights),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.get("/insights/pinned")
+async def get_pinned_insights(
+    current_user: User = Depends(get_current_user),
+):
+    """고정된 인사이트 목록 조회"""
+    from app.services.bi_chat_service import get_bi_chat_service
+
+    chat_service = get_bi_chat_service()
+
+    pinned = await chat_service.get_pinned_insights(
+        tenant_id=current_user.tenant_id,
+    )
+
+    return {
+        "pinned_insights": pinned,
+        "total": len(pinned),
+    }
+
+
+@router.get("/insights/{insight_id}")
+async def get_insight(
+    insight_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """인사이트 상세 조회"""
+    from app.services.insight_service import get_insight_service
+
+    insight_service = get_insight_service()
+
+    insight = await insight_service.get_insight(
+        tenant_id=current_user.tenant_id,
+        insight_id=insight_id,
+    )
+
+    if not insight:
+        raise HTTPException(status_code=404, detail="Insight not found")
+
+    return {
+        "insight_id": str(insight.insight_id),
+        "title": insight.title,
+        "summary": insight.summary,
+        "source_type": insight.source_type,
+        "source_id": str(insight.source_id) if insight.source_id else None,
+        "facts": [f.model_dump() for f in insight.facts],
+        "reasoning": insight.reasoning.model_dump(),
+        "actions": [a.model_dump() for a in insight.actions],
+        "model_used": insight.model_used,
+        "feedback_score": insight.feedback_score,
+        "generated_at": insight.generated_at.isoformat(),
+    }
+
+
+@router.post("/insights/{insight_id}/feedback")
+async def submit_insight_feedback(
+    insight_id: UUID,
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """인사이트 피드백 제출"""
+    from app.services.insight_service import get_insight_service
+
+    insight_service = get_insight_service()
+
+    score = request.get("score")
+    if score not in [-1, 0, 1]:
+        raise HTTPException(status_code=400, detail="Score must be -1, 0, or 1")
+
+    success = await insight_service.submit_feedback(
+        tenant_id=current_user.tenant_id,
+        insight_id=insight_id,
+        user_id=current_user.user_id,
+        score=score,
+        comment=request.get("comment"),
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Insight not found")
+
+    return {"success": True, "message": "Feedback submitted"}
+
+
+# ========== GenBI: Data Stories ==========
+
+
+@router.post("/stories")
+async def create_story(
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """
+    데이터 스토리 생성
+
+    auto_generate=True일 경우 LLM이 자동으로 섹션 생성
+
+    Request Body:
+    - title: str (필수)
+    - description: str (선택)
+    - auto_generate: bool (기본 True)
+    - focus_topic: str (선택, 자동 생성 시 집중 주제)
+    - time_range: str (선택)
+    - source_chart_ids: List[UUID] (선택, 포함할 차트 목록)
+    """
+    from app.services.story_service import get_story_service
+    from app.schemas.bi_story import StoryCreateRequest
+
+    story_service = get_story_service()
+
+    try:
+        story_request = StoryCreateRequest(
+            title=request.get("title", "새 스토리"),
+            description=request.get("description"),
+            auto_generate=request.get("auto_generate", True),
+            focus_topic=request.get("focus_topic"),
+            time_range=request.get("time_range"),
+            source_chart_ids=request.get("source_chart_ids"),
+        )
+
+        story = await story_service.create_story(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            request=story_request,
+        )
+
+        return {
+            "success": True,
+            "story": {
+                "story_id": str(story.story_id),
+                "title": story.title,
+                "description": story.description,
+                "section_count": len(story.sections),
+                "sections": [
+                    {
+                        "section_id": str(s.section_id),
+                        "section_type": s.section_type,
+                        "title": s.title,
+                        "order": s.order,
+                    }
+                    for s in story.sections
+                ],
+                "created_at": story.created_at.isoformat(),
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create story: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stories")
+async def list_stories(
+    current_user: User = Depends(get_current_user),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """스토리 목록 조회"""
+    from app.services.story_service import get_story_service
+
+    story_service = get_story_service()
+
+    stories = await story_service.get_stories(
+        tenant_id=current_user.tenant_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    return {
+        "stories": [
+            {
+                "story_id": str(s.story_id),
+                "title": s.title,
+                "description": s.description,
+                "section_count": len(s.sections),
+                "is_public": s.is_public,
+                "created_at": s.created_at.isoformat(),
+                "updated_at": s.updated_at.isoformat(),
+                "published_at": s.published_at.isoformat() if s.published_at else None,
+            }
+            for s in stories
+        ],
+        "total": len(stories),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.get("/stories/{story_id}")
+async def get_story(
+    story_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """스토리 상세 조회"""
+    from app.services.story_service import get_story_service
+
+    story_service = get_story_service()
+
+    story = await story_service.get_story(
+        tenant_id=current_user.tenant_id,
+        story_id=story_id,
+    )
+
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+
+    return {
+        "story_id": str(story.story_id),
+        "title": story.title,
+        "description": story.description,
+        "is_public": story.is_public,
+        "sections": [
+            {
+                "section_id": str(s.section_id),
+                "section_type": s.section_type,
+                "order": s.order,
+                "title": s.title,
+                "narrative": s.narrative,
+                "charts": [c.model_dump() for c in s.charts],
+                "ai_generated": s.ai_generated,
+            }
+            for s in story.sections
+        ],
+        "created_at": story.created_at.isoformat(),
+        "updated_at": story.updated_at.isoformat(),
+        "published_at": story.published_at.isoformat() if story.published_at else None,
+    }
+
+
+@router.put("/stories/{story_id}")
+async def update_story(
+    story_id: UUID,
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """스토리 수정"""
+    from app.services.story_service import get_story_service
+
+    story_service = get_story_service()
+
+    success = await story_service.update_story(
+        tenant_id=current_user.tenant_id,
+        story_id=story_id,
+        title=request.get("title"),
+        description=request.get("description"),
+        is_public=request.get("is_public"),
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Story not found")
+
+    return {"success": True, "message": "Story updated"}
+
+
+@router.delete("/stories/{story_id}")
+async def delete_story(
+    story_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """스토리 삭제"""
+    from app.services.story_service import get_story_service
+
+    story_service = get_story_service()
+
+    success = await story_service.delete_story(
+        tenant_id=current_user.tenant_id,
+        story_id=story_id,
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Story not found")
+
+    return {"success": True, "message": "Story deleted"}
+
+
+@router.post("/stories/{story_id}/sections")
+async def add_story_section(
+    story_id: UUID,
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """스토리에 섹션 추가"""
+    from app.services.story_service import get_story_service
+    from app.schemas.bi_story import StorySectionCreateRequest
+
+    story_service = get_story_service()
+
+    try:
+        section_request = StorySectionCreateRequest(
+            section_type=request.get("section_type", "analysis"),
+            title=request.get("title", "새 섹션"),
+            narrative=request.get("narrative", ""),
+            order=request.get("order"),
+        )
+
+        section = await story_service.add_section(
+            tenant_id=current_user.tenant_id,
+            story_id=story_id,
+            request=section_request,
+        )
+
+        return {
+            "success": True,
+            "section": {
+                "section_id": str(section.section_id),
+                "section_type": section.section_type,
+                "title": section.title,
+                "order": section.order,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to add section: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/stories/{story_id}/sections/{section_id}")
+async def delete_story_section(
+    story_id: UUID,
+    section_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """스토리 섹션 삭제"""
+    from app.services.story_service import get_story_service
+
+    story_service = get_story_service()
+
+    success = await story_service.delete_section(
+        tenant_id=current_user.tenant_id,
+        story_id=story_id,
+        section_id=section_id,
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    return {"success": True, "message": "Section deleted"}
+
+
+# ========== GenBI: Chart Refinement ==========
+
+
+@router.post("/charts/refine")
+async def refine_chart(
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """
+    차트 수정 (Refinement Loop)
+
+    사용자 지시에 따라 기존 차트 설정을 수정
+
+    Request Body:
+    - original_chart_config: Dict (필수, 원본 차트 설정)
+    - refinement_instruction: str (필수, 수정 지시)
+    - preserve_data: bool (기본 True)
+    """
+    from app.agents.bi_planner import BIPlannerAgent
+
+    original_config = request.get("original_chart_config")
+    instruction = request.get("refinement_instruction")
+
+    if not original_config:
+        raise HTTPException(status_code=400, detail="original_chart_config is required")
+    if not instruction:
+        raise HTTPException(status_code=400, detail="refinement_instruction is required")
+
+    try:
+        agent = BIPlannerAgent()
+        result = agent._refine_chart(
+            original_config=original_config,
+            instruction=instruction,
+            preserve_data=request.get("preserve_data", True),
+        )
+
+        return {
+            "success": result.get("success", False),
+            "refined_chart_config": result.get("refined_config"),
+            "changes_made": result.get("changes_made", []),
+            "error": result.get("error"),
+        }
+
+    except Exception as e:
+        logger.error(f"Chart refinement failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== GenBI: Chat (대화형 인사이트) ==========
+
+
+@router.post("/chat")
+async def chat(
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """
+    BI 채팅 (대화형 인사이트 생성)
+
+    자연어 질문에 AI가 데이터 분석 결과를 제공
+
+    Request Body:
+    - message: str (필수, 사용자 메시지)
+    - session_id: UUID (선택, 기존 세션 계속)
+    - context_type: str (선택, general|dashboard|chart|dataset)
+    - context_id: UUID (선택, 특정 대시보드/차트/데이터셋)
+    """
+    from app.services.bi_chat_service import get_bi_chat_service, ChatRequest
+
+    chat_service = get_bi_chat_service()
+
+    message = request.get("message")
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    try:
+        chat_request = ChatRequest(
+            message=message,
+            session_id=UUID(request["session_id"]) if request.get("session_id") else None,
+            context_type=request.get("context_type", "general"),
+            context_id=UUID(request["context_id"]) if request.get("context_id") else None,
+        )
+
+        response = await chat_service.chat(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            request=chat_request,
+        )
+
+        return {
+            "success": True,
+            "session_id": str(response.session_id),
+            "message_id": str(response.message_id),
+            "content": response.content,
+            "response_type": response.response_type,
+            "response_data": response.response_data,
+            "linked_insight_id": str(response.linked_insight_id) if response.linked_insight_id else None,
+            "linked_chart_id": str(response.linked_chart_id) if response.linked_chart_id else None,
+        }
+
+    except Exception as e:
+        logger.error(f"Chat failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chat/sessions")
+async def list_chat_sessions(
+    current_user: User = Depends(get_current_user),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """채팅 세션 목록 조회"""
+    from app.services.bi_chat_service import get_bi_chat_service
+
+    chat_service = get_bi_chat_service()
+
+    sessions = await chat_service.get_sessions(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    return {
+        "sessions": [
+            {
+                "session_id": str(s.session_id),
+                "title": s.title,
+                "context_type": s.context_type,
+                "is_active": s.is_active,
+                "created_at": s.created_at.isoformat(),
+                "updated_at": s.updated_at.isoformat(),
+                "last_message_at": s.last_message_at.isoformat() if s.last_message_at else None,
+            }
+            for s in sessions
+        ],
+        "total": len(sessions),
+    }
+
+
+@router.get("/chat/sessions/{session_id}/messages")
+async def get_session_messages(
+    session_id: UUID,
+    current_user: User = Depends(get_current_user),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """세션의 메시지 목록 조회"""
+    from app.services.bi_chat_service import get_bi_chat_service
+
+    chat_service = get_bi_chat_service()
+
+    messages = await chat_service.get_session_messages(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        session_id=session_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    return {
+        "messages": [
+            {
+                "message_id": str(m.message_id),
+                "role": m.role,
+                "content": m.content,
+                "response_type": m.response_type,
+                "response_data": m.response_data,
+                "linked_insight_id": str(m.linked_insight_id) if m.linked_insight_id else None,
+                "linked_chart_id": str(m.linked_chart_id) if m.linked_chart_id else None,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in messages
+        ],
+        "total": len(messages),
+    }
+
+
+@router.delete("/chat/sessions/{session_id}")
+async def delete_chat_session(
+    session_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """채팅 세션 삭제"""
+    from app.services.bi_chat_service import get_bi_chat_service
+
+    chat_service = get_bi_chat_service()
+
+    success = await chat_service.delete_session(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        session_id=session_id,
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {"success": True, "message": "Session deleted"}
+
+
+@router.put("/chat/sessions/{session_id}")
+async def update_chat_session(
+    session_id: UUID,
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """채팅 세션 수정 (제목 변경)"""
+    from app.services.bi_chat_service import get_bi_chat_service
+
+    chat_service = get_bi_chat_service()
+
+    title = request.get("title")
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+
+    success = await chat_service.update_session_title(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        session_id=session_id,
+        title=title,
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {"success": True, "message": "Session updated"}
+
+
+# ========== GenBI: Pinned Insights (고정된 인사이트) ==========
+
+
+@router.post("/insights/{insight_id}/pin")
+async def pin_insight(
+    insight_id: UUID,
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """인사이트 대시보드에 고정"""
+    from app.services.bi_chat_service import get_bi_chat_service
+
+    chat_service = get_bi_chat_service()
+
+    try:
+        pinned = await chat_service.pin_insight(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            insight_id=insight_id,
+            display_mode=request.get("display_mode", "card"),
+        )
+
+        return {
+            "pin_id": str(pinned.pin_id),
+            "insight_id": str(insight_id),
+            "pinned_at": pinned.pinned_at.isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to pin insight: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/insights/{insight_id}/pin")
+async def unpin_insight(
+    insight_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """인사이트 고정 해제"""
+    from app.services.bi_chat_service import get_bi_chat_service
+
+    chat_service = get_bi_chat_service()
+
+    success = await chat_service.unpin_insight(
+        tenant_id=current_user.tenant_id,
+        insight_id=insight_id,
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Pinned insight not found")
+
+    return {"success": True, "message": "Insight unpinned"}

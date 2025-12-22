@@ -1,17 +1,26 @@
 /**
  * DashboardPage
- * 실제 센서 데이터 API 연동 대시보드 페이지
+ * AWS QuickSight GenBI 동일 기능 통합 대시보드 페이지
+ *
+ * 3대 핵심 기능:
+ * 1. AI Dashboard Authoring (차트 생성 + Refinement Loop)
+ * 2. Executive Summary (Fact/Reasoning/Action 인사이트)
+ * 3. Data Stories (내러티브 보고서)
  */
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BarChart3, TrendingUp, AlertTriangle, X, LayoutDashboard, RefreshCw,
-  Thermometer, Gauge, Droplets, Activity, Loader2
+  Thermometer, Gauge, Droplets, Activity, Loader2, Sparkles, BookOpen,
+  ChevronDown, ChevronUp, MessageSquare,
 } from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { ChartRenderer } from '@/components/charts';
+import { InsightPanel, StoryList, StoryViewer, BIChatPanel } from '@/components/bi';
 import { sensorService, SensorSummaryItem, SensorDataItem } from '@/services/sensorService';
+import { biService } from '@/services/biService';
+import type { DataStory, AIInsight } from '@/types/bi';
 
 interface DashboardStats {
   totalReadings: number;
@@ -37,6 +46,14 @@ export function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // GenBI 상태
+  const [showInsightPanel, setShowInsightPanel] = useState(false);
+  const [showStoryPanel, setShowStoryPanel] = useState(false);
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const [selectedStory, setSelectedStory] = useState<DataStory | null>(null);
+  const [insightPanelCollapsed, setInsightPanelCollapsed] = useState(false);
+  const [pinnedInsightIds, setPinnedInsightIds] = useState<string[]>([]);
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
@@ -93,8 +110,37 @@ export function DashboardPage() {
     }
   };
 
+  // 핀된 인사이트 로드
+  const loadPinnedInsights = async () => {
+    try {
+      const response = await biService.getPinnedInsights();
+      setPinnedInsightIds(response.pinned_insights.map(p => p.insight_id));
+    } catch (err) {
+      console.error('Failed to load pinned insights:', err);
+    }
+  };
+
+  // 인사이트 Pin
+  const handlePinInsight = async (insightId: string) => {
+    await biService.pinInsight(insightId);
+    setPinnedInsightIds(prev => [...prev, insightId]);
+  };
+
+  // 인사이트 Unpin
+  const handleUnpinInsight = async (insightId: string) => {
+    await biService.unpinInsight(insightId);
+    setPinnedInsightIds(prev => prev.filter(id => id !== insightId));
+  };
+
+  // 채팅에서 인사이트 생성 시 콜백
+  const handleInsightGenerated = (insight: AIInsight) => {
+    // 인사이트가 생성되면 인사이트 패널을 열 수 있음
+    console.log('New insight generated:', insight.title);
+  };
+
   useEffect(() => {
     fetchDashboardData();
+    loadPinnedInsights();
     // 30초마다 자동 갱신
     const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
@@ -103,7 +149,7 @@ export function DashboardPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 space-y-6">
-        {/* Header with refresh button */}
+        {/* Header with GenBI buttons */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Dashboard</h2>
@@ -113,18 +159,57 @@ export function DashboardPage() {
               </p>
             )}
           </div>
-          <button
-            onClick={fetchDashboardData}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            새로고침
-          </button>
+          <div className="flex items-center gap-2">
+            {/* AI 채팅 버튼 */}
+            <button
+              onClick={() => setShowChatPanel(!showChatPanel)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                showChatPanel
+                  ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-green-50 dark:hover:bg-green-900/30'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              AI 채팅
+            </button>
+            {/* AI 인사이트 토글 버튼 */}
+            <button
+              onClick={() => setShowInsightPanel(!showInsightPanel)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                showInsightPanel
+                  ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-900/30'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              AI 인사이트
+            </button>
+            {/* 스토리 버튼 */}
+            <button
+              onClick={() => setShowStoryPanel(!showStoryPanel)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                showStoryPanel
+                  ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              스토리
+            </button>
+            {/* 새로고침 버튼 */}
+            <button
+              onClick={fetchDashboardData}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              새로고침
+            </button>
+          </div>
         </div>
 
         {/* Error Alert */}
@@ -135,6 +220,40 @@ export function DashboardPage() {
               <span>{error}</span>
             </div>
           </div>
+        )}
+
+        {/* AI Executive Summary Section (GenBI) */}
+        {showInsightPanel && (
+          <Card className="border-purple-200 dark:border-purple-800">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                  <Sparkles className="w-5 h-5" />
+                  AI Executive Summary
+                </CardTitle>
+                <button
+                  onClick={() => setInsightPanelCollapsed(!insightPanelCollapsed)}
+                  className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  {insightPanelCollapsed ? (
+                    <ChevronDown className="w-5 h-5" />
+                  ) : (
+                    <ChevronUp className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+            </CardHeader>
+            {!insightPanelCollapsed && (
+              <CardContent>
+                <InsightPanel
+                  sourceType="dashboard"
+                  pinnedInsightIds={pinnedInsightIds}
+                  onPinInsight={handlePinInsight}
+                  onUnpinInsight={handleUnpinInsight}
+                />
+              </CardContent>
+            )}
+          </Card>
         )}
 
         {/* Stats Grid - 실제 센서 데이터 */}
@@ -326,6 +445,53 @@ export function DashboardPage() {
           </Card>
         )}
       </div>
+
+      {/* Chat Panel (Slide-in from right) */}
+      {showChatPanel && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="flex-1 bg-black/50"
+            onClick={() => setShowChatPanel(false)}
+          />
+          {/* Panel */}
+          <div className="w-full max-w-xl bg-white dark:bg-slate-900 shadow-xl overflow-hidden flex flex-col">
+            <BIChatPanel
+              contextType="dashboard"
+              onInsightGenerated={handleInsightGenerated}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Story Panel (Slide-in from right) */}
+      {showStoryPanel && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="flex-1 bg-black/50"
+            onClick={() => {
+              setShowStoryPanel(false);
+              setSelectedStory(null);
+            }}
+          />
+          {/* Panel */}
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 shadow-xl overflow-hidden flex flex-col">
+            {selectedStory ? (
+              <StoryViewer
+                story={selectedStory}
+                onClose={() => setSelectedStory(null)}
+              />
+            ) : (
+              <div className="flex-1 overflow-y-auto p-6">
+                <StoryList
+                  onSelectStory={(story) => setSelectedStory(story)}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
