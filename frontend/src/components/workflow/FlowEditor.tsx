@@ -1712,7 +1712,12 @@ function flowToDSL(
   edges: Edge[],
   workflowName: string,
   workflowDescription: string,
-  triggerType: 'manual' | 'event' | 'schedule'
+  triggerType: 'manual' | 'event' | 'schedule',
+  globalSettings: { timeout_seconds: number; max_retry: number; tags: string[] } = {
+    timeout_seconds: 300,
+    max_retry: 3,
+    tags: []
+  }
 ): WorkflowDSL {
   // 트리거 노드 제외
   const workflowNodes = nodes.filter(n => n.data.nodeType !== 'trigger');
@@ -2158,7 +2163,7 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
 
   // 저장 핸들러
   const handleSave = useCallback(async () => {
-    const dslResult = flowToDSL(nodes as FlowNode[], edges, workflowName, workflowDescription, triggerType);
+    const dslResult = flowToDSL(nodes as FlowNode[], edges, workflowName, workflowDescription, triggerType, globalSettings);
     console.log('[FlowEditor] Saving DSL:', JSON.stringify(dslResult, null, 2));
     setIsSaving(true);
     try {
@@ -2294,8 +2299,8 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
 
   // 현재 DSL 미리보기
   const currentDSL = useMemo(
-    () => flowToDSL(nodes as FlowNode[], edges, workflowName, workflowDescription, triggerType),
-    [nodes, edges, workflowName, workflowDescription, triggerType]
+    () => flowToDSL(nodes as FlowNode[], edges, workflowName, workflowDescription, triggerType, globalSettings),
+    [nodes, edges, workflowName, workflowDescription, triggerType, globalSettings]
   );
 
   return (

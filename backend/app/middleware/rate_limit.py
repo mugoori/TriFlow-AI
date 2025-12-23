@@ -10,6 +10,7 @@ from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
 from app.services.cache_service import CacheService
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
 
+        # CORS 프리플라이트 요청(OPTIONS)은 Rate Limit 제외
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # 제외 경로 체크
         if path in EXCLUDED_PATHS or path.startswith("/docs") or path.startswith("/redoc"):
             return await call_next(request)
@@ -89,6 +94,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 f"Rate limit exceeded: {client_ip} -> {path} "
                 f"(limit: {max_requests}/{window_seconds}s)"
             )
+            # CORS 헤더 추가 (브라우저가 429 응답을 받을 수 있도록)
+            origin = request.headers.get("origin", "")
+            if origin in settings.cors_origins_list:
+                headers["Access-Control-Allow-Origin"] = origin
+                headers["Access-Control-Allow-Credentials"] = "true"
+
             return JSONResponse(
                 status_code=429,
                 content={
