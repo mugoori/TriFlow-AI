@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Query, HTTPException, Depends
+from fastapi import APIRouter, Query, HTTPException, Depends, Path
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -16,6 +16,19 @@ from app.database import get_db
 from app.models import Workflow, WorkflowInstance
 
 router = APIRouter()
+
+
+def serialize_for_json(obj: Any) -> Any:
+    """UUID 및 기타 비 직렬화 객체를 JSON 호환 형식으로 변환"""
+    if isinstance(obj, UUID):
+        return str(obj)
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: serialize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_for_json(item) for item in obj]
+    return obj
 
 
 # ============ Pydantic Models ============
@@ -255,7 +268,7 @@ def _workflow_to_response(wf: Workflow) -> WorkflowResponse:
         name=wf.name,
         description=wf.description,
         dsl_definition=wf.dsl_definition or {},
-        version=wf.version,
+        version=str(wf.version) if wf.version is not None else "1",
         is_active=wf.is_active,
         created_at=wf.created_at,
         updated_at=wf.updated_at,
@@ -269,11 +282,11 @@ def _instance_to_response(inst: WorkflowInstance, workflow_name: str) -> Workflo
         workflow_id=str(inst.workflow_id),
         workflow_name=workflow_name,
         status=inst.status,
-        input_data=inst.input_data or {},
-        output_data=inst.output_data or {},
-        error_message=inst.error_message,
+        input_data=inst.input_context or {},
+        output_data=inst.runtime_context or {},
+        error_message=inst.last_error,
         started_at=inst.started_at,
-        completed_at=inst.completed_at,
+        completed_at=inst.ended_at,
     )
 
 
@@ -370,596 +383,7 @@ async def get_action_catalog(
     )
 
 
-@router.get("/{workflow_id}", response_model=WorkflowResponse)
-async def get_workflow(
-    workflow_id: str,
-    db: Session = Depends(get_db),
-):
-    """
-    워크플로우 상세 조회 (PostgreSQL)
-    """
-    try:
-        wf_uuid = UUID(workflow_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
-
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
-
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    return _workflow_to_response(workflow)
-
-
-@router.post("", response_model=WorkflowResponse, status_code=201)
-async def create_workflow(
-    workflow: WorkflowCreate,
-    db: Session = Depends(get_db),
-):
-    """
-    새 워크플로우 생성 (PostgreSQL)
-    """
-    # tenant 확인 또는 생성 (MVP: default tenant)
-    from app.models import Tenant
-
-    tenant = db.query(Tenant).first()
-    if not tenant:
-        # Default tenant 생성
-        tenant = Tenant(
-            name="Default Tenant",
-            slug="default",
-            settings={},
-        )
-        db.add(tenant)
-        db.commit()
-        db.refresh(tenant)
-
-    # 새 워크플로우 생성
-    dsl_dict = workflow.dsl_definition.model_dump(exclude_none=False)
-
-    new_workflow = Workflow(
-        tenant_id=tenant.tenant_id,
-        name=workflow.name,
-        description=workflow.description,
-        dsl_definition=dsl_dict,
-        version="1.0.0",
-        is_active=True,
-    )
-
-    db.add(new_workflow)
-    db.commit()
-    db.refresh(new_workflow)
-
-    return _workflow_to_response(new_workflow)
-
-
-class WorkflowUpdate(BaseModel):
-    """워크플로우 수정 요청 모델"""
-    name: Optional[str] = None
-    description: Optional[str] = None
-    is_active: Optional[bool] = None
-    dsl_definition: Optional[WorkflowDSL] = None
-
-
-@router.patch("/{workflow_id}", response_model=WorkflowResponse)
-async def update_workflow(
-    workflow_id: str,
-    update_data: WorkflowUpdate,
-    db: Session = Depends(get_db),
-):
-    """
-    워크플로우 수정 (PostgreSQL)
-    - name, description, is_active: 기본 정보 수정
-    - dsl_definition: 워크플로우 DSL 전체 수정
-    """
-    try:
-        wf_uuid = UUID(workflow_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
-
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
-
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    if update_data.name is not None:
-        workflow.name = update_data.name
-    if update_data.description is not None:
-        workflow.description = update_data.description
-    if update_data.is_active is not None:
-        workflow.is_active = update_data.is_active
-    if update_data.dsl_definition is not None:
-        # DSL 업데이트 시 name, description도 함께 업데이트
-        dsl_dict = update_data.dsl_definition.model_dump(exclude_none=False)
-
-        # JSONB 필드 업데이트를 위해 새 dict로 복사하여 할당
-        new_dsl = copy.deepcopy(dsl_dict)
-        workflow.dsl_definition = new_dsl
-
-        # SQLAlchemy에 JSONB 필드 변경을 명시적으로 알림
-        flag_modified(workflow, "dsl_definition")
-
-        # DSL에서 name, description이 있으면 워크플로우에도 반영
-        if update_data.dsl_definition.name:
-            workflow.name = update_data.dsl_definition.name
-        if update_data.dsl_definition.description:
-            workflow.description = update_data.dsl_definition.description
-
-    workflow.updated_at = datetime.utcnow()
-
-    db.commit()
-    db.refresh(workflow)
-
-    return _workflow_to_response(workflow)
-
-
-@router.delete("/{workflow_id}", status_code=204)
-async def delete_workflow(
-    workflow_id: str,
-    db: Session = Depends(get_db),
-):
-    """
-    워크플로우 삭제 (PostgreSQL)
-    """
-    try:
-        wf_uuid = UUID(workflow_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
-
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
-
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    db.delete(workflow)
-    db.commit()
-
-    return None
-
-
-class WorkflowToggleResponse(BaseModel):
-    """워크플로우 토글 응답"""
-    workflow_id: str
-    name: str
-    is_active: bool
-    message: str
-
-
-@router.post("/{workflow_id}/toggle", response_model=WorkflowToggleResponse)
-async def toggle_workflow(
-    workflow_id: str,
-    db: Session = Depends(get_db),
-):
-    """
-    워크플로우 활성/비활성 토글
-
-    현재 is_active 상태를 반전시킵니다.
-    - true → false (비활성화)
-    - false → true (활성화)
-    """
-    try:
-        wf_uuid = UUID(workflow_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
-
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
-
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    # 상태 토글
-    workflow.is_active = not workflow.is_active
-    workflow.updated_at = datetime.utcnow()
-
-    db.commit()
-    db.refresh(workflow)
-
-    status_msg = "활성화" if workflow.is_active else "비활성화"
-
-    return WorkflowToggleResponse(
-        workflow_id=str(workflow.workflow_id),
-        name=workflow.name,
-        is_active=workflow.is_active,
-        message=f"워크플로우 '{workflow.name}'이(가) {status_msg}되었습니다.",
-    )
-
-
-class ExecuteWorkflowRequest(BaseModel):
-    """워크플로우 실행 요청 (테스트 데이터 포함)"""
-    context: Dict[str, Any] = Field(default_factory=dict, description="실행 컨텍스트 데이터")
-
-
-@router.post("/{workflow_id}/execute", response_model=WorkflowInstanceResponse)
-async def execute_workflow(
-    workflow_id: str,
-    request: ExecuteWorkflowRequest,
-    db: Session = Depends(get_db),
-):
-    """
-    워크플로우 수동 실행 (테스트용)
-
-    트리거 조건과 관계없이 워크플로우를 즉시 실행합니다.
-    테스트 데이터를 context로 전달하여 실행 결과를 확인할 수 있습니다.
-
-    Example:
-        POST /workflows/{id}/execute
-        {"context": {"temperature": 85, "pressure": 5.5}}
-    """
-    from app.services.workflow_engine import workflow_engine
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    try:
-        wf_uuid = UUID(workflow_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
-
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
-
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    if not workflow.is_active:
-        raise HTTPException(status_code=400, detail="Workflow is not active. Toggle it on first.")
-
-    now = datetime.utcnow()
-    dsl = workflow.dsl_definition or {}
-    input_data = request.context
-
-    # 워크플로우 엔진으로 실행
-    engine_result = await workflow_engine.execute_workflow(
-        workflow_id=str(workflow.workflow_id),
-        dsl=dsl,
-        input_data=input_data,
-        use_simulated_data=False,
-    )
-
-    status = engine_result.get("status", "completed")
-    error_message = engine_result.get("error_message")
-
-    # 실행 인스턴스 저장
-    # workflow_id를 명시적으로 저장 (relationship으로 인한 None 방지)
-    wf_id = workflow.workflow_id
-    wf_name = workflow.name
-    wf_tenant_id = workflow.tenant_id
-
-    instance = WorkflowInstance(
-        workflow_id=wf_id,
-        tenant_id=wf_tenant_id,
-        status=status,
-        input_data=input_data or {},
-        output_data={
-            "message": "Workflow executed via manual trigger",
-            "nodes_total": engine_result.get("nodes_total", 0),
-            "nodes_executed": engine_result.get("nodes_executed", 0),
-            "nodes_skipped": engine_result.get("nodes_skipped", 0),
-            "results": engine_result.get("results", []),
-            "execution_time_ms": engine_result.get("execution_time_ms", 0),
-        },
-        error_message=error_message,
-        started_at=now,
-        completed_at=datetime.utcnow(),
-    )
-
-    db.add(instance)
-    db.commit()
-
-    # 응답 데이터를 먼저 추출한 후 세션에서 분리
-    # (이후 workflow 삭제 시 CASCADE로 인한 문제 방지)
-    instance_id = str(instance.instance_id)
-    instance_output = instance.output_data
-    instance_completed_at = instance.completed_at
-    db.expunge(instance)
-
-    logger.info(f"Workflow executed manually: {wf_name} ({workflow_id})")
-
-    return WorkflowInstanceResponse(
-        instance_id=instance_id,
-        workflow_id=str(wf_id),
-        workflow_name=wf_name,
-        status=status,
-        input_data=input_data or {},
-        output_data=instance_output or {},
-        error_message=error_message,
-        started_at=now,
-        completed_at=instance_completed_at,
-    )
-
-
-class WorkflowRunRequest(BaseModel):
-    """워크플로우 실행 요청"""
-    input_data: Optional[Dict[str, Any]] = Field(default=None, description="입력 데이터 (센서 값 등)")
-    use_simulated_data: bool = Field(default=False, description="시뮬레이션 데이터 사용 여부")
-    simulation_scenario: str = Field(default="random", description="시뮬레이션 시나리오 (normal, alert, random)")
-
-
-@router.post("/{workflow_id}/run", response_model=WorkflowInstanceResponse)
-async def run_workflow(
-    workflow_id: str,
-    request: Optional[WorkflowRunRequest] = None,
-    db: Session = Depends(get_db),
-):
-    """
-    워크플로우 실행 (PostgreSQL + WorkflowEngine)
-
-    조건 노드를 평가하고, 액션을 실행합니다.
-    시뮬레이션 데이터를 사용하거나 직접 데이터를 전달할 수 있습니다.
-    """
-    from app.services.notifications import notification_manager
-    from app.services.workflow_engine import workflow_engine, sensor_simulator
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    try:
-        wf_uuid = UUID(workflow_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
-
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
-
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    if not workflow.is_active:
-        raise HTTPException(status_code=400, detail="Workflow is not active")
-
-    now = datetime.utcnow()
-
-    # 요청 데이터 파싱
-    req = request or WorkflowRunRequest()
-    input_data = req.input_data
-
-    # 시뮬레이션 데이터 생성
-    if req.use_simulated_data and not input_data:
-        input_data = sensor_simulator.generate_sensor_data(scenario=req.simulation_scenario)
-        logger.info(f"시뮬레이션 데이터 생성됨: {req.simulation_scenario}")
-
-    # DSL 가져오기
-    dsl = workflow.dsl_definition or {}
-
-    # 워크플로우 엔진으로 실행
-    engine_result = await workflow_engine.execute_workflow(
-        workflow_id=str(workflow.workflow_id),
-        dsl=dsl,
-        input_data=input_data,
-        use_simulated_data=False,  # 이미 위에서 생성함
-    )
-
-    # 알림 액션 별도 처리 (workflow_engine에서 delegated 처리된 것들)
-    nodes = dsl.get("nodes", [])
-    for node in nodes:
-        if node.get("type") == "action":
-            config = node.get("config", {})
-            action_name = config.get("action")
-
-            if action_name in ["send_slack_notification", "send_email", "send_sms"]:
-                try:
-                    merged_params = {**config.get("parameters", {})}
-                    if input_data:
-                        merged_params.update(input_data.get(node.get("id"), {}))
-
-                    result = await notification_manager.execute_action(
-                        action_name,
-                        merged_params
-                    )
-
-                    # engine_result의 해당 노드 결과 업데이트
-                    for r in engine_result.get("results", []):
-                        if r.get("node_id") == node.get("id"):
-                            r["status"] = result.status.value
-                            r["message"] = result.message
-                            r["details"] = result.details
-
-                    logger.info(f"알림 액션 실행: {action_name} -> {result.status.value}")
-
-                except Exception as e:
-                    logger.error(f"알림 액션 실행 오류: {action_name} - {e}")
-
-    # 최종 상태 결정
-    status = engine_result.get("status", "completed")
-    error_message = engine_result.get("error_message")
-
-    # 새 실행 인스턴스 생성
-    instance = WorkflowInstance(
-        workflow_id=workflow.workflow_id,
-        tenant_id=workflow.tenant_id,
-        status=status,
-        input_data=input_data or {},
-        output_data={
-            "message": "Workflow executed" if status == "completed" else "Workflow failed",
-            "nodes_total": engine_result.get("nodes_total", 0),
-            "nodes_executed": engine_result.get("nodes_executed", 0),
-            "nodes_skipped": engine_result.get("nodes_skipped", 0),
-            "results": engine_result.get("results", []),
-            "execution_time_ms": engine_result.get("execution_time_ms", 0),
-        },
-        error_message=error_message,
-        started_at=now,
-        completed_at=datetime.utcnow(),
-    )
-
-    db.add(instance)
-    db.commit()
-    db.refresh(instance)
-
-    return _instance_to_response(instance, workflow.name)
-
-
-@router.get("/{workflow_id}/instances", response_model=WorkflowInstanceListResponse)
-async def list_workflow_instances(
-    workflow_id: str,
-    db: Session = Depends(get_db),
-    status: Optional[str] = Query(None, description="상태 필터"),
-):
-    """
-    워크플로우 실행 이력 조회 (PostgreSQL)
-    """
-    try:
-        wf_uuid = UUID(workflow_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
-
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
-
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    query = db.query(WorkflowInstance).filter(WorkflowInstance.workflow_id == wf_uuid)
-
-    if status:
-        query = query.filter(WorkflowInstance.status == status)
-
-    query = query.order_by(WorkflowInstance.started_at.desc())
-
-    instances = query.all()
-
-    return WorkflowInstanceListResponse(
-        instances=[_instance_to_response(inst, workflow.name) for inst in instances],
-        total=len(instances),
-    )
-
-
-# ============ 센서 시뮬레이터 API ============
-
-class SensorSimulatorRequest(BaseModel):
-    """센서 데이터 시뮬레이션 요청"""
-    sensors: Optional[List[str]] = Field(default=None, description="생성할 센서 목록")
-    scenario: str = Field(default="random", description="시나리오 (normal, alert, random)")
-    scenario_name: Optional[str] = Field(default=None, description="사전 정의된 시나리오 이름")
-
-
-@router.post("/simulator/generate")
-async def generate_simulated_data(
-    request: Optional[SensorSimulatorRequest] = None,
-):
-    """
-    센서 시뮬레이션 데이터 생성
-
-    시나리오:
-    - normal: 정상 범위 데이터
-    - alert: 임계값 초과 데이터
-    - random: 완전 랜덤 데이터
-
-    사전 정의된 시나리오:
-    - high_temperature, low_pressure, equipment_error
-    - high_defect_rate, production_delay, shift_change
-    - normal_operation
-    """
-    from app.services.workflow_engine import sensor_simulator
-
-    req = request or SensorSimulatorRequest()
-
-    # 사전 정의된 시나리오 사용
-    if req.scenario_name:
-        data = sensor_simulator.generate_test_scenario(req.scenario_name)
-    else:
-        data = sensor_simulator.generate_sensor_data(
-            sensors=req.sensors,
-            scenario=req.scenario
-        )
-
-    return {
-        "success": True,
-        "data": data,
-        "available_sensors": [
-            "temperature", "pressure", "humidity", "vibration",
-            "defect_rate", "consecutive_defects", "runtime_hours",
-            "production_count", "units_per_hour", "current_hour",
-            "equipment_status"
-        ],
-        "available_scenarios": [
-            "high_temperature", "low_pressure", "equipment_error",
-            "high_defect_rate", "production_delay", "shift_change",
-            "normal_operation"
-        ],
-    }
-
-
-# ============ 실행 로그 API ============
-
-class ExecutionLogResponse(BaseModel):
-    """실행 로그 응답"""
-    logs: List[Dict[str, Any]]
-    total: int
-
-
-@router.get("/logs/execution")
-async def get_execution_logs(
-    workflow_id: Optional[str] = Query(None, description="워크플로우 ID 필터"),
-    event_type: Optional[str] = Query(None, description="이벤트 타입 필터"),
-    limit: int = Query(50, ge=1, le=500, description="최대 조회 개수"),
-):
-    """
-    실행 로그 조회 (인메모리)
-
-    워크플로우 실행 중 기록된 이벤트 로그를 조회합니다.
-    """
-    from app.services.workflow_engine import execution_log_store
-
-    logs = execution_log_store.get_logs(
-        workflow_id=workflow_id,
-        event_type=event_type,
-        limit=limit
-    )
-
-    return ExecutionLogResponse(
-        logs=logs,
-        total=len(logs),
-    )
-
-
-@router.delete("/logs/execution")
-async def clear_execution_logs():
-    """
-    실행 로그 초기화 (인메모리)
-    """
-    from app.services.workflow_engine import execution_log_store
-
-    execution_log_store.clear()
-
-    return {"success": True, "message": "실행 로그가 초기화되었습니다."}
-
-
-# ============ 조건 평가 테스트 API ============
-
-class ConditionTestRequest(BaseModel):
-    """조건 평가 테스트 요청"""
-    condition: str = Field(..., description="평가할 조건식")
-    context: Dict[str, Any] = Field(default_factory=dict, description="컨텍스트 변수")
-
-
-@router.post("/test/condition")
-async def test_condition(
-    request: ConditionTestRequest,
-):
-    """
-    조건식 평가 테스트
-
-    조건식과 컨텍스트를 전달하면 평가 결과를 반환합니다.
-
-    예시:
-    - condition: "temperature > 80"
-    - context: {"temperature": 85}
-    - 결과: true
-    """
-    from app.services.workflow_engine import condition_evaluator
-
-    result, message = condition_evaluator.evaluate(
-        request.condition,
-        request.context
-    )
-
-    return {
-        "condition": request.condition,
-        "context": request.context,
-        "result": result,
-        "message": message,
-    }
-
-
-# ============ 워크플로우 승인 API ============
+# ============ 워크플로우 승인 API (라우트 우선순위를 위해 /{workflow_id} 앞에 배치) ============
 
 class ApprovalDecision(BaseModel):
     """승인/거부 결정 요청"""
@@ -984,7 +408,7 @@ class ApprovalListItem(BaseModel):
     title: str
     description: Optional[str]
     approval_type: str
-    approvers: List[Dict[str, Any]]
+    approvers: List[Any]  # 문자열 또는 객체 배열
     status: str
     timeout_at: Optional[datetime]
     created_at: datetime
@@ -1092,7 +516,7 @@ async def get_approval_detail(
             SELECT
                 a.*,
                 w.name as workflow_name,
-                w.dsl_definition
+                w.dsl_json
             FROM core.workflow_approvals a
             LEFT JOIN core.workflows w ON a.workflow_id = w.workflow_id
             WHERE a.approval_id = :approval_id
@@ -1377,6 +801,600 @@ async def cancel_approval(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ 워크플로우 조회 API ============
+
+@router.get("/{workflow_id}", response_model=WorkflowResponse)
+async def get_workflow(
+    workflow_id: str = Path(..., regex=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"),
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 상세 조회 (PostgreSQL)
+    """
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    return _workflow_to_response(workflow)
+
+
+@router.post("", response_model=WorkflowResponse, status_code=201)
+async def create_workflow(
+    workflow: WorkflowCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    새 워크플로우 생성 (PostgreSQL)
+    """
+    # tenant 확인 또는 생성 (MVP: default tenant)
+    from app.models import Tenant
+
+    tenant = db.query(Tenant).first()
+    if not tenant:
+        # Default tenant 생성
+        tenant = Tenant(
+            name="Default Tenant",
+            slug="default",
+            settings={},
+        )
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
+
+    # 새 워크플로우 생성
+    dsl_dict = workflow.dsl_definition.model_dump(exclude_none=False)
+
+    new_workflow = Workflow(
+        tenant_id=tenant.tenant_id,
+        name=workflow.name,
+        description=workflow.description,
+        dsl_definition=dsl_dict,
+        version=1,
+        is_active=True,
+    )
+
+    db.add(new_workflow)
+    db.commit()
+    db.refresh(new_workflow)
+
+    return _workflow_to_response(new_workflow)
+
+
+class WorkflowUpdate(BaseModel):
+    """워크플로우 수정 요청 모델"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    dsl_definition: Optional[WorkflowDSL] = None
+
+
+@router.patch("/{workflow_id}", response_model=WorkflowResponse)
+async def update_workflow(
+    workflow_id: str,
+    update_data: WorkflowUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 수정 (PostgreSQL)
+    - name, description, is_active: 기본 정보 수정
+    - dsl_definition: 워크플로우 DSL 전체 수정
+    """
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if update_data.name is not None:
+        workflow.name = update_data.name
+    if update_data.description is not None:
+        workflow.description = update_data.description
+    if update_data.is_active is not None:
+        workflow.is_active = update_data.is_active
+    if update_data.dsl_definition is not None:
+        # DSL 업데이트 시 name, description도 함께 업데이트
+        dsl_dict = update_data.dsl_definition.model_dump(exclude_none=False)
+
+        # JSONB 필드 업데이트를 위해 새 dict로 복사하여 할당
+        new_dsl = copy.deepcopy(dsl_dict)
+        workflow.dsl_definition = new_dsl
+
+        # SQLAlchemy에 JSONB 필드 변경을 명시적으로 알림
+        flag_modified(workflow, "dsl_definition")
+
+        # DSL에서 name, description이 있으면 워크플로우에도 반영
+        if update_data.dsl_definition.name:
+            workflow.name = update_data.dsl_definition.name
+        if update_data.dsl_definition.description:
+            workflow.description = update_data.dsl_definition.description
+
+    workflow.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(workflow)
+
+    return _workflow_to_response(workflow)
+
+
+@router.delete("/{workflow_id}", status_code=204)
+async def delete_workflow(
+    workflow_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 삭제 (PostgreSQL)
+    """
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    db.delete(workflow)
+    db.commit()
+
+    return None
+
+
+class WorkflowToggleResponse(BaseModel):
+    """워크플로우 토글 응답"""
+    workflow_id: str
+    name: str
+    is_active: bool
+    message: str
+
+
+@router.post("/{workflow_id}/toggle", response_model=WorkflowToggleResponse)
+async def toggle_workflow(
+    workflow_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 활성/비활성 토글
+
+    현재 is_active 상태를 반전시킵니다.
+    - true → false (비활성화)
+    - false → true (활성화)
+    """
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    # 상태 토글
+    workflow.is_active = not workflow.is_active
+    workflow.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(workflow)
+
+    status_msg = "활성화" if workflow.is_active else "비활성화"
+
+    return WorkflowToggleResponse(
+        workflow_id=str(workflow.workflow_id),
+        name=workflow.name,
+        is_active=workflow.is_active,
+        message=f"워크플로우 '{workflow.name}'이(가) {status_msg}되었습니다.",
+    )
+
+
+class ExecuteWorkflowRequest(BaseModel):
+    """워크플로우 실행 요청 (테스트 데이터 포함)"""
+    context: Dict[str, Any] = Field(default_factory=dict, description="실행 컨텍스트 데이터")
+
+
+@router.post("/{workflow_id}/execute", response_model=WorkflowInstanceResponse)
+async def execute_workflow(
+    workflow_id: str,
+    request: ExecuteWorkflowRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 수동 실행 (테스트용)
+
+    트리거 조건과 관계없이 워크플로우를 즉시 실행합니다.
+    테스트 데이터를 context로 전달하여 실행 결과를 확인할 수 있습니다.
+
+    Example:
+        POST /workflows/{id}/execute
+        {"context": {"temperature": 85, "pressure": 5.5}}
+    """
+    from app.services.workflow_engine import workflow_engine
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if not workflow.is_active:
+        raise HTTPException(status_code=400, detail="Workflow is not active. Toggle it on first.")
+
+    now = datetime.utcnow()
+    dsl = workflow.dsl_definition or {}
+    input_data = request.context
+
+    # 워크플로우 엔진으로 실행
+    engine_result = await workflow_engine.execute_workflow(
+        workflow_id=str(workflow.workflow_id),
+        dsl=dsl,
+        input_data=input_data,
+        use_simulated_data=False,
+    )
+
+    status = engine_result.get("status", "completed")
+    error_message = engine_result.get("error_message")
+
+    # 실행 인스턴스 저장
+    # workflow_id를 명시적으로 저장 (relationship으로 인한 None 방지)
+    wf_id = workflow.workflow_id
+    wf_name = workflow.name
+    wf_tenant_id = workflow.tenant_id
+
+    # UUID 등 비 직렬화 객체를 JSON 호환 형식으로 변환
+    serialized_results = serialize_for_json(engine_result.get("results", []))
+
+    instance = WorkflowInstance(
+        workflow_id=wf_id,
+        tenant_id=wf_tenant_id,
+        status=status,
+        input_context=input_data or {},
+        runtime_context={
+            "message": "Workflow executed via manual trigger",
+            "nodes_total": engine_result.get("nodes_total", 0),
+            "nodes_executed": engine_result.get("nodes_executed", 0),
+            "nodes_skipped": engine_result.get("nodes_skipped", 0),
+            "results": serialized_results,
+            "execution_time_ms": engine_result.get("execution_time_ms", 0),
+        },
+        last_error=error_message,
+        started_at=now,
+        ended_at=datetime.utcnow(),
+    )
+
+    db.add(instance)
+    db.commit()
+
+    # 응답 데이터를 먼저 추출한 후 세션에서 분리
+    # (이후 workflow 삭제 시 CASCADE로 인한 문제 방지)
+    instance_id = str(instance.instance_id)
+    instance_output = instance.runtime_context  # DB column: output_data, model attr: runtime_context
+    instance_completed_at = instance.ended_at   # DB column: completed_at, model attr: ended_at
+    db.expunge(instance)
+
+    logger.info(f"Workflow executed manually: {wf_name} ({workflow_id})")
+
+    return WorkflowInstanceResponse(
+        instance_id=instance_id,
+        workflow_id=str(wf_id),
+        workflow_name=wf_name,
+        status=status,
+        input_data=input_data or {},
+        output_data=instance_output or {},
+        error_message=error_message,
+        started_at=now,
+        completed_at=instance_completed_at,
+    )
+
+
+class WorkflowRunRequest(BaseModel):
+    """워크플로우 실행 요청"""
+    input_data: Optional[Dict[str, Any]] = Field(default=None, description="입력 데이터 (센서 값 등)")
+    use_simulated_data: bool = Field(default=False, description="시뮬레이션 데이터 사용 여부")
+    simulation_scenario: str = Field(default="random", description="시뮬레이션 시나리오 (normal, alert, random)")
+
+
+@router.post("/{workflow_id}/run", response_model=WorkflowInstanceResponse)
+async def run_workflow(
+    workflow_id: str,
+    request: Optional[WorkflowRunRequest] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    워크플로우 실행 (PostgreSQL + WorkflowEngine)
+
+    조건 노드를 평가하고, 액션을 실행합니다.
+    시뮬레이션 데이터를 사용하거나 직접 데이터를 전달할 수 있습니다.
+    """
+    from app.services.notifications import notification_manager
+    from app.services.workflow_engine import workflow_engine, sensor_simulator
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if not workflow.is_active:
+        raise HTTPException(status_code=400, detail="Workflow is not active")
+
+    now = datetime.utcnow()
+
+    # 요청 데이터 파싱
+    req = request or WorkflowRunRequest()
+    input_data = req.input_data
+
+    # 시뮬레이션 데이터 생성
+    if req.use_simulated_data and not input_data:
+        input_data = sensor_simulator.generate_sensor_data(scenario=req.simulation_scenario)
+        logger.info(f"시뮬레이션 데이터 생성됨: {req.simulation_scenario}")
+
+    # DSL 가져오기
+    dsl = workflow.dsl_definition or {}
+
+    # 워크플로우 엔진으로 실행
+    engine_result = await workflow_engine.execute_workflow(
+        workflow_id=str(workflow.workflow_id),
+        dsl=dsl,
+        input_data=input_data,
+        use_simulated_data=False,  # 이미 위에서 생성함
+    )
+
+    # 알림 액션 별도 처리 (workflow_engine에서 delegated 처리된 것들)
+    nodes = dsl.get("nodes", [])
+    for node in nodes:
+        if node.get("type") == "action":
+            config = node.get("config", {})
+            action_name = config.get("action")
+
+            if action_name in ["send_slack_notification", "send_email", "send_sms"]:
+                try:
+                    merged_params = {**config.get("parameters", {})}
+                    if input_data:
+                        merged_params.update(input_data.get(node.get("id"), {}))
+
+                    result = await notification_manager.execute_action(
+                        action_name,
+                        merged_params
+                    )
+
+                    # engine_result의 해당 노드 결과 업데이트
+                    for r in engine_result.get("results", []):
+                        if r.get("node_id") == node.get("id"):
+                            r["status"] = result.status.value
+                            r["message"] = result.message
+                            r["details"] = result.details
+
+                    logger.info(f"알림 액션 실행: {action_name} -> {result.status.value}")
+
+                except Exception as e:
+                    logger.error(f"알림 액션 실행 오류: {action_name} - {e}")
+
+    # 최종 상태 결정
+    status = engine_result.get("status", "completed")
+    error_message = engine_result.get("error_message")
+
+    # 새 실행 인스턴스 생성
+    instance = WorkflowInstance(
+        workflow_id=workflow.workflow_id,
+        tenant_id=workflow.tenant_id,
+        status=status,
+        input_context=input_data or {},
+        runtime_context={
+            "message": "Workflow executed" if status == "completed" else "Workflow failed",
+            "nodes_total": engine_result.get("nodes_total", 0),
+            "nodes_executed": engine_result.get("nodes_executed", 0),
+            "nodes_skipped": engine_result.get("nodes_skipped", 0),
+            "results": engine_result.get("results", []),
+            "execution_time_ms": engine_result.get("execution_time_ms", 0),
+        },
+        last_error=error_message,
+        started_at=now,
+        ended_at=datetime.utcnow(),
+    )
+
+    db.add(instance)
+    db.commit()
+    db.refresh(instance)
+
+    return _instance_to_response(instance, workflow.name)
+
+
+@router.get("/{workflow_id}/instances", response_model=WorkflowInstanceListResponse)
+async def list_workflow_instances(
+    workflow_id: str,
+    db: Session = Depends(get_db),
+    status: Optional[str] = Query(None, description="상태 필터"),
+):
+    """
+    워크플로우 실행 이력 조회 (PostgreSQL)
+    """
+    try:
+        wf_uuid = UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+
+    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    query = db.query(WorkflowInstance).filter(WorkflowInstance.workflow_id == wf_uuid)
+
+    if status:
+        query = query.filter(WorkflowInstance.status == status)
+
+    query = query.order_by(WorkflowInstance.started_at.desc())
+
+    instances = query.all()
+
+    return WorkflowInstanceListResponse(
+        instances=[_instance_to_response(inst, workflow.name) for inst in instances],
+        total=len(instances),
+    )
+
+
+# ============ 센서 시뮬레이터 API ============
+
+class SensorSimulatorRequest(BaseModel):
+    """센서 데이터 시뮬레이션 요청"""
+    sensors: Optional[List[str]] = Field(default=None, description="생성할 센서 목록")
+    scenario: str = Field(default="random", description="시나리오 (normal, alert, random)")
+    scenario_name: Optional[str] = Field(default=None, description="사전 정의된 시나리오 이름")
+
+
+@router.post("/simulator/generate")
+async def generate_simulated_data(
+    request: Optional[SensorSimulatorRequest] = None,
+):
+    """
+    센서 시뮬레이션 데이터 생성
+
+    시나리오:
+    - normal: 정상 범위 데이터
+    - alert: 임계값 초과 데이터
+    - random: 완전 랜덤 데이터
+
+    사전 정의된 시나리오:
+    - high_temperature, low_pressure, equipment_error
+    - high_defect_rate, production_delay, shift_change
+    - normal_operation
+    """
+    from app.services.workflow_engine import sensor_simulator
+
+    req = request or SensorSimulatorRequest()
+
+    # 사전 정의된 시나리오 사용
+    if req.scenario_name:
+        data = sensor_simulator.generate_test_scenario(req.scenario_name)
+    else:
+        data = sensor_simulator.generate_sensor_data(
+            sensors=req.sensors,
+            scenario=req.scenario
+        )
+
+    return {
+        "success": True,
+        "data": data,
+        "available_sensors": [
+            "temperature", "pressure", "humidity", "vibration",
+            "defect_rate", "consecutive_defects", "runtime_hours",
+            "production_count", "units_per_hour", "current_hour",
+            "equipment_status"
+        ],
+        "available_scenarios": [
+            "high_temperature", "low_pressure", "equipment_error",
+            "high_defect_rate", "production_delay", "shift_change",
+            "normal_operation"
+        ],
+    }
+
+
+# ============ 실행 로그 API ============
+
+class ExecutionLogResponse(BaseModel):
+    """실행 로그 응답"""
+    logs: List[Dict[str, Any]]
+    total: int
+
+
+@router.get("/logs/execution")
+async def get_execution_logs(
+    workflow_id: Optional[str] = Query(None, description="워크플로우 ID 필터"),
+    event_type: Optional[str] = Query(None, description="이벤트 타입 필터"),
+    limit: int = Query(50, ge=1, le=500, description="최대 조회 개수"),
+):
+    """
+    실행 로그 조회 (인메모리)
+
+    워크플로우 실행 중 기록된 이벤트 로그를 조회합니다.
+    """
+    from app.services.workflow_engine import execution_log_store
+
+    logs = execution_log_store.get_logs(
+        workflow_id=workflow_id,
+        event_type=event_type,
+        limit=limit
+    )
+
+    return ExecutionLogResponse(
+        logs=logs,
+        total=len(logs),
+    )
+
+
+@router.delete("/logs/execution")
+async def clear_execution_logs():
+    """
+    실행 로그 초기화 (인메모리)
+    """
+    from app.services.workflow_engine import execution_log_store
+
+    execution_log_store.clear()
+
+    return {"success": True, "message": "실행 로그가 초기화되었습니다."}
+
+
+# ============ 조건 평가 테스트 API ============
+
+class ConditionTestRequest(BaseModel):
+    """조건 평가 테스트 요청"""
+    condition: str = Field(..., description="평가할 조건식")
+    context: Dict[str, Any] = Field(default_factory=dict, description="컨텍스트 변수")
+
+
+@router.post("/test/condition")
+async def test_condition(
+    request: ConditionTestRequest,
+):
+    """
+    조건식 평가 테스트
+
+    조건식과 컨텍스트를 전달하면 평가 결과를 반환합니다.
+
+    예시:
+    - condition: "temperature > 80"
+    - context: {"temperature": 85}
+    - 결과: true
+    """
+    from app.services.workflow_engine import condition_evaluator
+
+    result, message = condition_evaluator.evaluate(
+        request.condition,
+        request.context
+    )
+
+    return {
+        "condition": request.condition,
+        "context": request.context,
+        "result": result,
+        "message": message,
+    }
 
 
 # ============ 워크플로우 상태 머신 API ============

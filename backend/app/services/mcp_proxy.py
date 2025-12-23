@@ -385,6 +385,89 @@ class HTTPMCPProxy:
 
         return access_token
 
+    def call_tool_sync(
+        self,
+        server: Any,  # MCPServer 또는 MCPServerResponse
+        tool_name: str,
+        args: dict[str, Any],
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        동기 방식 MCP 도구 호출 (동기 컨텍스트에서 사용)
+
+        Args:
+            server: MCP 서버 정보 (MCPServer 또는 MCPServerResponse)
+            tool_name: 도구 이름
+            args: 도구 인자
+            trace_id: 추적 ID
+
+        Returns:
+            도구 호출 결과 딕셔너리
+        """
+        import httpx as sync_httpx
+
+        request_id = str(uuid.uuid4())
+
+        # 동기 HTTP 클라이언트로 직접 호출
+        headers = {"Content-Type": "application/json"}
+
+        # 서버 URL 가져오기 (MCPServer 또는 MCPServerResponse 호환)
+        server_url = getattr(server, "base_url", None) or getattr(server, "endpoint", None)
+        if not server_url:
+            return {
+                "success": False,
+                "error": "Server URL not found",
+            }
+
+        # JSON-RPC 2.0 페이로드 (tools/call 형식)
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": args,
+            },
+            "id": request_id,
+        }
+
+        try:
+            with sync_httpx.Client() as client:
+                response = client.post(
+                    server_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=30.0,
+                )
+
+                if response.status_code >= 400:
+                    return {
+                        "success": False,
+                        "error": f"HTTP {response.status_code}: {response.text[:200]}",
+                    }
+
+                result = response.json()
+
+                # JSON-RPC 에러 확인
+                if "error" in result:
+                    error = result["error"]
+                    return {
+                        "success": False,
+                        "error": error.get("message", "Unknown error"),
+                    }
+
+                # 성공 결과 반환
+                return {
+                    "success": True,
+                    "result": result.get("result", {}),
+                }
+
+        except Exception as e:
+            logger.error(f"MCP call_tool_sync error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
     async def health_check(self, server: MCPServer) -> tuple[bool, int | None, str | None]:
         """
         MCP 서버 헬스체크

@@ -392,6 +392,8 @@ class ActionExecutor:
             "evaluate_threshold": self._evaluate_threshold,
             "generate_chart": self._generate_chart,
             "format_insight": self._format_insight,
+            # 외부 API 호출
+            "call_api": self._call_api,
         }
 
     async def execute(
@@ -1444,6 +1446,108 @@ class ActionExecutor:
         return {
             "message": "인사이트 텍스트 생성 완료",
             "data": {"insight_text": insight_text},
+        }
+
+    async def _call_api(
+        self,
+        params: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        외부 API 호출
+
+        파라미터:
+            url: API 엔드포인트 URL (필수)
+            method: HTTP 메서드 (GET, POST, PUT, DELETE, PATCH) - 기본값 GET
+            headers: 요청 헤더 (dict) - 선택
+            body: 요청 본문 (dict) - POST/PUT/PATCH용
+            timeout: 타임아웃 초 (기본 30)
+            retry_count: 재시도 횟수 (기본 0)
+
+        출력:
+            status_code: HTTP 상태 코드
+            response: 응답 본문
+        """
+        import httpx
+
+        url = params.get("url")
+        if not url:
+            return {
+                "message": "URL이 필요합니다",
+                "data": {"error": "missing_url"},
+            }
+
+        method = params.get("method", "GET").upper()
+        headers = params.get("headers", {})
+        body = params.get("body", None)
+        timeout = params.get("timeout", 30)
+        retry_count = params.get("retry_count", 0)
+
+        # 보안: 내부 네트워크 URL 차단 (선택적)
+        blocked_hosts = ["localhost", "127.0.0.1", "0.0.0.0", "internal"]
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if any(blocked in parsed.netloc for blocked in blocked_hosts):
+            # 개발 환경에서는 허용, 프로덕션에서는 차단
+            from app.config import settings
+            if getattr(settings, "ENVIRONMENT", "development") == "production":
+                return {
+                    "message": "내부 네트워크 URL은 호출할 수 없습니다",
+                    "data": {"error": "blocked_internal_url", "url": url},
+                }
+
+        last_error = None
+        for attempt in range(retry_count + 1):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    if method == "GET":
+                        response = await client.get(url, headers=headers)
+                    elif method == "POST":
+                        response = await client.post(url, headers=headers, json=body)
+                    elif method == "PUT":
+                        response = await client.put(url, headers=headers, json=body)
+                    elif method == "DELETE":
+                        response = await client.delete(url, headers=headers)
+                    elif method == "PATCH":
+                        response = await client.patch(url, headers=headers, json=body)
+                    else:
+                        return {
+                            "message": f"지원하지 않는 HTTP 메서드: {method}",
+                            "data": {"error": "unsupported_method"},
+                        }
+
+                    # 응답 파싱
+                    try:
+                        response_data = response.json()
+                    except Exception:
+                        response_data = response.text
+
+                    logger.info(f"[CALL_API] {method} {url} -> {response.status_code}")
+
+                    return {
+                        "message": f"API 호출 완료: {method} {url}",
+                        "data": {
+                            "status_code": response.status_code,
+                            "response": response_data,
+                            "url": url,
+                            "method": method,
+                        },
+                    }
+
+            except httpx.TimeoutException as e:
+                last_error = f"타임아웃: {e}"
+                logger.warning(f"[CALL_API] Timeout on attempt {attempt + 1}: {url}")
+            except httpx.RequestError as e:
+                last_error = f"요청 오류: {e}"
+                logger.warning(f"[CALL_API] Request error on attempt {attempt + 1}: {e}")
+            except Exception as e:
+                last_error = f"알 수 없는 오류: {e}"
+                logger.error(f"[CALL_API] Unknown error: {e}")
+                break
+
+        return {
+            "message": f"API 호출 실패: {last_error}",
+            "data": {"error": last_error, "url": url, "attempts": retry_count + 1},
         }
 
     async def _calculate_metric(
@@ -3291,6 +3395,7 @@ class WorkflowEngine:
         """승인 요청을 DB에 저장"""
         import json
         from sqlalchemy import text
+        from app.database import get_async_session
 
         approval_id = str(uuid4())
         timeout_at = datetime.utcnow() + timedelta(seconds=timeout_seconds)
@@ -3366,6 +3471,7 @@ class WorkflowEngine:
         workflow_id: str,
     ) -> None:
         """승인자들에게 알림 전송"""
+        from app.database import get_async_session
         try:
             from app.services.notification_manager import notification_manager
 
@@ -3428,6 +3534,7 @@ class WorkflowEngine:
         import json
         import time
         from sqlalchemy import text
+        from app.database import get_async_session
 
         start_time = time.time()
         max_wait = min(timeout_seconds, self.MAX_APPROVAL_WAIT_SECONDS)
@@ -3514,6 +3621,7 @@ class WorkflowEngine:
         """승인 상태 업데이트"""
         import json
         from sqlalchemy import text
+        from app.database import get_async_session
 
         try:
             async with get_async_session() as db:
@@ -4011,7 +4119,12 @@ class WorkflowEngine:
         """
         code_type = config.get("code_type", "custom")
         code_template_id = config.get("code_template_id")
-        inline_code = config.get("inline_code")
+        # 'inline_code' 또는 'code' 키 모두 지원
+        inline_code = config.get("inline_code") or config.get("code")
+
+        # 디버그 로그
+        logger.info(f"CODE 노드 {node_id} config: {config}")
+        logger.info(f"CODE 노드 {node_id} inline_code: {inline_code}, code: {config.get('code')}")
         sandbox_enabled = config.get("sandbox_enabled", True)
         allowed_imports = config.get("allowed_imports", [
             "json", "datetime", "math", "statistics", "re"
@@ -4057,12 +4170,14 @@ class WorkflowEngine:
             }
 
         # 샌드박스 실행
+        # resolved_input이 비어있으면 context 전체를 전달
+        sandbox_input = resolved_input if resolved_input else context
         start_time = time.time()
         try:
             if sandbox_enabled:
                 output = await self._execute_code_sandbox(
                     code_to_execute,
-                    resolved_input,
+                    sandbox_input,
                     allowed_imports,
                     timeout_ms,
                     memory_limit_mb
@@ -4297,10 +4412,12 @@ result = {
                 logger.warning(f"모듈 import 실패: {module_name}")
 
         # 입력 데이터를 locals에 설정
+        # input_data는 전체 context 또는 config.input 해석 결과
         safe_locals = {
             "data": input_data.get("data", {}),
             "parameters": input_data.get("parameters", {}),
             "context": input_data.get("context", {}),
+            "input_data": input_data,  # 전체 입력 데이터 (사용자 편의)
             "result": None,  # 결과 저장용
         }
 
@@ -4531,11 +4648,10 @@ result = {
             elif not tenant_id:
                 tenant_id = UUID("446e39b3-455e-4ca9-817a-4913921eb41d")
 
-            # BI Agent 실행 (generate_response 호출)
-            bi_result = await agent.generate_response(
+            # BI Agent 실행 (run 메서드 호출)
+            bi_result = agent.run(
                 user_message=analysis_query,
-                tenant_id=tenant_id,
-                conversation_history=[],
+                context={"tenant_id": str(tenant_id)},
             )
 
             execution_time_ms = int((time.time() - start_time) * 1000)
@@ -4601,11 +4717,12 @@ result = {
         }
         """
         from app.services.mcp_toolhub import get_mcp_toolhub_service
-        from app.models.mcp import MCPCallRequest, MCPCallStatus
+        from app.models.mcp import MCPCallRequest
 
         start_time = time.time()
 
-        server_id = config.get("mcp_server_id")
+        # 'mcp_server_id' 또는 'server_id' 키 모두 지원
+        server_id = config.get("mcp_server_id") or config.get("server_id")
         tool_name = config.get("tool_name")
         parameters = config.get("parameters", {})
         correlation_id = config.get("correlation_id")
@@ -4642,13 +4759,16 @@ result = {
                 correlation_id=correlation_id or f"wf_{context.get('workflow_id', 'unknown')}_{node_id}",
             )
 
-            # MCP 도구 호출
-            mcp_response = await mcp_service.call_tool(
+            # MCP 도구 호출 (동기 함수)
+            mcp_response = mcp_service.call_tool(
                 tenant_id=tenant_id,
                 request=call_request,
             )
 
             execution_time_ms = int((time.time() - start_time) * 1000)
+
+            # mcp_toolhub.MCPCallResponse 필드: success, output_data, error_message, latency_ms
+            success = mcp_response.success
 
             # 로그 기록
             execution_log_store.add_log({
@@ -4658,20 +4778,17 @@ result = {
                 "server_id": str(server_id),
                 "tool_name": tool_name,
                 "execution_time_ms": execution_time_ms,
-                "status": mcp_response.status.value,
+                "status": "success" if success else "failed",
             })
-
-            success = mcp_response.status == MCPCallStatus.SUCCESS
 
             return {
                 "node_id": node_id,
                 "type": "mcp",
                 "success": success,
-                "message": f"MCP 도구 호출 완료: {tool_name} ({mcp_response.latency_ms}ms)"
+                "message": f"MCP 도구 호출 완료: {tool_name} ({mcp_response.latency_ms or 0}ms)"
                           if success else f"MCP 도구 호출 실패: {mcp_response.error_message or 'Unknown error'}",
-                "result": mcp_response.result if success else None,
+                "result": mcp_response.output_data if success else None,
                 "execution_time_ms": execution_time_ms,
-                "request_id": mcp_response.request_id,
             }
 
         except Exception as e:
@@ -4820,6 +4937,7 @@ result = {
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """개별 보상 액션 실행"""
+        from app.database import get_async_session
 
         if action_type == "api_call":
             # API 호출로 롤백
@@ -5032,6 +5150,7 @@ result = {
         """현재 활성 버전 조회"""
         try:
             from sqlalchemy import text
+            from app.database import get_async_session
             async with get_async_session() as db:
                 if deploy_type == "ruleset":
                     result = await db.execute(
@@ -5061,6 +5180,7 @@ result = {
         """룰셋 배포"""
         try:
             from sqlalchemy import text
+            from app.database import get_async_session
             async with get_async_session() as db:
                 # 룰셋 활성화
                 await db.execute(
@@ -5099,6 +5219,7 @@ result = {
         """워크플로우 배포"""
         try:
             from sqlalchemy import text
+            from app.database import get_async_session
             async with get_async_session() as db:
                 await db.execute(
                     text("""
@@ -5241,6 +5362,7 @@ result = {
         """직전 버전 조회"""
         try:
             from sqlalchemy import text
+            from app.database import get_async_session
             async with get_async_session() as db:
                 if target_type == "ruleset":
                     result = await db.execute(
@@ -5281,6 +5403,7 @@ result = {
         """룰셋 롤백"""
         try:
             from sqlalchemy import text
+            from app.database import get_async_session
             async with get_async_session() as db:
                 # 해당 버전의 스크립트로 current_script_id 업데이트
                 result = await db.execute(

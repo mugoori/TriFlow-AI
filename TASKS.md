@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-22
-> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → Production 배포 준비
+> **최종 업데이트**: 2025-12-23
+> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → V2 Phase 2 진행 중
 > **현재 브랜치**: `develop` (V1 개발용)
 
 ---
@@ -1859,7 +1859,112 @@ Pydantic 모델과 PostgreSQL DB 스키마 불일치 문제 해결
 | circuit_breaker_state | varchar |
 | fail_count | integer |
 
+---
+
+## 📋 V2 Phase 2: 워크플로우 노드 실행 테스트 (2025-12-23)
+
+### 📊 13개 워크플로우 노드 통합 테스트
+
+| 노드 타입 | 상태 | 소요 시간 | 비고 |
+|----------|------|----------|------|
+| **CONDITION** | ✅ 성공 | < 1초 | 조건 평가 정상 |
+| **IF_ELSE** | ✅ 성공 | < 1초 | 분기 처리 정상 |
+| **LOOP** | ✅ 성공 | < 1초 | 반복 실행 정상 |
+| **PARALLEL** | ✅ 성공 | < 1초 | 병렬 실행 정상 |
+| **SLACK** | ✅ 성공 | < 1초 | 알림 (Mock) |
+| **EMAIL** | ✅ 성공 | < 1초 | 이메일 (Mock) |
+| **DATA** | ✅ 성공 | < 1초 | 센서 데이터 조회 |
+| **CODE** | ✅ 성공 | < 1초 | Python 코드 실행 |
+| **MCP** | ✅ 성공 | < 1초 | MCP 도구 호출 (실제 서버) |
+| **JUDGMENT** | ✅ 성공 | **5.3초** | AI 판정 (Claude API) |
+| **BI** | ✅ 성공 | **22.4초** | AI 분석 (Claude API) |
+| **ROLLBACK** | ⚠️ 예상된 실패 | < 1초 | 이전 버전 없음 |
+| **APPROVAL** | ⏳ 정상 대기 | 120초+ | 인간 승인 대기 (설계된 동작) |
+
+### 📝 AI 노드 테스트 상세
+
+**JUDGMENT 노드 (5.3초)**
+```json
+{
+  "decision": "CRITICAL",
+  "confidence": 0.95,
+  "reasoning": "온도 95°C와 진동 180Hz 모두 임계값 초과"
+}
+```
+
+**BI 노드 (22.4초)**
+```json
+{
+  "analysis_type": "trend",
+  "response": "**7일간 트렌드 분석**\n생산량: 안정적 상승세..."
+}
+```
+
+### 🔧 MCP 노드 버그 수정 (3개)
+
+MCP 노드 테스트 중 발견된 버그 수정:
+1. **`MCPCallRequest` 모델 호환성** - `server_id` vs `mcp_server_id` 필드명 불일치
+2. **`await` on sync function** - `workflow_engine.py`에서 동기 함수를 await 호출
+3. **`MCPCallResponse` 필드명** - `output` vs `result` 필드명 불일치
+
+수정 파일:
+- `backend/app/services/workflow_engine.py` - `_execute_mcp_node()` 메서드
+- `backend/app/services/mcp_proxy.py` - `call_tool_sync()` 동기 메서드 추가
+- `backend/app/services/mcp_toolhub.py` - 응답 모델 필드명 수정
+
+### ✅ 테스트 결론
+
+**13개 노드 타입 모두 정상 동작 확인**:
+- 11개: 즉시 성공
+- 1개 (ROLLBACK): 이전 버전 없어서 실패 (예상된 동작)
+- 1개 (APPROVAL): 인간 승인 대기 (예상된 동작)
+
 #### 🔍 검증 방법 (How to Test)
+```bash
+# 1. Docker 서비스 시작
+docker-compose up -d
+
+# 2. MCP 테스트 서버 시작 (별도 터미널)
+cd backend
+python mcp_test_server.py  # http://localhost:3002/mcp
+
+# 3. 백엔드 서버 시작 (별도 터미널)
+cd backend
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 4. 테스트 사용자 생성 및 워크플로우 실행 테스트
+curl -s -X POST "http://localhost:8000/api/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"wf_test@triflow.ai","password":"test1234!","name":"WF Test"}'
+
+# 로그인하여 토큰 획득
+TOKEN=$(curl -s -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"wf_test@triflow.ai","password":"test1234!"}' | jq -r '.tokens.access_token')
+
+# CONDITION 노드 워크플로우 테스트
+curl -s -X POST "http://localhost:8000/api/v1/workflows" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Condition Test",
+    "dsl_definition": {
+      "name": "condition_test",
+      "trigger": {"type": "manual"},
+      "nodes": [{"id": "cond_1", "type": "condition", "config": {"expression": "temperature > 80"}}]
+    }
+  }'
+
+# 워크플로우 실행
+curl -s -X POST "http://localhost:8000/api/v1/workflows/{workflow_id}/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"context": {"temperature": 85}}'
+```
+
+---
+
+#### 🔍 MCP API 검증 방법 (How to Test)
 ```bash
 # 백엔드 서버 실행
 cd backend

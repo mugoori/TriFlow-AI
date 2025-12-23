@@ -572,17 +572,25 @@ class MCPToolHubService:
         tenant_id: UUID,
         request: MCPCallRequest,
     ) -> MCPCallResponse:
-        """MCP 도구 호출"""
+        """MCP 도구 호출
+
+        Note: request는 mcp_toolhub.MCPCallRequest 또는 app.models.mcp.MCPCallRequest 모두 지원
+              - mcp_toolhub: mcp_server_id, input_data, trace_id
+              - app.models.mcp: server_id, args, correlation_id
+        """
         import time
 
         start_time = time.time()
 
+        # 두 모델 호환: mcp_server_id 또는 server_id
+        server_id = getattr(request, "mcp_server_id", None) or getattr(request, "server_id", None)
+
         # 서버 조회
-        server = self.get_server(request.mcp_server_id, tenant_id)
+        server = self.get_server(server_id, tenant_id)
         if not server:
             return MCPCallResponse(
                 success=False,
-                error_message=f"Server not found: {request.mcp_server_id}",
+                error_message=f"Server not found: {server_id}",
             )
 
         if server.status != "active":
@@ -592,7 +600,7 @@ class MCPToolHubService:
             )
 
         # 도구 조회
-        tool = self.get_tool_by_name(request.mcp_server_id, request.tool_name)
+        tool = self.get_tool_by_name(server_id, request.tool_name)
         if not tool:
             return MCPCallResponse(
                 success=False,
@@ -605,14 +613,21 @@ class MCPToolHubService:
                 error_message=f"Tool is disabled: {request.tool_name}",
             )
 
+        # 두 모델 호환: input_data 또는 args
+        input_data = getattr(request, "input_data", None) or getattr(request, "args", {})
+        # 두 모델 호환: trace_id 또는 correlation_id
+        trace_id = getattr(request, "trace_id", None) or getattr(request, "correlation_id", None)
+        # workflow_instance_id (없으면 None)
+        workflow_instance_id = getattr(request, "workflow_instance_id", None)
+
         # 실제 도구 호출 (프록시 사용)
         try:
             # 프록시를 통한 MCP 호출
             result = self.proxy.call_tool_sync(
                 server=server,
                 tool_name=request.tool_name,
-                args=request.input_data,
-                trace_id=request.trace_id,
+                args=input_data,
+                trace_id=trace_id,
             )
 
             latency_ms = int((time.time() - start_time) * 1000)
@@ -630,13 +645,13 @@ class MCPToolHubService:
         log_id = self._save_call_log(
             tenant_id=tenant_id,
             mcp_tool_id=tool.id,
-            workflow_instance_id=request.workflow_instance_id,
-            input_data=request.input_data,
+            workflow_instance_id=workflow_instance_id,
+            input_data=input_data,
             output_data=output_data,
             success=success,
             error_message=error_message,
             latency_ms=latency_ms,
-            trace_id=request.trace_id,
+            trace_id=trace_id,
         )
 
         # 도구 통계 업데이트
@@ -930,3 +945,23 @@ class MCPToolHubService:
             },
         )
         self.db.commit()
+
+
+# =========================================
+# 서비스 팩토리 함수
+# =========================================
+def get_mcp_toolhub_service(db: Session = None) -> MCPToolHubService:
+    """
+    MCPToolHubService 인스턴스를 반환합니다.
+
+    Args:
+        db: SQLAlchemy Session (None이면 새 세션 생성)
+
+    Returns:
+        MCPToolHubService 인스턴스
+    """
+    if db is None:
+        from app.database import SessionLocal
+        db = SessionLocal()
+
+    return MCPToolHubService(db=db)
