@@ -13,7 +13,7 @@ export interface WorkflowTrigger {
 }
 
 // 워크플로우 노드 타입 정의
-// P0: condition, action, if_else, loop, parallel (기본)
+// P0: condition, action, if_else, loop, parallel, switch, code (기본)
 // P1: data, judgment, bi, mcp, trigger, wait, approval (비즈니스)
 // P2: compensation, deploy, rollback, simulate (고급)
 export type WorkflowNodeType =
@@ -23,6 +23,8 @@ export type WorkflowNodeType =
   | 'if_else'
   | 'loop'
   | 'parallel'
+  | 'switch'
+  | 'code'
   // P1 비즈니스
   | 'data'
   | 'judgment'

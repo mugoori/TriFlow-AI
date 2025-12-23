@@ -53,6 +53,8 @@ import {
   Rocket,
   RotateCcw,
   FlaskConical,
+  // 추가 노드 아이콘
+  Code,
   // 설정 관련
   Settings,
   Tag,
@@ -125,6 +127,9 @@ const nodeTypeColors: Record<string, { bg: string; border: string; text: string 
   deploy: { bg: 'bg-teal-100 dark:bg-teal-900/30', border: 'border-teal-600', text: 'text-teal-900 dark:text-teal-200' },
   rollback: { bg: 'bg-red-100 dark:bg-red-900/30', border: 'border-red-600', text: 'text-red-900 dark:text-red-200' },
   simulate: { bg: 'bg-fuchsia-100 dark:bg-fuchsia-900/30', border: 'border-fuchsia-600', text: 'text-fuchsia-900 dark:text-fuchsia-200' },
+  // 추가 노드
+  switch: { bg: 'bg-amber-100 dark:bg-amber-900/30', border: 'border-amber-600', text: 'text-amber-900 dark:text-amber-200' },
+  code: { bg: 'bg-gray-100 dark:bg-gray-900/30', border: 'border-gray-600', text: 'text-gray-900 dark:text-gray-200' },
 };
 
 const nodeTypeLabels: Record<string, string> = {
@@ -147,6 +152,9 @@ const nodeTypeLabels: Record<string, string> = {
   deploy: '배포',
   rollback: '롤백',
   simulate: '시뮬레이션',
+  // 추가 노드
+  switch: '다중분기',
+  code: '코드실행',
 };
 
 const nodeTypeIcons: Record<string, typeof AlertTriangle> = {
@@ -169,6 +177,9 @@ const nodeTypeIcons: Record<string, typeof AlertTriangle> = {
   deploy: Rocket,
   rollback: RotateCcw,
   simulate: FlaskConical,
+  // 추가 노드
+  switch: GitBranch,
+  code: Code,
 };
 
 // 액션 한글 이름 매핑
@@ -304,6 +315,15 @@ function CustomNode({ data, selected }: { data: CustomNodeData; selected?: boole
         const scenarios = config.scenarios as unknown[];
         return `${scenarios?.length || 0}개 시나리오`;
       }
+      // 추가 노드
+      case 'switch': {
+        const cases = config.cases as unknown[];
+        return `${cases?.length || 0}개 분기`;
+      }
+      case 'code': {
+        const language = config.language as string;
+        return language || 'Python';
+      }
       default:
         return data.label;
     }
@@ -388,7 +408,7 @@ function CustomNode({ data, selected }: { data: CustomNodeData; selected?: boole
 // 팔레트에서 사용하는 노드 타입 (trigger 제외)
 type PaletteNodeType =
   // P0 기본
-  | 'condition' | 'action' | 'if_else' | 'loop' | 'parallel'
+  | 'condition' | 'action' | 'if_else' | 'loop' | 'parallel' | 'switch' | 'code'
   // P1 비즈니스
   | 'data' | 'judgment' | 'bi' | 'mcp' | 'wait' | 'approval'
   // P2 고급
@@ -396,7 +416,7 @@ type PaletteNodeType =
 
 // 노드 카테고리 정의
 const nodeCategories: { label: string; types: PaletteNodeType[] }[] = [
-  { label: '기본', types: ['condition', 'action', 'if_else', 'loop', 'parallel'] },
+  { label: '기본', types: ['condition', 'action', 'if_else', 'loop', 'parallel', 'switch', 'code'] },
   { label: '비즈니스', types: ['data', 'judgment', 'bi', 'mcp', 'wait', 'approval'] },
   { label: '고급', types: ['compensation', 'deploy', 'rollback', 'simulate'] },
 ];
@@ -1252,6 +1272,105 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
                     // JSON 파싱 실패 시 무시
                   }
                 }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ============ 추가 노드 ============ */}
+
+        {/* SWITCH 노드 - 다중 분기 설정 */}
+        {nodeType === 'switch' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">분기 표현식</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                placeholder="${temperature} 또는 ${status}"
+                value={(data.config.expression as string) || ''}
+                onChange={(e) => updateConfig('expression', e.target.value)}
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                변수를 $&#123;name&#125; 형식으로 입력
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">분기 케이스 (JSON)</label>
+              <textarea
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                rows={5}
+                placeholder={`[
+  {"value": "critical", "condition": "> 90", "next_node": "critical_action"},
+  {"value": "warning", "condition": "> 70", "next_node": "warning_action"}
+]`}
+                value={JSON.stringify(data.config.cases || [], null, 2)}
+                onChange={(e) => {
+                  try {
+                    updateConfig('cases', JSON.parse(e.target.value));
+                  } catch {
+                    // JSON 파싱 실패 시 무시
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">기본 분기 (선택)</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="default_action 노드 ID"
+                value={(data.config.default_node as string) || ''}
+                onChange={(e) => updateConfig('default_node', e.target.value || null)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* CODE 노드 - 코드 실행 설정 */}
+        {nodeType === 'code' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">언어</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.language as string) || 'python'}
+                onChange={(e) => updateConfig('language', e.target.value)}
+              >
+                <option value="python">Python</option>
+                <option value="javascript">JavaScript</option>
+                <option value="rhai">Rhai (내장)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">코드</label>
+              <textarea
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                rows={8}
+                placeholder={`# Python 예시
+result = input_data.get('temperature', 0) * 1.8 + 32
+# 또는 JavaScript 예시
+// const result = inputData.temperature * 1.8 + 32;`}
+                value={(data.config.code as string) || ''}
+                onChange={(e) => updateConfig('code', e.target.value)}
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                input_data 변수로 입력 데이터에 접근 가능
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">타임아웃 (초)</label>
+              <input
+                type="number"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                min={1}
+                max={300}
+                value={(data.config.timeout_seconds as number) || 30}
+                onChange={(e) => updateConfig('timeout_seconds', parseInt(e.target.value) || 30)}
               />
             </div>
           </div>
@@ -2155,6 +2274,19 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
         return {
           scenarios: [],
           target_nodes: [],
+        };
+      // 추가 노드
+      case 'switch':
+        return {
+          expression: '',
+          cases: [],
+          default_node: null,
+        };
+      case 'code':
+        return {
+          language: 'python',
+          code: '',
+          timeout_seconds: 30,
         };
       default:
         return {};
