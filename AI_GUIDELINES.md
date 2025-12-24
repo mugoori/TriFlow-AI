@@ -16,7 +16,7 @@
   - **Dev Mode**: Docker Compose로 서버 실행.
   - **Prod Mode**: Tauri 앱 실행 시 Python 백엔드를 Sidecar로 실행하거나 Docker 컨테이너와 통신.
 - **Database**: PostgreSQL 14+ (pgvector 포함) + Redis 7.2.
-- **Object Storage**: MinIO (Docker, 로컬).
+- **Object Storage**: AWS S3 (프로덕션) / 로컬 파일시스템 (개발).
 - **AI Stack**:
   - **LLM**: `anthropic` SDK (Claude 3.5 Sonnet) **만** 사용.
   - **Embedding**: `sentence-transformers` (로컬 모델) 또는 PostgreSQL pgvector 내장 기능.
@@ -28,7 +28,6 @@
 **🚫 명시적 제외 항목**:
 - OpenAI SDK, LangChain (Rule 8 참조)
 - Kubernetes, Helm, ArgoCD, Loki (로컬 환경 불필요)
-- AWS S3 (MinIO 사용)
 
 ---
 
@@ -143,7 +142,7 @@ concurrency:
 - **LangChain**: 제거. 에이전트 로직은 `anthropic` SDK를 사용하여 직접 제어(Control Flow)하는 것이 더 가볍고 디버깅에 유리하다.
 - **Kubernetes / Helm / ArgoCD**: 제거. 배포 환경은 사용자의 로컬 PC다. 복잡한 오케스트레이션 도구 대신 `docker-compose`로 통일한다.
 - **Loki / Distributed Tracing**: 제거. 단일 사용자 환경이므로 파일 기반 로깅이나 Docker 로그로 충분하다.
-- **AWS S3**: 제거. 로컬 MinIO 사용.
+- **MinIO**: 제거. AWS S3 또는 로컬 파일시스템 사용.
 
 ### 2. 🚫 Design Patterns to Avoid
 - **Canary / Blue-Green Deployment**: 제거. 데스크톱 앱은 '설치 파일 업데이트' 방식이다. 서버 트래픽 제어 개념을 적용하지 않는다.
@@ -156,7 +155,7 @@ concurrency:
 | OpenAI API | Anthropic Claude API | 단일 LLM 제공자로 단순화 |
 | LangChain | Direct `anthropic` SDK | 가볍고 디버깅 용이 |
 | Kubernetes | Docker Compose | 로컬 환경에 적합 |
-| AWS S3 | MinIO (Docker) | 오프라인 호환성 |
+| MinIO | AWS S3 / 로컬 파일시스템 | 클라우드 배포 지원 |
 | Loki | Python logging (JSON) | 로컬 로그 충분 |
 | Canary Deployment | 앱 버전 업데이트 | 데스크톱 앱 배포 방식 |
 

@@ -44,13 +44,14 @@ from app.services.notifications import notification_manager, NotificationStatus
 
 logger = logging.getLogger(__name__)
 
-# Optional MinIO import
+# Optional AWS S3 import
 try:
-    from minio import Minio
-    MINIO_AVAILABLE = True
+    import boto3
+    from botocore.exceptions import ClientError
+    S3_AVAILABLE = True
 except ImportError:
-    MINIO_AVAILABLE = False
-    logger.warning("MinIO client not available. export_to_csv will use local filesystem.")
+    S3_AVAILABLE = False
+    logger.warning("boto3 not available. export_to_csv will use local filesystem.")
 
 
 # ============ 실행 로그 저장소 (인메모리) ============
@@ -591,41 +592,35 @@ class ActionExecutor:
         storage_path = None
         storage_type = "local"
 
-        # MinIO 저장 시도
-        if MINIO_AVAILABLE and settings.minio_endpoint:
+        # S3 저장 시도 (AWS 설정이 있을 때만)
+        if S3_AVAILABLE and settings.aws_access_key_id and settings.s3_bucket_name:
             try:
-                client = Minio(
-                    settings.minio_endpoint,
-                    access_key=settings.minio_access_key,
-                    secret_key=settings.minio_secret_key,
-                    secure=settings.minio_secure,
+                s3_client = boto3.client(
+                    's3',
+                    region_name=settings.aws_region,
+                    aws_access_key_id=settings.aws_access_key_id,
+                    aws_secret_access_key=settings.aws_secret_access_key,
                 )
 
-                # 버킷 확인/생성
-                bucket_name = settings.minio_bucket_name
-                if not client.bucket_exists(bucket_name):
-                    client.make_bucket(bucket_name)
-
-                # 파일 업로드
+                bucket_name = settings.s3_bucket_name
                 object_name = f"exports/{workflow_id or 'unknown'}/{filename}"
                 csv_bytes = csv_content.encode('utf-8')
 
-                client.put_object(
-                    bucket_name,
-                    object_name,
-                    io.BytesIO(csv_bytes),
-                    len(csv_bytes),
-                    content_type='text/csv',
+                s3_client.put_object(
+                    Bucket=bucket_name,
+                    Key=object_name,
+                    Body=csv_bytes,
+                    ContentType='text/csv',
                 )
 
-                storage_path = f"minio://{bucket_name}/{object_name}"
-                storage_type = "minio"
-                logger.info(f"CSV 파일 MinIO 저장: {storage_path}")
+                storage_path = f"s3://{bucket_name}/{object_name}"
+                storage_type = "s3"
+                logger.info(f"CSV 파일 S3 저장: {storage_path}")
 
             except Exception as e:
-                logger.warning(f"MinIO 저장 실패, 로컬 저장으로 대체: {e}")
+                logger.warning(f"S3 저장 실패, 로컬 저장으로 대체: {e}")
 
-        # MinIO 실패 시 로컬 저장
+        # S3 실패 또는 설정 없으면 로컬 저장
         if storage_type == "local":
             try:
                 # exports 디렉토리 생성

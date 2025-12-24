@@ -89,11 +89,11 @@ SETTING_DEFINITIONS = {
     "smtp_password": {"category": "notification", "sensitive": True, "label": "SMTP 비밀번호"},
     "smtp_from": {"category": "notification", "sensitive": False, "label": "발신자 이메일"},
     "smtp_use_tls": {"category": "notification", "sensitive": False, "label": "TLS 사용"},
-    # MinIO
-    "minio_endpoint": {"category": "storage", "sensitive": False, "label": "MinIO 엔드포인트"},
-    "minio_access_key": {"category": "storage", "sensitive": True, "label": "MinIO Access Key"},
-    "minio_secret_key": {"category": "storage", "sensitive": True, "label": "MinIO Secret Key"},
-    "minio_bucket_name": {"category": "storage", "sensitive": False, "label": "MinIO 버킷명"},
+    # AWS S3
+    "aws_region": {"category": "storage", "sensitive": False, "label": "AWS 리전"},
+    "aws_access_key_id": {"category": "storage", "sensitive": True, "label": "AWS Access Key"},
+    "aws_secret_access_key": {"category": "storage", "sensitive": True, "label": "AWS Secret Key"},
+    "s3_bucket_name": {"category": "storage", "sensitive": False, "label": "S3 버킷명"},
     # AI
     "anthropic_api_key": {"category": "ai", "sensitive": True, "label": "Anthropic API Key"},
 }

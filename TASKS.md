@@ -2069,6 +2069,71 @@ curl -s "http://localhost:8000/api/v1/statcards" \
 
 ---
 
+## 📋 V2 Phase 2: AWS 배포 준비 - MinIO → S3 전환 (2025-12-24)
+
+### 🎯 구현 목표
+AWS (EC2 + RDS + S3) 배포를 위해 MinIO를 S3로 교체하고, 전체 코드베이스의 AWS 호환성 검토
+
+### ✅ 구현 내역
+
+#### 1. MinIO → S3 전환
+| 파일 | 변경 내용 |
+|------|----------|
+| `backend/requirements.txt` | `minio==7.2.0` 삭제, `boto3>=1.34.0` 추가 |
+| `backend/app/config.py` | MinIO 설정 5개 삭제 → S3 설정 4개 추가 (`aws_region`, `aws_access_key_id`, `aws_secret_access_key`, `s3_bucket_name`) |
+| `backend/app/services/workflow_engine.py` | MinIO 클라이언트 → boto3 S3 클라이언트 전환 (로컬 fallback 유지) |
+| `backend/app/services/settings_service.py` | MinIO 키 정의 → S3 키 정의 변경 |
+| `backend/.env` | MinIO 환경변수 → S3 환경변수 변경 |
+
+#### 2. AWS 호환성 검토 결과
+| 기능 | 상태 | 비고 |
+|------|------|------|
+| Redis Fallback | ✅ | ElastiCache 불필요 - 모든 Redis 코드에 graceful degradation 있음 |
+| pgvector | ✅ | RDS PostgreSQL 14+ 호환 |
+| Health Check | ✅ | `/health` 엔드포인트 있음 |
+| Security Headers | ✅ | HSTS 등 프로덕션 자동 적용 |
+| SSE Streaming | ✅ | WebSocket 불필요, SSE로 충분 |
+| JSON Logging | ✅ | CloudWatch 호환 |
+| 환경변수 기반 설정 | ✅ | 코드 수정 없이 배포 가능 |
+
+#### 3. S3 로컬 개발 지원
+- `AWS_ACCESS_KEY_ID`가 비어있으면 자동으로 로컬 파일시스템(`./exports/`) 사용
+- AWS 배포 시 S3 키 설정만 추가하면 자동으로 S3에 파일 저장
+
+### 🔍 검증 방법 (How to Test)
+
+**코드 검증**:
+```bash
+# boto3 설치 확인
+cd backend && pip install boto3
+
+# 서버 시작 (S3 키 없이 로컬 모드)
+python -m uvicorn app.main:app --reload
+
+# CSV 내보내기 테스트 (로컬 저장소 사용)
+# 워크플로우에서 export_to_csv 액션 실행 → ./exports/ 폴더에 파일 생성 확인
+```
+
+**AWS 배포 시**:
+```env
+# .env.production 설정
+AWS_REGION=ap-northeast-2
+AWS_ACCESS_KEY_ID=<your-key>
+AWS_SECRET_ACCESS_KEY=<your-secret>
+S3_BUCKET_NAME=triflow-ai
+```
+
+### 📋 AWS 인프라 체크리스트
+- [ ] RDS PostgreSQL 14+ 생성
+- [ ] pgvector 확장 설치
+- [ ] S3 버킷 생성
+- [ ] IAM 사용자/역할 생성
+- [ ] EC2 인스턴스 생성
+- [ ] Security Group 설정
+- [ ] .env.production 작성
+
+---
+
 ## 📁 프로젝트 구조 (예정)
 
 ```

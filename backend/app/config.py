@@ -23,12 +23,11 @@ class Settings(BaseSettings):
     redis_url: str
     redis_max_connections: int = 50
 
-    # MinIO
-    minio_endpoint: str
-    minio_access_key: str
-    minio_secret_key: str
-    minio_bucket_name: str = "triflow-ai"
-    minio_secure: bool = False
+    # AWS S3 Storage (선택 - 없으면 로컬 저장소 사용)
+    aws_region: str = "ap-northeast-2"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    s3_bucket_name: str = "triflow-ai"
 
     # AI Models (MVP: Anthropic Only - Rule 8)
     anthropic_api_key: str
