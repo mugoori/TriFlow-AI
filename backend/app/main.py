@@ -132,9 +132,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ========== 미들웨어 설정 (등록 역순으로 실행됨) ==========
+# ========== 미들웨어 설정 (등록 역순으로 실행됨 - 나중에 추가된 것이 먼저 실행) ==========
 
-# 0. Metrics 미들웨어 (가장 먼저 - 모든 요청 측정)
+# 0. Metrics 미들웨어 (가장 나중에 실행 - 모든 요청 측정)
 METRICS_ENABLED = os.getenv("METRICS_ENABLED", "true").lower() == "true"
 if METRICS_ENABLED:
     try:
@@ -144,15 +144,6 @@ if METRICS_ENABLED:
         logger.info("Metrics middleware enabled")
     except Exception as e:
         logger.warning(f"Failed to enable Metrics middleware: {e}")
-
-# 1. CORS 미들웨어 (가장 먼저 실행)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=settings.cors_allow_credentials,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # 2. Security Headers 미들웨어
 SECURITY_HEADERS_ENABLED = os.getenv("SECURITY_HEADERS_ENABLED", "true").lower() == "true"
@@ -208,6 +199,18 @@ if AUDIT_LOG_ENABLED:
         logger.warning(f"Failed to enable Audit Log middleware: {e}")
 else:
     logger.info("Audit Log middleware disabled")
+
+# 6. CORS 미들웨어 (가장 마지막에 추가 → 가장 먼저 실행됨)
+# FastAPI 미들웨어는 역순으로 실행되므로, CORS를 마지막에 추가해야
+# 다른 미들웨어의 에러 응답에도 CORS 헤더가 포함됨
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+logger.info(f"CORS middleware enabled for origins: {settings.cors_origins_list}")
 
 # Prometheus 메트릭 엔드포인트
 metrics_app = make_asgi_app()

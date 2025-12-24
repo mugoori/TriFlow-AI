@@ -31,8 +31,43 @@ from app.schemas.bi_insight import (
 )
 from app.services.bi_data_collector import BIDataCollector, ThresholdEvaluator
 from app.services.bi_correlation_analyzer import CorrelationAnalyzer
+from app.schemas.statcard import StatCardConfigCreate
 
 logger = logging.getLogger(__name__)
+
+# =====================================================
+# Card Request Detection Patterns
+# =====================================================
+
+CARD_ADD_KEYWORDS = [
+    "카드 추가", "카드추가", "지표 추가", "지표추가",
+    "카드 생성", "카드생성", "카드 만들어", "카드만들어",
+    "추가해줘", "추가해", "넣어줘", "보여줘",
+]
+
+CARD_REMOVE_KEYWORDS = [
+    "카드 삭제", "카드삭제", "카드 제거", "카드제거",
+    "지표 삭제", "지표삭제", "지표 제거", "지표제거",
+    "삭제해줘", "삭제해", "없애줘", "빼줘",
+]
+
+# KPI 코드 매핑 (자연어 → kpi_code)
+KPI_KEYWORD_MAPPING = {
+    "불량률": "defect_rate",
+    "불량": "defect_rate",
+    "defect": "defect_rate",
+    "oee": "oee",
+    "설비종합효율": "oee",
+    "종합효율": "oee",
+    "수율": "yield_rate",
+    "yield": "yield_rate",
+    "양품률": "yield_rate",
+    "비가동": "downtime",
+    "downtime": "downtime",
+    "가동률": "oee",
+    "생산량": "daily_production",
+    "달성률": "achievement_rate",
+}
 
 # =====================================================
 # Pydantic Models
@@ -186,32 +221,18 @@ BI_CHAT_SYSTEM_PROMPT = """당신은 TriFlow AI의 **제조 데이터 인사이�
     "vs_yesterday": {"total_qty": -2.5, "downtime": "+15min"},
     "vs_last_week": {"total_qty": +3.2, "defect_rate": -0.5}
   },
-  "charts": [
-    {
-      "chart_type": "bar",
-      "title": "라인별 달성률",
-      "data": [
-        {"name": "LINE_A", "value": 83.0, "target": 95},
-        {"name": "LINE_B", "value": 96.2, "target": 95}
-      ],
-      "threshold_lines": [
-        {"value": 95, "label": "목표", "color": "#10b981"},
-        {"value": 80, "label": "경고", "color": "#f59e0b"}
-      ]
-    },
-    {
-      "chart_type": "line",
-      "title": "7일 생산량 추이",
-      "data": [
-        {"date": "12/16", "value": 32100},
-        {"date": "12/17", "value": 31800},
-        {"date": "12/18", "value": 32500},
-        {"date": "12/19", "value": 31200},
-        {"date": "12/20", "value": 32000},
-        {"date": "12/21", "value": 31680}
-      ]
-    }
-  ]
+  "chart": {
+    "chart_type": "bar",
+    "title": "라인별 달성률",
+    "data": [
+      {"name": "LINE_A", "value": 83.0, "target": 95},
+      {"name": "LINE_B", "value": 96.2, "target": 95}
+    ],
+    "threshold_lines": [
+      {"value": 95, "label": "목표", "color": "#10b981"},
+      {"value": 80, "label": "경고", "color": "#f59e0b"}
+    ]
+  }
 }
 ```
 
@@ -226,6 +247,7 @@ BI_CHAT_SYSTEM_PROMPT = """당신은 TriFlow AI의 **제조 데이터 인사이�
 3. **표 형식 필수**: 라인별 현황은 반드시 table_data로 제공
 4. **비교 포함**: 가능하면 전일/전주 대비 변화율 포함
 5. **원인 분석**: 이상 징후 시 auto_analysis의 원인 데이터 활용
+6. **차트는 1개만**: 한 번에 1개의 차트만 생성 (chart 필드 사용, charts 배열 금지)
 
 일반 대화(인사, 질문 등)의 경우:
 ```json
@@ -259,10 +281,15 @@ class BIChatService:
         채팅 메시지 처리
 
         1. 세션 생성/조회
-        2. 대화 히스토리 로드
-        3. LLM 호출
-        4. 응답 저장 및 반환
+        2. 카드 관리 요청 감지 및 처리
+        3. 대화 히스토리 로드
+        4. LLM 호출
+        5. 응답 저장 및 반환
         """
+        # 디버그: 요청 메시지 로깅
+        logger.info(f"[BIChat] ========== chat() CALLED ==========")
+        logger.info(f"[BIChat] message: {request.message}")
+
         # 1. 세션 처리
         if request.session_id:
             session = await self._get_session(request.session_id, tenant_id, user_id)
@@ -276,22 +303,34 @@ class BIChatService:
                 tenant_id, user_id, request.context_type, request.context_id
             )
 
-        # 2. 사용자 메시지 저장
+        # 2. 카드 관리 요청 감지 및 처리
+        card_request = self._detect_card_request(request.message)
+        logger.info(f"[BIChat] _detect_card_request result: {card_request}")
+        if card_request:
+            return await self._handle_card_request(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                session=session,
+                request=request,
+                card_request=card_request,
+            )
+
+        # 3. 사용자 메시지 저장
         user_message_id = await self._save_message(
             session_id=session.session_id,
             role="user",
             content=request.message,
         )
 
-        # 3. 대화 히스토리 로드
+        # 4. 대화 히스토리 로드
         history = await self._get_conversation_history(session.session_id, limit=10)
 
-        # 4. 컨텍스트 데이터 수집
+        # 5. 컨텍스트 데이터 수집
         context_data = await self._collect_context_data(
             tenant_id, request.context_type, request.context_id
         )
 
-        # 5. LLM 호출
+        # 6. LLM 호출
         try:
             llm_response = await self._call_llm(history, context_data)
         except Exception as e:
@@ -301,9 +340,13 @@ class BIChatService:
                 "content": f"죄송합니다. 응답 생성 중 오류가 발생했습니다: {str(e)}"
             }
 
-        # 6. 응답 파싱
+        # 7. 응답 파싱
         response_type = llm_response.get("response_type", "text")
         content = llm_response.get("content", "")
+
+        # 디버깅: LLM 응답 타입 및 구조 로깅
+        logger.info(f"[BIChat] LLM response_type: {response_type}")
+        logger.info(f"[BIChat] LLM response keys: {list(llm_response.keys())}")
 
         # insight 타입인 경우 content 생성
         if response_type == "insight":
@@ -312,13 +355,15 @@ class BIChatService:
         response_data = None
         linked_insight_id = None
 
-        # 7. 인사이트 저장 (필요한 경우)
+        # 8. 인사이트 저장 (필요한 경우)
         if response_type == "insight":
+            logger.info("[BIChat] response_type is 'insight', attempting to save...")
             insight = await self._save_insight_from_response(
                 tenant_id, user_id, llm_response
             )
             if insight:
                 linked_insight_id = insight.insight_id
+                logger.info(f"[BIChat] Insight saved successfully: {insight.insight_id}")
                 response_data = {
                     "insight_id": str(insight.insight_id),
                     "title": insight.title,
@@ -334,12 +379,12 @@ class BIChatService:
                     "actions": [a.model_dump() for a in insight.actions],
                     # v2: 전일/전주 비교
                     "comparison": llm_response.get("comparison"),
-                    # v2: 차트 목록
-                    "charts": llm_response.get("charts"),
+                    # v2: 차트 (1개만)
+                    "chart": llm_response.get("chart"),
                 }
             else:
                 # 인사이트 저장 실패 시에도 LLM 응답 데이터 전달
-                logger.warning("Insight save failed, returning raw LLM response")
+                logger.warning("[BIChat] Insight save FAILED, returning raw LLM response (linked_insight_id will be None)")
                 response_data = {
                     "title": llm_response.get("title", "분석 결과"),
                     "summary": llm_response.get("summary", ""),
@@ -350,10 +395,10 @@ class BIChatService:
                     "reasoning": llm_response.get("reasoning", {}),
                     "actions": llm_response.get("actions", []),
                     "comparison": llm_response.get("comparison"),
-                    "charts": llm_response.get("charts"),
+                    "chart": llm_response.get("chart"),
                 }
 
-        # 8. 어시스턴트 메시지 저장
+        # 9. 어시스턴트 메시지 저장
         assistant_message_id = await self._save_message(
             session_id=session.session_id,
             role="assistant",
@@ -363,7 +408,7 @@ class BIChatService:
             linked_insight_id=linked_insight_id,
         )
 
-        # 9. 세션 업데이트
+        # 10. 세션 업데이트
         await self._update_session_timestamp(session.session_id)
 
         return ChatResponse(
@@ -374,6 +419,208 @@ class BIChatService:
             response_data=response_data,
             linked_insight_id=linked_insight_id,
         )
+
+    # =====================================================
+    # Card Request Detection & Handling
+    # =====================================================
+
+    def _detect_card_request(self, message: str) -> Optional[Dict[str, Any]]:
+        """
+        사용자 메시지에서 카드 관리 요청 감지
+
+        Returns:
+            None: 카드 요청이 아님
+            {"action": "add", "kpi_code": "..."}: 카드 추가 요청
+            {"action": "remove", "kpi_code": "..."}: 카드 삭제 요청
+        """
+        message_lower = message.lower()
+
+        # KPI 코드 추출
+        detected_kpi = None
+        for keyword, kpi_code in KPI_KEYWORD_MAPPING.items():
+            if keyword in message_lower:
+                detected_kpi = kpi_code
+                break
+
+        if not detected_kpi:
+            return None
+
+        # 추가 요청 감지
+        for keyword in CARD_ADD_KEYWORDS:
+            if keyword in message:
+                return {"action": "add", "kpi_code": detected_kpi}
+
+        # 삭제 요청 감지
+        for keyword in CARD_REMOVE_KEYWORDS:
+            if keyword in message:
+                return {"action": "remove", "kpi_code": detected_kpi}
+
+        return None
+
+    async def _handle_card_request(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        session: ChatSession,
+        request: ChatRequest,
+        card_request: Dict[str, Any],
+    ) -> ChatResponse:
+        """
+        카드 추가/삭제 요청 처리
+
+        StatCardService를 사용하여 실제 카드를 추가/삭제합니다.
+        """
+        action = card_request["action"]
+        kpi_code = card_request["kpi_code"]
+
+        logger.info(f"[BIChat] Card request detected: action={action}, kpi_code={kpi_code}")
+
+        # 사용자 메시지 저장
+        await self._save_message(
+            session_id=session.session_id,
+            role="user",
+            content=request.message,
+        )
+
+        try:
+            if action == "add":
+                result = await self._add_stat_card(tenant_id, user_id, kpi_code)
+            else:  # remove
+                result = await self._remove_stat_card(tenant_id, user_id, kpi_code)
+        except Exception as e:
+            logger.error(f"[BIChat] Card operation failed: {e}")
+            result = {
+                "success": False,
+                "message": f"카드 작업 중 오류가 발생했습니다: {str(e)}",
+            }
+
+        # 응답 생성
+        response_type = "card_action"
+        content = result.get("message", "")
+        response_data = {
+            "action": action,
+            "kpi_code": kpi_code,
+            "success": result.get("success", False),
+            "card_id": result.get("card_id"),
+        }
+
+        # 어시스턴트 메시지 저장
+        assistant_message_id = await self._save_message(
+            session_id=session.session_id,
+            role="assistant",
+            content=content,
+            response_type=response_type,
+            response_data=response_data,
+        )
+
+        await self._update_session_timestamp(session.session_id)
+
+        return ChatResponse(
+            session_id=session.session_id,
+            message_id=assistant_message_id,
+            content=content,
+            response_type=response_type,
+            response_data=response_data,
+        )
+
+    async def _add_stat_card(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        kpi_code: str,
+    ) -> Dict[str, Any]:
+        """StatCard 추가"""
+        from app.services.stat_card_service import StatCardService
+
+        # KPI 이름 조회
+        kpi_name_map = {
+            "defect_rate": "불량률",
+            "oee": "OEE",
+            "yield_rate": "수율",
+            "downtime": "비가동",
+            "daily_production": "생산량",
+            "achievement_rate": "달성률",
+        }
+        kpi_name = kpi_name_map.get(kpi_code, kpi_code)
+
+        with get_db_context() as db:
+            stat_card_service = StatCardService(db)
+
+            # 이미 존재하는지 확인
+            existing_configs = stat_card_service.list_configs(tenant_id, user_id, visible_only=False)
+            for config in existing_configs:
+                if config.kpi_code == kpi_code:
+                    return {
+                        "success": False,
+                        "message": f"'{kpi_name}' 카드가 이미 대시보드에 있습니다.",
+                        "card_id": str(config.config_id),
+                    }
+
+            # 새 카드 생성
+            new_config = StatCardConfigCreate(
+                source_type="kpi",
+                kpi_code=kpi_code,
+                display_order=0,
+                is_visible=True,
+            )
+
+            created = stat_card_service.create_config(tenant_id, user_id, new_config)
+
+            return {
+                "success": True,
+                "message": f"'{kpi_name}' 카드를 대시보드에 추가했습니다.",
+                "card_id": str(created.config_id),
+            }
+
+    async def _remove_stat_card(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        kpi_code: str,
+    ) -> Dict[str, Any]:
+        """StatCard 삭제"""
+        from app.services.stat_card_service import StatCardService
+
+        kpi_name_map = {
+            "defect_rate": "불량률",
+            "oee": "OEE",
+            "yield_rate": "수율",
+            "downtime": "비가동",
+            "daily_production": "생산량",
+            "achievement_rate": "달성률",
+        }
+        kpi_name = kpi_name_map.get(kpi_code, kpi_code)
+
+        with get_db_context() as db:
+            stat_card_service = StatCardService(db)
+
+            # 해당 KPI 카드 찾기
+            existing_configs = stat_card_service.list_configs(tenant_id, user_id, visible_only=False)
+            target_config = None
+            for config in existing_configs:
+                if config.kpi_code == kpi_code:
+                    target_config = config
+                    break
+
+            if not target_config:
+                return {
+                    "success": False,
+                    "message": f"'{kpi_name}' 카드를 찾을 수 없습니다.",
+                }
+
+            # 삭제
+            deleted = stat_card_service.delete_config(target_config.config_id, tenant_id, user_id)
+
+            if deleted:
+                return {
+                    "success": True,
+                    "message": f"'{kpi_name}' 카드를 대시보드에서 삭제했습니다.",
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"'{kpi_name}' 카드 삭제에 실패했습니다.",
+                }
 
     async def _create_session(
         self,
@@ -849,7 +1096,9 @@ class BIChatService:
             )
 
         except Exception as e:
+            import traceback
             logger.error(f"Failed to save insight: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
 
     async def _update_session_timestamp(self, session_id: UUID):

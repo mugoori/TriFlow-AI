@@ -28,6 +28,8 @@ import {
   Check,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { ChartRenderer } from '@/components/charts/ChartRenderer';
+import type { ChartConfig } from '@/types/chart';
 import type {
   ChatSession,
   ChatMessage,
@@ -40,6 +42,9 @@ interface BIChatPanelProps {
   contextType?: ChatContextType;
   contextId?: string;
   onInsightGenerated?: (insight: AIInsight) => void;
+  onPinInsight?: (insightId: string) => void;
+  onUnpinInsight?: (insightId: string) => void;
+  onCardAction?: (action: 'add' | 'remove', kpiCode: string, success: boolean) => void;
   className?: string;
 }
 
@@ -47,6 +52,9 @@ export function BIChatPanel({
   contextType = 'general',
   contextId,
   onInsightGenerated,
+  onPinInsight,
+  onUnpinInsight,
+  onCardAction,
   className = '',
 }: BIChatPanelProps) {
   // State
@@ -135,6 +143,16 @@ export function BIChatPanel({
         context_id: contextId,
       });
 
+      // 디버그: API 응답 확인
+      console.log('[BIChatPanel] Chat API response:', {
+        session_id: response.session_id,
+        message_id: response.message_id,
+        response_type: response.response_type,
+        linked_insight_id: response.linked_insight_id,
+        linked_chart_id: response.linked_chart_id,
+        response_data_keys: response.response_data ? Object.keys(response.response_data) : null,
+      });
+
       // 새 세션인 경우 세션 ID 설정
       if (!currentSessionId) {
         setCurrentSessionId(response.session_id);
@@ -166,6 +184,22 @@ export function BIChatPanel({
       // 인사이트 생성 시 콜백 호출
       if (response.insight && onInsightGenerated) {
         onInsightGenerated(response.insight);
+      }
+
+      // 카드 액션 응답 처리
+      if (response.response_type === 'card_action' && onCardAction) {
+        const responseData = response.response_data as {
+          action?: 'add' | 'remove';
+          kpi_code?: string;
+          success?: boolean;
+        } | undefined;
+        if (responseData) {
+          onCardAction(
+            responseData.action || 'add',
+            responseData.kpi_code || '',
+            responseData.success || false
+          );
+        }
       }
     } catch (err) {
       console.error('Failed to send message:', err);
@@ -230,8 +264,11 @@ export function BIChatPanel({
 
   // 인사이트 Pin
   const pinInsight = async (insightId: string) => {
+    console.log('[BIChatPanel] pinInsight called with insightId:', insightId);
     try {
-      await biService.pinInsight(insightId);
+      console.log('[BIChatPanel] Calling biService.pinInsight...');
+      const result = await biService.pinInsight(insightId);
+      console.log('[BIChatPanel] pinInsight API result:', result);
       // 메시지 업데이트 (핀 상태 표시용)
       setMessages(prev =>
         prev.map(m =>
@@ -240,15 +277,22 @@ export function BIChatPanel({
             : m
         )
       );
+      // 부모 컴포넌트에 알림 (대시보드 갱신용)
+      console.log('[BIChatPanel] Calling onPinInsight callback...');
+      onPinInsight?.(insightId);
+      console.log('[BIChatPanel] Pin complete');
     } catch (err) {
-      console.error('Failed to pin insight:', err);
+      console.error('[BIChatPanel] Failed to pin insight:', err);
     }
   };
 
   // 인사이트 Unpin
   const unpinInsight = async (insightId: string) => {
+    console.log('[BIChatPanel] unpinInsight called with insightId:', insightId);
     try {
+      console.log('[BIChatPanel] Calling biService.unpinInsight...');
       await biService.unpinInsight(insightId);
+      console.log('[BIChatPanel] unpinInsight API success');
       setMessages(prev =>
         prev.map(m =>
           m.linked_insight_id === insightId
@@ -256,8 +300,46 @@ export function BIChatPanel({
             : m
         )
       );
+      // 부모 컴포넌트에 알림 (대시보드 갱신용)
+      console.log('[BIChatPanel] Calling onUnpinInsight callback...');
+      onUnpinInsight?.(insightId);
+      console.log('[BIChatPanel] Unpin complete');
     } catch (err) {
-      console.error('Failed to unpin insight:', err);
+      console.error('[BIChatPanel] Failed to unpin insight:', err);
+    }
+  };
+
+  // 인사이트 생성 후 Pin (linked_insight_id가 없는 경우)
+  const createAndPinInsight = async (insightData: Record<string, unknown>): Promise<string | null> => {
+    console.log('[BIChatPanel] createAndPinInsight called with data:', insightData);
+    try {
+      // 인사이트 생성 API 호출
+      const response = await biService.generateInsight({
+        source_type: 'chat',
+        source_data: [{
+          title: insightData.title as string || '분석 결과',
+          summary: insightData.summary as string || '',
+          facts: insightData.facts || [],
+          reasoning: insightData.reasoning || {},
+          actions: insightData.actions || [],
+          table_data: insightData.table_data,
+          charts: insightData.charts,
+        }],
+      });
+
+      console.log('[BIChatPanel] Insight created:', response);
+
+      if (response.insight?.insight_id) {
+        // Pin API 호출
+        await biService.pinInsight(response.insight.insight_id);
+        console.log('[BIChatPanel] Insight pinned:', response.insight.insight_id);
+        onPinInsight?.(response.insight.insight_id);
+        return response.insight.insight_id;
+      }
+      return null;
+    } catch (err) {
+      console.error('[BIChatPanel] Failed to create and pin insight:', err);
+      return null;
     }
   };
 
@@ -340,6 +422,7 @@ export function BIChatPanel({
                   message={message}
                   onPin={pinInsight}
                   onUnpin={unpinInsight}
+                  onCreateAndPin={createAndPinInsight}
                 />
               ))
             )}
@@ -545,18 +628,172 @@ interface MessageBubbleProps {
   message: ChatMessage;
   onPin: (insightId: string) => void;
   onUnpin: (insightId: string) => void;
+  onCreateAndPin?: (insightData: Record<string, unknown>) => Promise<string | null>;
 }
 
-function MessageBubble({ message, onPin, onUnpin }: MessageBubbleProps) {
+/**
+ * 백엔드 chart_type을 ChartConfig type으로 변환
+ */
+function convertBackendChartToConfig(backendChart: {
+  chart_type: string;
+  title?: string;
+  data?: unknown[];
+  xAxis?: unknown;
+  yAxis?: unknown;
+  bars?: unknown[];
+  lines?: unknown[];
+  areas?: unknown[];
+  nameKey?: string;
+  valueKey?: string;
+}): ChartConfig | null {
+  if (!backendChart || !backendChart.chart_type) return null;
+
+  const type = backendChart.chart_type as ChartConfig['type'];
+  const baseConfig = {
+    type,
+    title: backendChart.title,
+    data: backendChart.data || [],
+  };
+
+  // 타입별 기본 설정 추가
+  switch (type) {
+    case 'bar':
+      return {
+        ...baseConfig,
+        type: 'bar',
+        xAxis: { dataKey: 'name' },
+        yAxis: { label: '' },
+        bars: [{ dataKey: 'value', fill: '#8884d8', name: 'Value' }],
+      };
+    case 'line':
+      return {
+        ...baseConfig,
+        type: 'line',
+        xAxis: { dataKey: 'name' },
+        yAxis: { label: '' },
+        lines: [{ dataKey: 'value', stroke: '#8884d8', name: 'Value' }],
+      };
+    case 'pie':
+      return {
+        ...baseConfig,
+        type: 'pie',
+        nameKey: backendChart.nameKey || 'name',
+        valueKey: backendChart.valueKey || 'value',
+      };
+    case 'area':
+      return {
+        ...baseConfig,
+        type: 'area',
+        xAxis: { dataKey: 'name' },
+        yAxis: { label: '' },
+        areas: [{ dataKey: 'value', fill: '#8884d8', stroke: '#8884d8', name: 'Value' }],
+      };
+    case 'table':
+      return {
+        ...baseConfig,
+        type: 'table',
+      };
+    default:
+      // 기본값으로 bar 차트 반환
+      return {
+        ...baseConfig,
+        type: 'bar',
+        xAxis: { dataKey: 'name' },
+        yAxis: { label: '' },
+        bars: [{ dataKey: 'value', fill: '#8884d8', name: 'Value' }],
+      };
+  }
+}
+
+function MessageBubble({ message, onPin, onUnpin, onCreateAndPin }: MessageBubbleProps) {
+  const [isPinning, setIsPinning] = useState(false);
+  const [localInsightId, setLocalInsightId] = useState<string | null>(null);
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
+
+  // card_action 응답 타입 처리
+  const isCardAction = message.response_type === 'card_action';
+  const cardActionData = isCardAction ? (message.response_data as {
+    action?: 'add' | 'remove';
+    kpi_code?: string;
+    success?: boolean;
+    card_id?: string;
+  }) : null;
 
   // v2: response_data에 인사이트 데이터가 직접 포함됨 (insight 키 또는 직접)
   const responseData = message.response_data;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const insightData: any = responseData?.insight || ((responseData as any)?.title ? responseData : null);
-  const hasInsight = message.response_type === 'insight' && insightData;
+  // v2: response_type이 insight가 아니더라도 insightData가 있으면 인사이트 카드 표시
+  const hasInsight = insightData && (insightData.title || insightData.summary);
   const isPinned = responseData?.pinned;
+
+  // v2: chart 객체 또는 charts 배열 추출 (하위 호환성 유지)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const singleChart = (responseData as any)?.chart || insightData?.chart;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chartsArray = (responseData as any)?.charts || insightData?.charts || [];
+  // 단일 chart가 있으면 배열로 변환, 없으면 기존 charts 배열 사용
+  const chartsData: any[] = singleChart ? [singleChart] : chartsArray;
+
+  // Pin 가능한 인사이트 ID: linked_insight_id 우선, 없으면 insightData.insight_id, 또는 로컬 생성 ID
+  const pinnableInsightId = message.linked_insight_id || insightData?.insight_id || localInsightId;
+
+  // Pin 버튼 표시 여부: insightData가 있으면 표시 (ID가 없어도)
+  const canShowPinButton = hasInsight && insightData;
+
+  // Pin 버튼 클릭 핸들러
+  const handlePinClick = async () => {
+    if (isPinned && pinnableInsightId) {
+      onUnpin(pinnableInsightId);
+      return;
+    }
+
+    // 이미 ID가 있으면 바로 Pin
+    if (pinnableInsightId) {
+      onPin(pinnableInsightId);
+      return;
+    }
+
+    // ID가 없으면 먼저 인사이트 생성 후 Pin
+    if (onCreateAndPin && insightData) {
+      setIsPinning(true);
+      try {
+        const newInsightId = await onCreateAndPin(insightData);
+        if (newInsightId) {
+          setLocalInsightId(newInsightId);
+          onPin(newInsightId);
+        }
+      } finally {
+        setIsPinning(false);
+      }
+    }
+  };
+
+  // 디버그 로깅 (assistant 메시지만)
+  if (isAssistant) {
+    console.log('[MessageBubble] Debug:', {
+      message_id: message.message_id,
+      response_type: message.response_type,
+      linked_insight_id: message.linked_insight_id,
+      hasInsight,
+      isPinned,
+      pinnableInsightId,
+      canShowPinButton,
+      chartsCount: chartsData.length,
+      chartsData: chartsData.length > 0 ? chartsData.map(c => ({
+        chart_type: c.chart_type,
+        title: c.title,
+        dataLength: c.data?.length,
+      })) : null,
+      insightData: insightData ? {
+        title: insightData.title,
+        summary: insightData.summary?.substring(0, 50),
+        insight_id: insightData.insight_id,
+      } : null,
+      responseData: responseData ? Object.keys(responseData) : null,
+    });
+  }
 
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -587,6 +824,35 @@ function MessageBubble({ message, onPin, onUnpin }: MessageBubbleProps) {
           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
         </div>
 
+        {/* Card Action Result UI */}
+        {isAssistant && isCardAction && cardActionData && (
+          <Card className={`mt-2 ${
+            cardActionData.success
+              ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+              : 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20'
+          }`}>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                {cardActionData.success ? (
+                  <>
+                    <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                      {cardActionData.action === 'add' ? '카드가 추가되었습니다' : '카드가 삭제되었습니다'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                    <span className="text-sm font-medium text-red-700 dark:text-red-300">
+                      {cardActionData.action === 'add' ? '카드 추가 실패' : '카드 삭제 실패'}
+                    </span>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Insight Card (v2: 표, 차트, 상태 포함) */}
         {isAssistant && hasInsight && insightData && (
           <Card className="mt-2 border-purple-200 dark:border-purple-800">
@@ -616,21 +882,24 @@ function MessageBubble({ message, onPin, onUnpin }: MessageBubbleProps) {
                     </span>
                   )}
                 </div>
-                {message.linked_insight_id && (
+                {canShowPinButton && (
                   <button
-                    onClick={() =>
-                      isPinned
-                        ? onUnpin(message.linked_insight_id!)
-                        : onPin(message.linked_insight_id!)
-                    }
+                    onClick={handlePinClick}
+                    disabled={isPinning}
                     className={`p-1.5 rounded-lg transition-colors ${
                       isPinned
                         ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-600'
                         : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400'
-                    }`}
+                    } ${isPinning ? 'opacity-50 cursor-not-allowed' : ''}`}
                     title={isPinned ? '대시보드에서 제거' : '대시보드에 고정'}
                   >
-                    {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                    {isPinning ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : isPinned ? (
+                      <PinOff className="w-4 h-4" />
+                    ) : (
+                      <Pin className="w-4 h-4" />
+                    )}
                   </button>
                 )}
               </div>
@@ -688,6 +957,21 @@ function MessageBubble({ message, onPin, onUnpin }: MessageBubbleProps) {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {/* v2: Charts Rendering */}
+        {isAssistant && chartsData.length > 0 && (
+          <div className="mt-3 space-y-3">
+            {chartsData.map((chart, index) => {
+              const chartConfig = convertBackendChartToConfig(chart);
+              if (!chartConfig) return null;
+              return (
+                <div key={index} className="rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                  <ChartRenderer config={chartConfig} />
+                </div>
+              );
+            })}
+          </div>
         )}
 
         {/* Timestamp */}

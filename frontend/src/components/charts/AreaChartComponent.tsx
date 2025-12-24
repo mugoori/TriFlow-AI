@@ -17,9 +17,16 @@ interface AreaChartComponentProps {
 export function AreaChartComponent({ config }: AreaChartComponentProps) {
   const { data, xAxis, yAxis, areas } = config;
 
+  // areas가 문자열 배열인 경우 객체 배열로 변환 (Backend 호환성)
+  const normalizedAreas = (areas as (string | { dataKey: string; fill?: string; stroke?: string; name?: string })[]).map((area) =>
+    typeof area === 'string'
+      ? { dataKey: area, name: area }
+      : area
+  );
+
   return (
-    <div className="w-full h-[400px]">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full h-[400px] min-h-[400px]">
+      <ResponsiveContainer width="100%" height="100%" minHeight={400}>
         <AreaChart data={data} margin={DEFAULT_CHART_STYLE.margin}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
@@ -39,7 +46,7 @@ export function AreaChartComponent({ config }: AreaChartComponentProps) {
             }}
           />
           <Legend wrapperStyle={{ fontSize: DEFAULT_CHART_STYLE.fontSize }} />
-          {areas.map((area, index) => (
+          {normalizedAreas.map((area, index) => (
             <Area
               key={area.dataKey}
               type="monotone"

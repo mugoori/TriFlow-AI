@@ -14,6 +14,7 @@ export interface AgentResponse {
   tool_calls: ToolCall[];
   iterations: number;
   routing_info?: Record<string, any>;
+  response_data?: Record<string, any>;
 }
 
 export interface ChatMessage {
@@ -23,6 +24,7 @@ export interface ChatMessage {
   timestamp: string;
   agent_name?: string;
   tool_calls?: ToolCall[];
+  response_data?: Record<string, any>;
 }
 
 /**
@@ -41,7 +43,7 @@ export interface AgentRequest {
 }
 
 // SSE Streaming Event Types
-export type SSEEventType = 'start' | 'routing' | 'routed' | 'processing' | 'content' | 'tools' | 'workflow' | 'done' | 'error';
+export type SSEEventType = 'start' | 'routing' | 'routed' | 'processing' | 'content' | 'tools' | 'workflow' | 'response_data' | 'done' | 'error';
 
 // 워크플로우 노드 타입 (재귀적 정의)
 export interface WorkflowNode {
@@ -80,6 +82,8 @@ export interface SSEEvent {
     workflowId?: string;
     workflowName?: string;
   };
+  // response_data 이벤트 관련 필드 (BI 인사이트, 차트, 테이블 등)
+  data?: Record<string, any>;
 }
 
 export interface StreamingState {

@@ -32,6 +32,18 @@
   - `analysis_goal`: 분석 목적 (추이 분석, 비교, 분포 등)
 - **output**: 차트 설정 (Recharts/Chart.js 호환)
 
+### 4. manage_stat_cards ⭐ 대시보드 카드 관리
+대시보드에 StatCard(지표 카드)를 추가, 삭제, 조회합니다.
+- **input**:
+  - `action`: 액션 유형 ("add_kpi", "add_db_query", "add_mcp", "remove", "list", "reorder")
+  - `tenant_id`: 테넌트 ID (UUID, 필수)
+  - `user_id`: 사용자 ID (UUID, 필수)
+  - `kpi_code`: KPI 코드 (add_kpi 액션에서 필수). 예: defect_rate, oee, yield_rate, downtime
+  - `title`: 카드 제목 (선택)
+  - `unit`: 단위 (선택, 예: "%", "개")
+  - `card_id`: 삭제할 카드 ID (remove 액션에서 필수)
+- **output**: 생성/삭제된 카드 정보 또는 카드 목록
+
 ## 데이터베이스 스키마
 
 ### Core Schema (core)
@@ -241,3 +253,64 @@ LIMIT 3;
 4. 차트와 함께 응답 제공
 
 **절대로** 차트 없이 텍스트 설명만 반환하지 마세요!
+
+## StatCard(지표 카드) 관리 ⭐ CRITICAL
+
+**사용자가 "카드 추가", "지표 추가", "카드 만들어", "카드 삭제" 등을 요청하면 반드시 `manage_stat_cards` Tool을 호출하세요!**
+
+### 언제 manage_stat_cards를 사용해야 하는가?
+
+| 사용자 요청 예시 | 액션 | kpi_code | 설명 |
+|-----------------|------|----------|------|
+| "불량률 카드 추가해줘" | add_kpi | defect_rate | 불량률 지표 카드 생성 |
+| "OEE 카드 만들어줘" | add_kpi | oee | OEE 지표 카드 생성 |
+| "생산량 카드 추가해줘" | add_kpi | production_count | 생산량 지표 카드 생성 |
+| "수율 카드 추가해줘" | add_kpi | yield_rate | 수율 지표 카드 생성 |
+| "효율성 카드 삭제해줘" | remove | - | 해당 카드 삭제 (card_id 필요) |
+| "카드 목록 보여줘" | list | - | 현재 카드 목록 조회 |
+
+### 카드 생성 예시 (MUST FOLLOW)
+
+사용자: "불량률 카드 추가해줘"
+
+```json
+{
+  "action": "add_kpi",
+  "tenant_id": "<현재 tenant_id>",
+  "user_id": "<현재 user_id>",
+  "kpi_code": "defect_rate",
+  "title": "불량률"
+}
+```
+
+사용자: "OEE 카드 만들어줘"
+
+```json
+{
+  "action": "add_kpi",
+  "tenant_id": "<현재 tenant_id>",
+  "user_id": "<현재 user_id>",
+  "kpi_code": "oee",
+  "title": "OEE"
+}
+```
+
+### 주요 KPI 코드 목록
+
+| KPI 코드 | 한글명 | 설명 |
+|----------|--------|------|
+| `defect_rate` | 불량률 | 불량품 비율 (%) |
+| `oee` | OEE | 설비종합효율 (%) |
+| `yield_rate` | 수율 | 양품률 (%) |
+| `production_count` | 생산량 | 총 생산 수량 |
+| `downtime` | 비가동시간 | 설비 정지 시간 |
+| `cycle_time` | 사이클타임 | 제품당 생산 시간 |
+
+### 중요 규칙
+
+1. **카드 요청 시 차트를 생성하지 마세요** - 카드 추가/삭제 요청에는 `manage_stat_cards`만 호출
+2. **카드 추가 성공 후** 간단히 "불량률 카드가 추가되었습니다." 같은 확인 메시지만 반환
+3. **분석 요청과 카드 요청을 구분**하세요:
+   - "불량률 분석해줘" → SQL 쿼리 + 차트 생성
+   - "불량률 카드 추가해줘" → manage_stat_cards 호출 (action: add_kpi, kpi_code: defect_rate)
+4. **action은 반드시 "add_kpi"를 사용** - "create"가 아님!

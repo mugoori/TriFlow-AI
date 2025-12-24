@@ -200,7 +200,7 @@ export interface AIInsight {
  * 인사이트 생성 요청
  */
 export interface InsightRequest {
-  source_type: 'chart' | 'dashboard' | 'dataset';
+  source_type: 'chart' | 'dashboard' | 'dataset' | 'chat';
   source_id?: string;
   source_data?: Record<string, unknown>[];
   chart_config?: ChartConfig;
@@ -592,4 +592,198 @@ export interface PinInsightResponse {
 export interface PinnedInsightsResponse {
   pinned_insights: PinnedInsight[];
   total: number;
+}
+
+// =====================================================
+// 8. Dashboard (대시보드 관리)
+// =====================================================
+
+/**
+ * 대시보드 레이아웃 컴포넌트
+ */
+export interface DashboardLayoutComponent {
+  id: string;
+  type: 'chart' | 'table' | 'kpi_card' | 'gauge' | 'insight';
+  position: { x: number; y: number; w: number; h: number };
+  config: Record<string, unknown>;
+}
+
+/**
+ * 대시보드 레이아웃
+ */
+export interface DashboardLayout {
+  components: DashboardLayoutComponent[];
+}
+
+/**
+ * 대시보드
+ */
+export interface Dashboard {
+  id: string;
+  name: string;
+  description?: string;
+  layout: DashboardLayout;
+  is_public: boolean;
+  owner_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 대시보드 생성 요청
+ */
+export interface DashboardCreateRequest {
+  name: string;
+  description?: string;
+  layout: DashboardLayout;
+  is_public?: boolean;
+}
+
+/**
+ * 대시보드 수정 요청
+ */
+export interface DashboardUpdateRequest {
+  name?: string;
+  description?: string;
+  layout?: DashboardLayout;
+  is_public?: boolean;
+}
+
+/**
+ * 대시보드 목록 응답
+ */
+export interface DashboardListResponse {
+  dashboards: Dashboard[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// =====================================================
+// 9. Analytics (분석 API)
+// =====================================================
+
+/**
+ * 생산 실적 요약
+ */
+export interface ProductionSummary {
+  date: string;
+  line_code: string;
+  line_name?: string;
+  product_code: string;
+  product_name?: string;
+  shift: string;
+  total_qty: number;
+  good_qty: number;
+  defect_qty: number;
+  defect_rate: number;
+  yield_rate: number;
+  runtime_minutes: number;
+  downtime_minutes: number;
+  availability: number;
+}
+
+/**
+ * 생산 실적 응답
+ */
+export interface ProductionResponse {
+  data: ProductionSummary[];
+  total: number;
+  summary: {
+    total_production: number;
+    total_defects: number;
+    avg_yield_rate: number;
+    avg_availability: number;
+  };
+}
+
+/**
+ * 불량 추이 아이템
+ */
+export interface DefectTrendItem {
+  date: string;
+  line_code: string;
+  product_code?: string;
+  total_qty: number;
+  defect_qty: number;
+  defect_rate: number;
+  top_defect_types?: Array<{ type: string; qty: number; percentage: number }>;
+}
+
+/**
+ * 불량 추이 응답
+ */
+export interface DefectTrendResponse {
+  data: DefectTrendItem[];
+  total: number;
+  avg_defect_rate: number;
+}
+
+/**
+ * OEE 아이템
+ */
+export interface OEEItem {
+  date: string;
+  line_code: string;
+  line_name?: string;
+  shift: string;
+  availability: number;
+  performance: number;
+  quality: number;
+  oee: number;
+  runtime_minutes: number;
+  downtime_minutes: number;
+}
+
+/**
+ * OEE 응답
+ */
+export interface OEEResponse {
+  data: OEEItem[];
+  total: number;
+  avg_oee: number;
+  avg_availability: number;
+  avg_performance: number;
+  avg_quality: number;
+}
+
+/**
+ * 재고 아이템
+ */
+export interface InventoryItem {
+  date: string;
+  product_code: string;
+  product_name?: string;
+  location: string;
+  stock_qty: number;
+  safety_stock_qty: number;
+  available_qty: number;
+  coverage_days?: number;
+  stock_status: 'normal' | 'low' | 'critical' | 'excess';
+}
+
+/**
+ * 재고 응답
+ */
+export interface InventoryResponse {
+  data: InventoryItem[];
+  total: number;
+  summary: {
+    total_stock_value: number;
+    low_stock_items: number;
+    critical_items: number;
+  };
+}
+
+/**
+ * 분석 API 공통 파라미터
+ */
+export interface AnalyticsParams {
+  start_date?: string;
+  end_date?: string;
+  line_code?: string;
+  product_code?: string;
+  shift?: string;
+  page?: number;
+  page_size?: number;
 }

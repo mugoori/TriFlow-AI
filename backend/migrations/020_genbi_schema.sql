@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS bi.ai_insights (
     tenant_id UUID NOT NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
 
     -- 인사이트 소스
-    source_type TEXT NOT NULL CHECK (source_type IN ('chart', 'dashboard', 'dataset')),
+    source_type TEXT NOT NULL CHECK (source_type IN ('chart', 'dashboard', 'dataset', 'chat')),
     source_id UUID,  -- 차트/대시보드 ID (nullable for ad-hoc insights)
 
     -- 인사이트 내용

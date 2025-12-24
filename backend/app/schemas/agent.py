@@ -49,6 +49,10 @@ class AgentResponse(BaseModel):
     routing_info: Optional[Dict[str, Any]] = Field(
         default=None, description="Meta Router의 라우팅 정보"
     )
+    response_data: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="구조화된 응답 데이터 (BI 인사이트, 차트, 테이블 등)"
+    )
 
     class Config:
         from_attributes = True

@@ -2060,3 +2060,589 @@ async def unpin_insight(
         raise HTTPException(status_code=404, detail="Pinned insight not found")
 
     return {"success": True, "message": "Insight unpinned"}
+
+
+# ========== StatCard Endpoints (Dynamic Dashboard Cards) ==========
+
+
+@router.get("/stat-cards")
+async def get_stat_cards(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    사용자의 StatCard 설정 및 현재 값 조회
+
+    Returns:
+        - cards: StatCard 목록 (설정 + 현재 값)
+        - total: 전체 카드 수
+    """
+    from app.services.stat_card_service import StatCardService
+
+    try:
+        service = StatCardService(db)
+        result = await service.get_card_values(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+        )
+
+        return {
+            "cards": [
+                {
+                    "config": card.config.model_dump(),
+                    "value": card.value.model_dump(),
+                }
+                for card in result.cards
+            ],
+            "total": result.total,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get stat cards: {e}")
+        # 테이블이 없는 경우 빈 목록 반환
+        if "stat_card_configs" in str(e) or "does not exist" in str(e):
+            return {"cards": [], "total": 0}
+        raise HTTPException(status_code=500, detail=f"Failed to get stat cards: {str(e)}")
+
+
+@router.post("/stat-cards")
+async def create_stat_card(
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    새 StatCard 추가
+
+    Request Body:
+    - source_type: "kpi" | "db_query" | "mcp_tool" (필수)
+    - kpi_code: str (source_type=kpi일 때 필수)
+    - table_name, column_name, aggregation: (source_type=db_query일 때 필수)
+    - mcp_server_id, mcp_tool_name: (source_type=mcp_tool일 때 필수)
+    - custom_title, custom_icon, custom_unit: (선택)
+    - green_threshold, yellow_threshold, red_threshold, higher_is_better: (선택)
+    """
+    from app.services.stat_card_service import StatCardService
+    from app.schemas.statcard import StatCardConfigCreate
+
+    service = StatCardService(db)
+
+    try:
+        config_data = StatCardConfigCreate(**request)
+        config = service.create_config(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            data=config_data,
+        )
+
+        return {
+            "success": True,
+            "config": config.model_dump(),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create stat card: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/stat-cards/{config_id}")
+async def update_stat_card(
+    config_id: UUID,
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """StatCard 설정 수정"""
+    from app.services.stat_card_service import StatCardService
+    from app.schemas.statcard import StatCardConfigUpdate
+
+    service = StatCardService(db)
+
+    try:
+        update_data = StatCardConfigUpdate(**request)
+        config = service.update_config(
+            config_id=config_id,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            data=update_data,
+        )
+
+        if not config:
+            raise HTTPException(status_code=404, detail="StatCard not found")
+
+        return {
+            "success": True,
+            "config": config.model_dump(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update stat card: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/stat-cards/{config_id}")
+async def delete_stat_card(
+    config_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """StatCard 삭제"""
+    from app.services.stat_card_service import StatCardService
+
+    service = StatCardService(db)
+
+    success = service.delete_config(
+        config_id=config_id,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="StatCard not found")
+
+    return {"success": True, "message": "StatCard deleted"}
+
+
+@router.put("/stat-cards/reorder")
+async def reorder_stat_cards(
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """StatCard 순서 변경"""
+    from app.services.stat_card_service import StatCardService
+
+    service = StatCardService(db)
+
+    card_ids = request.get("card_ids", [])
+    if not card_ids:
+        raise HTTPException(status_code=400, detail="card_ids is required")
+
+    try:
+        card_ids_uuid = [UUID(cid) if isinstance(cid, str) else cid for cid in card_ids]
+        configs = service.reorder_configs(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            card_ids=card_ids_uuid,
+        )
+
+        return {
+            "success": True,
+            "configs": [c.model_dump() for c in configs],
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to reorder stat cards: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/stat-cards/kpis")
+async def list_available_kpis(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """StatCard에서 사용 가능한 KPI 목록 조회"""
+    from app.services.stat_card_service import StatCardService
+
+    try:
+        service = StatCardService(db)
+        result = service.list_kpis(tenant_id=current_user.tenant_id)
+
+        return {
+            "kpis": [kpi.model_dump() for kpi in result.kpis],
+            "categories": result.categories,
+        }
+    except Exception as e:
+        logger.error(f"Failed to list KPIs: {e}")
+        if "does not exist" in str(e):
+            return {"kpis": [], "categories": []}
+        raise HTTPException(status_code=500, detail=f"Failed to list KPIs: {str(e)}")
+
+
+@router.get("/stat-cards/tables")
+async def list_available_tables(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """StatCard DB 쿼리에서 사용 가능한 테이블/컬럼 목록"""
+    from app.services.stat_card_service import StatCardService
+
+    try:
+        service = StatCardService(db)
+        result = service.list_available_tables(tenant_id=current_user.tenant_id)
+
+        return {
+            "tables": [t.model_dump() for t in result.tables],
+        }
+    except Exception as e:
+        logger.error(f"Failed to list tables: {e}")
+        if "does not exist" in str(e):
+            return {"tables": []}
+        raise HTTPException(status_code=500, detail=f"Failed to list tables: {str(e)}")
+
+
+@router.get("/stat-cards/mcp-tools")
+async def list_available_mcp_tools(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """StatCard에서 사용 가능한 MCP 도구 목록"""
+    from app.services.stat_card_service import StatCardService
+
+    try:
+        service = StatCardService(db)
+        result = service.list_mcp_tools(tenant_id=current_user.tenant_id)
+
+        return {
+            "tools": [t.model_dump() for t in result.tools],
+        }
+    except Exception as e:
+        logger.error(f"Failed to list MCP tools: {e}")
+        if "does not exist" in str(e):
+            return {"tools": []}
+        raise HTTPException(status_code=500, detail=f"Failed to list MCP tools: {str(e)}")
+
+
+# ========== Sample Data Seeding (개발용) ==========
+
+
+class SeedSampleDataRequest(BaseModel):
+    """샘플 데이터 생성 요청"""
+    days: int = Field(14, ge=1, le=365, description="생성할 날짜 범위 (일)")
+    clear_existing: bool = Field(True, description="기존 실적 데이터 삭제 여부")
+    include_dimensions: bool = Field(True, description="차원 데이터(라인, 제품) 포함 여부")
+
+
+class SeedSampleDataResponse(BaseModel):
+    """샘플 데이터 생성 결과"""
+    success: bool
+    message: str
+    created_lines: int = 0
+    created_products: int = 0
+    created_shifts: int = 0
+    created_production_records: int = 0
+    created_inventory_records: int = 0
+    date_range: Dict[str, str] = {}
+
+
+@router.post("/seed-sample-data", response_model=SeedSampleDataResponse)
+async def seed_sample_production_data(
+    request: SeedSampleDataRequest = SeedSampleDataRequest(),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    대시보드용 샘플 생산 데이터 생성 (개발/테스트용)
+
+    StatCard에서 KPI를 표시하기 위한 가상 생산 데이터를 생성합니다.
+
+    생성 데이터:
+    - 라인(dim_line): 1라인~3라인
+    - 제품(dim_product): 제품A, 제품B, 부품C
+    - 교대(dim_shift): 주간, 야간
+    - 생산실적(fact_daily_production): 최근 N일간 랜덤 생산 데이터
+
+    KPI 값 범위:
+    - 불량률: 1~5%
+    - OEE: 75~90%
+    - 수율: 95~99%
+    - 다운타임: 0~60분
+    - 일일생산량: 800~1200 EA
+    - 달성률: 80~120%
+    """
+    import random
+    from sqlalchemy import text
+
+    tenant_id = current_user.tenant_id
+
+    try:
+        created_lines = 0
+        created_products = 0
+        created_shifts = 0
+        created_production_records = 0
+        created_inventory_records = 0
+
+        # 1. 차원 데이터 생성 (include_dimensions=True일 때)
+        if request.include_dimensions:
+            # 1-1. 라인 데이터 (category: assembly, processing, packaging, inspection, warehouse)
+            lines_data = [
+                {"line_code": "L1", "name": "1라인", "category": "assembly", "capacity_per_hour": 100},
+                {"line_code": "L2", "name": "2라인", "category": "assembly", "capacity_per_hour": 120},
+                {"line_code": "L3", "name": "3라인", "category": "processing", "capacity_per_hour": 80},
+            ]
+
+            for line in lines_data:
+                # UPSERT: 없으면 생성, 있으면 스킵
+                result = db.execute(
+                    text("""
+                        INSERT INTO bi.dim_line (tenant_id, line_code, name, category, capacity_per_hour, is_active)
+                        VALUES (:tenant_id, :line_code, :name, :category, :capacity_per_hour, true)
+                        ON CONFLICT (tenant_id, line_code) DO NOTHING
+                        RETURNING line_code
+                    """),
+                    {"tenant_id": str(tenant_id), **line}
+                )
+                if result.fetchone():
+                    created_lines += 1
+
+            # 1-2. 제품 데이터
+            products_data = [
+                {"product_code": "P001", "name": "제품A", "category": "완제품", "unit": "EA", "target_cycle_time_sec": 45},
+                {"product_code": "P002", "name": "제품B", "category": "완제품", "unit": "EA", "target_cycle_time_sec": 50},
+                {"product_code": "P003", "name": "부품C", "category": "반제품", "unit": "EA", "target_cycle_time_sec": 30},
+            ]
+
+            for product in products_data:
+                result = db.execute(
+                    text("""
+                        INSERT INTO bi.dim_product (tenant_id, product_code, name, category, unit, target_cycle_time_sec, is_active)
+                        VALUES (:tenant_id, :product_code, :name, :category, :unit, :target_cycle_time_sec, true)
+                        ON CONFLICT (tenant_id, product_code) DO NOTHING
+                        RETURNING product_code
+                    """),
+                    {"tenant_id": str(tenant_id), **product}
+                )
+                if result.fetchone():
+                    created_products += 1
+
+            # 1-3. 교대 데이터 (dim_shift 스키마에 맞게 수정)
+            from datetime import time as dt_time
+            shifts_data = [
+                {"shift_code": "day", "name": "주간", "start_time": dt_time(8, 0), "end_time": dt_time(16, 0), "duration_hours": 8.0, "is_night_shift": False, "shift_order": 1},
+                {"shift_code": "evening", "name": "오후", "start_time": dt_time(16, 0), "end_time": dt_time(0, 0), "duration_hours": 8.0, "is_night_shift": False, "shift_order": 2},
+                {"shift_code": "night", "name": "야간", "start_time": dt_time(0, 0), "end_time": dt_time(8, 0), "duration_hours": 8.0, "is_night_shift": True, "shift_order": 3},
+            ]
+
+            for shift in shifts_data:
+                result = db.execute(
+                    text("""
+                        INSERT INTO bi.dim_shift (tenant_id, shift_code, name, start_time, end_time, duration_hours, is_night_shift, shift_order)
+                        VALUES (:tenant_id, :shift_code, :name, :start_time, :end_time, :duration_hours, :is_night_shift, :shift_order)
+                        ON CONFLICT (tenant_id, shift_code) DO NOTHING
+                        RETURNING shift_code
+                    """),
+                    {"tenant_id": str(tenant_id), **shift}
+                )
+                if result.fetchone():
+                    created_shifts += 1
+
+        # 2. 기존 실적 데이터 삭제 (clear_existing=True일 때)
+        if request.clear_existing:
+            db.execute(
+                text("DELETE FROM bi.fact_daily_production WHERE tenant_id = :tenant_id"),
+                {"tenant_id": str(tenant_id)}
+            )
+            db.execute(
+                text("DELETE FROM bi.fact_inventory_snapshot WHERE tenant_id = :tenant_id"),
+                {"tenant_id": str(tenant_id)}
+            )
+
+        # 3. 라인, 제품, 교대 코드 조회
+        lines = db.execute(
+            text("SELECT line_code, capacity_per_hour FROM bi.dim_line WHERE tenant_id = :tenant_id AND is_active = true"),
+            {"tenant_id": str(tenant_id)}
+        ).fetchall()
+
+        products = db.execute(
+            text("SELECT product_code, target_cycle_time_sec FROM bi.dim_product WHERE tenant_id = :tenant_id AND is_active = true"),
+            {"tenant_id": str(tenant_id)}
+        ).fetchall()
+
+        shifts = db.execute(
+            text("SELECT shift_code FROM bi.dim_shift WHERE tenant_id = :tenant_id"),
+            {"tenant_id": str(tenant_id)}
+        ).fetchall()
+
+        if not lines or not products or not shifts:
+            return SeedSampleDataResponse(
+                success=False,
+                message="차원 데이터(라인, 제품, 교대)가 없습니다. include_dimensions=true로 다시 시도하세요.",
+            )
+
+        # 4. 실적 데이터 생성
+        end_date = date.today()
+        start_date = end_date - timedelta(days=request.days)
+
+        for day_offset in range(request.days + 1):
+            production_date = start_date + timedelta(days=day_offset)
+
+            for line in lines:
+                line_code = line[0]
+                for product in products:
+                    product_code = product[0]
+                    target_ct = float(product[1]) if product[1] else 45.0
+                    for shift in shifts:
+                        shift_code = shift[0]
+
+                        # 랜덤 생산량 (800~1200)
+                        total_qty = random.randint(800, 1200)
+
+                        # 양품률 95~99%
+                        yield_rate = random.uniform(0.95, 0.99)
+                        good_qty = int(total_qty * yield_rate)
+                        defect_qty = total_qty - good_qty
+
+                        # 재작업/스크랩
+                        rework_qty = random.randint(0, min(10, defect_qty))
+                        scrap_qty = defect_qty - rework_qty
+
+                        # 가동 시간 (분) - 8시간 기준 (480분), 400~480분
+                        runtime_minutes = random.randint(400, 480)
+                        downtime_minutes = random.randint(0, 60)
+                        setup_time_minutes = random.randint(10, 30)
+
+                        # 계획 생산량
+                        planned_qty = 1000
+
+                        # 사이클타임 (초)
+                        cycle_time_avg = target_ct + random.uniform(-5, 10)
+                        cycle_time_std = random.uniform(1, 5)
+
+                        db.execute(
+                            text("""
+                                INSERT INTO bi.fact_daily_production (
+                                    tenant_id, date, line_code, product_code, shift,
+                                    total_qty, good_qty, defect_qty, rework_qty, scrap_qty,
+                                    cycle_time_avg, cycle_time_std,
+                                    runtime_minutes, downtime_minutes, setup_time_minutes,
+                                    planned_qty, target_cycle_time
+                                ) VALUES (
+                                    :tenant_id, :date, :line_code, :product_code, :shift,
+                                    :total_qty, :good_qty, :defect_qty, :rework_qty, :scrap_qty,
+                                    :cycle_time_avg, :cycle_time_std,
+                                    :runtime_minutes, :downtime_minutes, :setup_time_minutes,
+                                    :planned_qty, :target_cycle_time
+                                )
+                                ON CONFLICT (tenant_id, date, line_code, product_code, shift) DO UPDATE SET
+                                    total_qty = EXCLUDED.total_qty,
+                                    good_qty = EXCLUDED.good_qty,
+                                    defect_qty = EXCLUDED.defect_qty,
+                                    rework_qty = EXCLUDED.rework_qty,
+                                    scrap_qty = EXCLUDED.scrap_qty,
+                                    cycle_time_avg = EXCLUDED.cycle_time_avg,
+                                    cycle_time_std = EXCLUDED.cycle_time_std,
+                                    runtime_minutes = EXCLUDED.runtime_minutes,
+                                    downtime_minutes = EXCLUDED.downtime_minutes,
+                                    setup_time_minutes = EXCLUDED.setup_time_minutes,
+                                    planned_qty = EXCLUDED.planned_qty,
+                                    target_cycle_time = EXCLUDED.target_cycle_time,
+                                    updated_at = now()
+                            """),
+                            {
+                                "tenant_id": str(tenant_id),
+                                "date": production_date,
+                                "line_code": line_code,
+                                "product_code": product_code,
+                                "shift": shift_code,
+                                "total_qty": total_qty,
+                                "good_qty": good_qty,
+                                "defect_qty": defect_qty,
+                                "rework_qty": rework_qty,
+                                "scrap_qty": scrap_qty,
+                                "cycle_time_avg": cycle_time_avg,
+                                "cycle_time_std": cycle_time_std,
+                                "runtime_minutes": runtime_minutes,
+                                "downtime_minutes": downtime_minutes,
+                                "setup_time_minutes": setup_time_minutes,
+                                "planned_qty": planned_qty,
+                                "target_cycle_time": target_ct,
+                            }
+                        )
+                        created_production_records += 1
+
+        # 5. 재고 스냅샷 데이터 생성 (fact_inventory_snapshot)
+        # 재고일수(inventory_days) KPI 계산을 위한 데이터
+        locations = ["창고A", "창고B", "생산현장"]
+
+        for day_offset in range(request.days + 1):
+            snapshot_date = start_date + timedelta(days=day_offset)
+
+            for product in products:
+                product_code = product[0]
+
+                for location in locations:
+                    # 재고 수량 (100~500)
+                    stock_qty = random.randint(100, 500)
+                    safety_stock_qty = random.randint(50, 100)
+                    reserved_qty = random.randint(0, 50)
+                    available_qty = max(0, stock_qty - reserved_qty)
+                    in_transit_qty = random.randint(0, 30)
+
+                    # 일평균 사용량 (30~80)
+                    avg_daily_usage = random.uniform(30, 80)
+
+                    # 재고 커버리지 일수 = 재고량 / 일평균 사용량
+                    coverage_days = stock_qty / avg_daily_usage if avg_daily_usage > 0 else 0
+
+                    # 재고 가치 (단가 1000원 기준)
+                    stock_value = stock_qty * 1000
+
+                    # 최근 입출고일 (최근 1~7일 이내)
+                    last_receipt_date = snapshot_date - timedelta(days=random.randint(1, 7))
+                    last_issue_date = snapshot_date - timedelta(days=random.randint(1, 3))
+
+                    db.execute(
+                        text("""
+                            INSERT INTO bi.fact_inventory_snapshot (
+                                tenant_id, date, product_code, location,
+                                stock_qty, safety_stock_qty, reserved_qty, available_qty, in_transit_qty,
+                                stock_value, avg_daily_usage, coverage_days,
+                                last_receipt_date, last_issue_date
+                            ) VALUES (
+                                :tenant_id, :date, :product_code, :location,
+                                :stock_qty, :safety_stock_qty, :reserved_qty, :available_qty, :in_transit_qty,
+                                :stock_value, :avg_daily_usage, :coverage_days,
+                                :last_receipt_date, :last_issue_date
+                            )
+                            ON CONFLICT (tenant_id, date, product_code, location) DO UPDATE SET
+                                stock_qty = EXCLUDED.stock_qty,
+                                safety_stock_qty = EXCLUDED.safety_stock_qty,
+                                reserved_qty = EXCLUDED.reserved_qty,
+                                available_qty = EXCLUDED.available_qty,
+                                in_transit_qty = EXCLUDED.in_transit_qty,
+                                stock_value = EXCLUDED.stock_value,
+                                avg_daily_usage = EXCLUDED.avg_daily_usage,
+                                coverage_days = EXCLUDED.coverage_days,
+                                last_receipt_date = EXCLUDED.last_receipt_date,
+                                last_issue_date = EXCLUDED.last_issue_date
+                        """),
+                        {
+                            "tenant_id": str(tenant_id),
+                            "date": snapshot_date,
+                            "product_code": product_code,
+                            "location": location,
+                            "stock_qty": stock_qty,
+                            "safety_stock_qty": safety_stock_qty,
+                            "reserved_qty": reserved_qty,
+                            "available_qty": available_qty,
+                            "in_transit_qty": in_transit_qty,
+                            "stock_value": stock_value,
+                            "avg_daily_usage": avg_daily_usage,
+                            "coverage_days": coverage_days,
+                            "last_receipt_date": last_receipt_date,
+                            "last_issue_date": last_issue_date,
+                        }
+                    )
+                    created_inventory_records += 1
+
+        db.commit()
+
+        return SeedSampleDataResponse(
+            success=True,
+            message=f"샘플 데이터가 성공적으로 생성되었습니다.",
+            created_lines=created_lines,
+            created_products=created_products,
+            created_shifts=created_shifts,
+            created_production_records=created_production_records,
+            created_inventory_records=created_inventory_records,
+            date_range={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            }
+        )
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to seed sample data: {e}")
+        raise HTTPException(status_code=500, detail=f"샘플 데이터 생성 실패: {str(e)}")

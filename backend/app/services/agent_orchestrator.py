@@ -372,6 +372,16 @@ class AgentOrchestrator:
             if any(kw in msg_lower for kw in ruleset_keywords):
                 return {"type": "tool", "name": "create_ruleset"}
 
+        # BI: 분석 요청 시 반드시 Tool 호출 (차트 생성 강제)
+        if target_agent == "bi":
+            analysis_keywords = [
+                "분석", "조회", "보여", "차트", "그래프", "추이", "데이터",
+                "센서", "온도", "압력", "생산", "불량", "통계", "트렌드",
+                "analyze", "show", "chart", "graph", "data", "trend",
+            ]
+            if any(kw in msg_lower for kw in analysis_keywords):
+                return {"type": "any"}  # 반드시 Tool 호출
+
         return None
 
     def _is_parameter_request(self, result: Dict[str, Any]) -> bool:
@@ -548,6 +558,9 @@ class AgentOrchestrator:
         routing_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """응답 포맷팅"""
+        # BIPlannerAgent 등에서 구조화된 response_data 추출
+        response_data = self._extract_response_data(result, agent_name)
+
         return {
             "response": result.get("response", ""),
             "agent_name": agent_name,
@@ -561,7 +574,83 @@ class AgentOrchestrator:
             ],
             "iterations": result.get("iterations", 1),
             "routing_info": routing_info,
+            "response_data": response_data,
         }
+
+    def _extract_response_data(
+        self,
+        result: Dict[str, Any],
+        agent_name: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Agent 결과에서 구조화된 response_data 추출
+
+        BIPlannerAgent의 경우:
+        - generate_insight Tool 결과에서 인사이트 데이터 추출
+        - execute_safe_sql Tool 결과에서 table_data 추출
+        - generate_chart_config Tool 결과에서 차트 설정 추출
+        """
+        logger.info(f"[Orchestrator] _extract_response_data called: agent_name={agent_name}")
+
+        # BIPlannerAgent만 처리
+        if "BIPlanner" not in agent_name:
+            logger.info(f"[Orchestrator] Skipping - not BIPlannerAgent")
+            return None
+
+        tool_calls = result.get("tool_calls", [])
+        logger.info(f"[Orchestrator] tool_calls count: {len(tool_calls)}")
+        if not tool_calls:
+            return None
+
+        response_data: Dict[str, Any] = {}
+
+        for tc in tool_calls:
+            tool_name = tc.get("tool", "")
+            tool_result = tc.get("result", {})
+            logger.info(f"[Orchestrator] Processing: tool={tool_name}, result_type={type(tool_result)}, success={tool_result.get('success') if isinstance(tool_result, dict) else 'N/A'}")
+
+            if not isinstance(tool_result, dict):
+                continue
+
+            # generate_insight: 인사이트 데이터
+            if tool_name == "generate_insight":
+                if tool_result.get("success"):
+                    insight = tool_result.get("insight", {})
+                    response_data.update({
+                        "title": insight.get("title"),
+                        "summary": insight.get("summary"),
+                        "facts": insight.get("facts", []),
+                        "reasoning": insight.get("reasoning", {}),
+                        "actions": insight.get("actions", []),
+                        "insight_id": tool_result.get("insight_id"),
+                    })
+                    logger.info(f"[Orchestrator] Extracted insight: {insight.get('title')}")
+
+            # execute_safe_sql: 테이블 데이터
+            elif tool_name == "execute_safe_sql":
+                if tool_result.get("success"):
+                    response_data["table_data"] = {
+                        "columns": tool_result.get("columns", []),
+                        "rows": tool_result.get("rows", []),
+                        "row_count": tool_result.get("row_count", 0),
+                    }
+                    logger.info(f"[Orchestrator] Extracted table_data: {tool_result.get('row_count')} rows")
+
+            # generate_chart_config: 차트 설정
+            elif tool_name == "generate_chart_config":
+                if tool_result.get("success"):
+                    # 결과에서 config 또는 chart_config 키 사용
+                    chart_config = tool_result.get("config") or tool_result.get("chart_config", {})
+                    if chart_config:
+                        if "charts" not in response_data:
+                            response_data["charts"] = []
+                        response_data["charts"].append(chart_config)
+                        logger.info(f"[Orchestrator] Extracted chart_config: {chart_config.get('type')}")
+
+        if response_data:
+            logger.info(f"[Orchestrator] Final response_data keys: {list(response_data.keys())}")
+
+        return response_data if response_data else None
 
     def execute_direct(
         self,

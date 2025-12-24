@@ -17,9 +17,16 @@ interface LineChartComponentProps {
 export function LineChartComponent({ config }: LineChartComponentProps) {
   const { data, xAxis, yAxis, lines } = config;
 
+  // lines가 문자열 배열인 경우 객체 배열로 변환 (Backend 호환성)
+  const normalizedLines = (lines as (string | { dataKey: string; stroke?: string; name?: string })[]).map((line) =>
+    typeof line === 'string'
+      ? { dataKey: line, name: line }
+      : line
+  );
+
   return (
-    <div className="w-full h-[400px]">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full h-[400px] min-h-[400px]">
+      <ResponsiveContainer width="100%" height="100%" minHeight={400}>
         <LineChart data={data} margin={DEFAULT_CHART_STYLE.margin}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
@@ -39,7 +46,7 @@ export function LineChartComponent({ config }: LineChartComponentProps) {
             }}
           />
           <Legend wrapperStyle={{ fontSize: DEFAULT_CHART_STYLE.fontSize }} />
-          {lines.map((line, index) => (
+          {normalizedLines.map((line, index) => (
             <Line
               key={line.dataKey}
               type="monotone"

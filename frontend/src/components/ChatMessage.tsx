@@ -373,9 +373,22 @@ function extractReasoningSummary(message: ChatMessageType): string | null {
 }
 
 /**
- * Extract chart configuration from BI Agent's tool calls
+ * Extract chart configuration from BI Agent's tool calls or response_data
+ *
+ * In streaming mode (SSE), tool_calls.result is null, so we check response_data.charts as fallback
  */
 function extractChartConfig(message: ChatMessageType): ChartConfig | null {
+  // Method 1: Check response_data.charts (SSE streaming mode)
+  // This is the primary source in streaming mode where tool results are not included
+  if (message.response_data?.charts && Array.isArray(message.response_data.charts) && message.response_data.charts.length > 0) {
+    const chartConfig = message.response_data.charts[0];
+    if (chartConfig && typeof chartConfig === 'object' && 'type' in chartConfig && 'data' in chartConfig) {
+      console.log('[extractChartConfig] Found chart in response_data.charts');
+      return chartConfig as ChartConfig;
+    }
+  }
+
+  // Method 2: Check tool_calls (non-streaming mode)
   if (!message.tool_calls || message.tool_calls.length === 0) {
     return null;
   }
@@ -413,6 +426,7 @@ function extractChartConfig(message: ChatMessageType): ChartConfig | null {
       'type' in config &&
       'data' in config
     ) {
+      console.log('[extractChartConfig] Found chart in tool_calls.result');
       return config as ChartConfig;
     }
 

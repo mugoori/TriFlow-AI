@@ -314,6 +314,82 @@ class BIPlannerAgent(BaseAgent):
                     "required": ["data"],
                 },
             },
+            # StatCard 관리 도구
+            {
+                "name": "manage_stat_cards",
+                "description": "대시보드 StatCard를 관리합니다. KPI, DB 쿼리, MCP 도구 기반 카드를 추가/삭제/재정렬할 수 있습니다. 사용 예: 'OEE 카드 추가해줘', '불량률 카드 삭제해줘', '현재 카드 목록 보여줘'",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "수행할 액션",
+                            "enum": ["add_kpi", "add_db_query", "add_mcp", "remove", "list", "reorder"],
+                        },
+                        "tenant_id": {
+                            "type": "string",
+                            "description": "테넌트 ID (UUID)",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "사용자 ID (UUID)",
+                        },
+                        # add_kpi용
+                        "kpi_code": {
+                            "type": "string",
+                            "description": "KPI 코드 (add_kpi 액션에서 사용). 예: defect_rate, oee, yield_rate, downtime",
+                        },
+                        # add_db_query용
+                        "table_name": {
+                            "type": "string",
+                            "description": "테이블명 (add_db_query). 예: fact_daily_production",
+                        },
+                        "column_name": {
+                            "type": "string",
+                            "description": "컬럼명 (add_db_query). 예: defect_rate, production_count",
+                        },
+                        "aggregation": {
+                            "type": "string",
+                            "description": "집계 함수 (add_db_query)",
+                            "enum": ["sum", "avg", "min", "max", "count", "last"],
+                        },
+                        # add_mcp용
+                        "mcp_server_id": {
+                            "type": "string",
+                            "description": "MCP 서버 ID (add_mcp 액션에서 사용)",
+                        },
+                        "mcp_tool_name": {
+                            "type": "string",
+                            "description": "MCP 도구 이름 (add_mcp 액션에서 사용)",
+                        },
+                        # remove용
+                        "card_id": {
+                            "type": "string",
+                            "description": "삭제할 카드 ID (remove 액션에서 사용)",
+                        },
+                        # reorder용
+                        "card_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "순서대로 정렬된 카드 ID 목록 (reorder 액션에서 사용)",
+                        },
+                        # 공통 표시 설정
+                        "title": {
+                            "type": "string",
+                            "description": "커스텀 카드 제목 (선택)",
+                        },
+                        "unit": {
+                            "type": "string",
+                            "description": "커스텀 단위 (선택). 예: %, 건, 개",
+                        },
+                        "icon": {
+                            "type": "string",
+                            "description": "아이콘 이름 (선택). 예: BarChart3, AlertTriangle, Activity",
+                        },
+                    },
+                    "required": ["action", "tenant_id", "user_id"],
+                },
+            },
         ]
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
@@ -391,6 +467,25 @@ class BIPlannerAgent(BaseAgent):
                 chart_config=tool_input.get("chart_config"),
                 focus_metrics=tool_input.get("focus_metrics"),
                 time_range=tool_input.get("time_range"),
+            )
+
+        # StatCard 관리
+        elif tool_name == "manage_stat_cards":
+            return self._manage_stat_cards(
+                action=tool_input["action"],
+                tenant_id=tool_input["tenant_id"],
+                user_id=tool_input["user_id"],
+                kpi_code=tool_input.get("kpi_code"),
+                table_name=tool_input.get("table_name"),
+                column_name=tool_input.get("column_name"),
+                aggregation=tool_input.get("aggregation"),
+                mcp_server_id=tool_input.get("mcp_server_id"),
+                mcp_tool_name=tool_input.get("mcp_tool_name"),
+                card_id=tool_input.get("card_id"),
+                card_ids=tool_input.get("card_ids"),
+                title=tool_input.get("title"),
+                unit=tool_input.get("unit"),
+                icon=tool_input.get("icon"),
             )
 
         else:
@@ -1003,4 +1098,217 @@ class BIPlannerAgent(BaseAgent):
                     "reasoning": {"analysis": "분석을 완료할 수 없습니다.", "contributing_factors": [], "confidence": 0},
                     "actions": [],
                 },
+            }
+
+    # =========================================
+    # StatCard 관리
+    # =========================================
+
+    def _manage_stat_cards(
+        self,
+        action: str,
+        tenant_id: str,
+        user_id: str,
+        kpi_code: str = None,
+        table_name: str = None,
+        column_name: str = None,
+        aggregation: str = None,
+        mcp_server_id: str = None,
+        mcp_tool_name: str = None,
+        card_id: str = None,
+        card_ids: List[str] = None,
+        title: str = None,
+        unit: str = None,
+        icon: str = None,
+    ) -> Dict[str, Any]:
+        """
+        StatCard 관리 (CRUD 및 재정렬)
+        """
+        import asyncio
+        from app.services.stat_card_service import StatCardService
+        from app.database import SessionLocal
+        from app.schemas.statcard import StatCardConfigCreate
+
+        try:
+            tenant_uuid = UUID(tenant_id)
+            user_uuid = UUID(user_id)
+
+            db = SessionLocal()
+            try:
+                service = StatCardService(db)
+
+                if action == "list":
+                    # 카드 목록 조회
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                asyncio.run,
+                                service.get_card_values(tenant_id=tenant_uuid, user_id=user_uuid)
+                            )
+                            result = future.result()
+                    else:
+                        result = loop.run_until_complete(
+                            service.get_card_values(tenant_id=tenant_uuid, user_id=user_uuid)
+                        )
+
+                    cards_info = []
+                    for card in result.cards:
+                        cards_info.append({
+                            "config_id": str(card.config.config_id),
+                            "title": card.value.title,
+                            "source_type": card.config.source_type,
+                            "value": card.value.formatted_value or card.value.value,
+                            "status": card.value.status,
+                            "display_order": card.config.display_order,
+                        })
+
+                    logger.info(f"Listed {len(cards_info)} stat cards")
+
+                    return {
+                        "success": True,
+                        "action": "list",
+                        "cards": cards_info,
+                        "total": result.total,
+                    }
+
+                elif action == "add_kpi":
+                    if not kpi_code:
+                        return {"success": False, "error": "kpi_code is required for add_kpi action"}
+
+                    config = StatCardConfigCreate(
+                        source_type="kpi",
+                        kpi_code=kpi_code,
+                        display_order=99,
+                        is_visible=True,
+                        higher_is_better=True,
+                        cache_ttl_seconds=60,
+                        custom_title=title,
+                        custom_unit=unit,
+                        custom_icon=icon,
+                    )
+
+                    created = service.create_config(tenant_id=tenant_uuid, user_id=user_uuid, config=config)
+
+                    logger.info(f"Created KPI stat card: {kpi_code}")
+
+                    return {
+                        "success": True,
+                        "action": "add_kpi",
+                        "config_id": str(created.config_id),
+                        "kpi_code": kpi_code,
+                        "message": f"KPI '{kpi_code}' 카드가 추가되었습니다.",
+                    }
+
+                elif action == "add_db_query":
+                    if not table_name or not column_name or not aggregation:
+                        return {"success": False, "error": "table_name, column_name, and aggregation are required"}
+
+                    config = StatCardConfigCreate(
+                        source_type="db_query",
+                        table_name=table_name,
+                        column_name=column_name,
+                        aggregation=aggregation,
+                        display_order=99,
+                        is_visible=True,
+                        higher_is_better=True,
+                        cache_ttl_seconds=60,
+                        custom_title=title,
+                        custom_unit=unit,
+                        custom_icon=icon,
+                    )
+
+                    created = service.create_config(tenant_id=tenant_uuid, user_id=user_uuid, config=config)
+
+                    logger.info(f"Created DB query stat card: {table_name}.{column_name}")
+
+                    return {
+                        "success": True,
+                        "action": "add_db_query",
+                        "config_id": str(created.config_id),
+                        "table_name": table_name,
+                        "column_name": column_name,
+                        "aggregation": aggregation,
+                        "message": f"DB 쿼리 카드 ({table_name}.{column_name})가 추가되었습니다.",
+                    }
+
+                elif action == "add_mcp":
+                    if not mcp_server_id or not mcp_tool_name:
+                        return {"success": False, "error": "mcp_server_id and mcp_tool_name are required"}
+
+                    config = StatCardConfigCreate(
+                        source_type="mcp_tool",
+                        mcp_server_id=UUID(mcp_server_id),
+                        mcp_tool_name=mcp_tool_name,
+                        display_order=99,
+                        is_visible=True,
+                        higher_is_better=True,
+                        cache_ttl_seconds=60,
+                        custom_title=title,
+                        custom_unit=unit,
+                        custom_icon=icon,
+                    )
+
+                    created = service.create_config(tenant_id=tenant_uuid, user_id=user_uuid, config=config)
+
+                    logger.info(f"Created MCP tool stat card: {mcp_tool_name}")
+
+                    return {
+                        "success": True,
+                        "action": "add_mcp",
+                        "config_id": str(created.config_id),
+                        "mcp_tool_name": mcp_tool_name,
+                        "message": f"MCP 도구 카드 ({mcp_tool_name})가 추가되었습니다.",
+                    }
+
+                elif action == "remove":
+                    if not card_id:
+                        return {"success": False, "error": "card_id is required for remove action"}
+
+                    success = service.delete_config(
+                        tenant_id=tenant_uuid,
+                        user_id=user_uuid,
+                        config_id=UUID(card_id),
+                    )
+
+                    if success:
+                        logger.info(f"Deleted stat card: {card_id}")
+                        return {
+                            "success": True,
+                            "action": "remove",
+                            "deleted_id": card_id,
+                            "message": "카드가 삭제되었습니다.",
+                        }
+                    else:
+                        return {"success": False, "error": "Card not found or unauthorized"}
+
+                elif action == "reorder":
+                    if not card_ids:
+                        return {"success": False, "error": "card_ids is required for reorder action"}
+
+                    card_uuids = [UUID(cid) for cid in card_ids]
+                    service.reorder_configs(tenant_id=tenant_uuid, user_id=user_uuid, config_ids=card_uuids)
+
+                    logger.info(f"Reordered {len(card_ids)} stat cards")
+
+                    return {
+                        "success": True,
+                        "action": "reorder",
+                        "new_order": card_ids,
+                        "message": "카드 순서가 변경되었습니다.",
+                    }
+
+                else:
+                    return {"success": False, "error": f"Unknown action: {action}"}
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"StatCard management error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "action": action,
             }

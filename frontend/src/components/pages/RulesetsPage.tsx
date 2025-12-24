@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Plus,
   Search,
@@ -38,6 +39,7 @@ interface RulesetsPageProps {
 }
 
 export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
+  const { isAuthenticated } = useAuth();
   const toast = useToast();
   // Tab state
   const [activeTab, setActiveTab] = useState<'rulesets' | 'proposals'>('rulesets');
@@ -93,8 +95,9 @@ export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
   }, [searchQuery, filterActive]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadRulesets();
-  }, [loadRulesets]);
+  }, [isAuthenticated, loadRulesets]);
 
   // Highlight 된 룰셋 자동 선택
   useEffect(() => {

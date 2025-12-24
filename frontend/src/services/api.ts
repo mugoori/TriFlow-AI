@@ -1,17 +1,29 @@
-import { getAccessToken } from './authService';
+import { getAccessToken, refreshAccessToken, clearAuth } from './authService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export class ApiClient {
   private baseUrl: string;
+  private isRefreshing = false;
+  private refreshSubscribers: Array<(token: string | null) => void> = [];
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
   }
 
+  private subscribeTokenRefresh(cb: (token: string | null) => void) {
+    this.refreshSubscribers.push(cb);
+  }
+
+  private onRefreshed(token: string | null) {
+    this.refreshSubscribers.forEach(cb => cb(token));
+    this.refreshSubscribers = [];
+  }
+
   async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retryCount = 0
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
@@ -27,6 +39,45 @@ export class ApiClient {
 
     try {
       const response = await fetch(url, config);
+
+      // 401 에러 시 토큰 갱신 시도
+      if (response.status === 401 && retryCount === 0) {
+        // 이미 갱신 중이면 대기
+        if (this.isRefreshing) {
+          return new Promise<T>((resolve, reject) => {
+            this.subscribeTokenRefresh((newToken) => {
+              if (newToken) {
+                // 새 토큰으로 재시도
+                this.request<T>(endpoint, options, 1).then(resolve).catch(reject);
+              } else {
+                reject(new Error('Token refresh failed'));
+              }
+            });
+          });
+        }
+
+        this.isRefreshing = true;
+        try {
+          const tokenResult = await refreshAccessToken();
+          this.isRefreshing = false;
+
+          if (tokenResult) {
+            this.onRefreshed(tokenResult.access_token);
+            // 새 토큰으로 재시도
+            return this.request<T>(endpoint, options, 1);
+          } else {
+            this.onRefreshed(null);
+            // 갱신 실패 시 로그아웃
+            clearAuth();
+            throw new Error('Session expired. Please login again.');
+          }
+        } catch (refreshError) {
+          this.isRefreshing = false;
+          this.onRefreshed(null);
+          clearAuth();
+          throw new Error('Session expired. Please login again.');
+        }
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -83,7 +134,8 @@ export class ApiClient {
   async postFormData<T>(
     endpoint: string,
     formData: FormData,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retryCount = 0
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
@@ -101,6 +153,41 @@ export class ApiClient {
 
     try {
       const response = await fetch(url, config);
+
+      // 401 에러 시 토큰 갱신 시도
+      if (response.status === 401 && retryCount === 0) {
+        if (this.isRefreshing) {
+          return new Promise<T>((resolve, reject) => {
+            this.subscribeTokenRefresh((newToken) => {
+              if (newToken) {
+                this.postFormData<T>(endpoint, formData, options, 1).then(resolve).catch(reject);
+              } else {
+                reject(new Error('Token refresh failed'));
+              }
+            });
+          });
+        }
+
+        this.isRefreshing = true;
+        try {
+          const tokenResult = await refreshAccessToken();
+          this.isRefreshing = false;
+
+          if (tokenResult) {
+            this.onRefreshed(tokenResult.access_token);
+            return this.postFormData<T>(endpoint, formData, options, 1);
+          } else {
+            this.onRefreshed(null);
+            clearAuth();
+            throw new Error('Session expired. Please login again.');
+          }
+        } catch (refreshError) {
+          this.isRefreshing = false;
+          this.onRefreshed(null);
+          clearAuth();
+          throw new Error('Session expired. Please login again.');
+        }
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

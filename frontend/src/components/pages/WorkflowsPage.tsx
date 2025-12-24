@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -102,6 +103,7 @@ const categoryColors: Record<string, string> = {
 };
 
 export function WorkflowsPage() {
+  const { isAuthenticated } = useAuth();
   const toast = useToast();
 
   // 상태
@@ -175,13 +177,16 @@ export function WorkflowsPage() {
 
   // 초기 로드 (워크플로우 + 액션 카탈로그)
   useEffect(() => {
+    // 인증 완료 후에만 API 호출
+    if (!isAuthenticated) return;
+
     loadWorkflows();
     // 액션 카탈로그도 함께 로드 (워크플로우 구조 한글화에 필요)
     workflowService.getActionCatalog().then((response) => {
       setActions(response.actions);
       setCategories(response.categories);
     }).catch(console.error);
-  }, [loadWorkflows]);
+  }, [isAuthenticated, loadWorkflows]);
 
   // 워크플로우 선택 시 실행 이력 로드
   const handleSelectWorkflow = async (workflow: Workflow) => {

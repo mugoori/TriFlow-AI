@@ -31,10 +31,13 @@ RATE_LIMIT_RULES = {
     # RAG (임베딩 비용)
     "/api/v1/rag/search": (60, 60),  # 60 req/min
     "/api/v1/rag/documents": (30, 60),  # 30 req/min
+
+    # 센서 데이터 (대시보드 자동 갱신용)
+    "/api/v1/sensors": (200, 60),  # 200 req/min
 }
 
 # 기본 Rate Limit (위 규칙에 없는 경로)
-DEFAULT_RATE_LIMIT = (100, 60)  # 100 req/min
+DEFAULT_RATE_LIMIT = (200, 60)  # 200 req/min
 
 # Rate Limit 제외 경로
 EXCLUDED_PATHS = {

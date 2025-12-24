@@ -67,6 +67,7 @@ async def chat_with_agent(request: AgentRequest):
             tool_calls=result["tool_calls"],
             iterations=result["iterations"],
             routing_info=result.get("routing_info"),
+            response_data=result.get("response_data"),
         )
 
     except Exception as e:
@@ -247,7 +248,13 @@ async def stream_chat_response(
                             yield f"data: {json.dumps(workflow_event)}\n\n"
                             logger.info(f"[SSE Debug] Workflow event emitted: name={tool_result.get('name')}")
 
-        # Step 6: 완료 이벤트
+        # Step 6: response_data 이벤트 (BI 인사이트 등 구조화된 데이터)
+        response_data = result.get("response_data")
+        if response_data:
+            yield f"data: {json.dumps({'type': 'response_data', 'data': response_data})}\n\n"
+            logger.info(f"[SSE Debug] response_data event emitted: keys={list(response_data.keys())}")
+
+        # Step 7: 완료 이벤트
         yield f"data: {json.dumps({'type': 'done', 'agent_name': target_agent_name, 'iterations': result.get('iterations', 1)})}\n\n"
 
         # SSE 스트림 명시적 종료 (Tauri WebView 호환성)

@@ -784,8 +784,8 @@ interface InsightPanelProps {
   onClose?: () => void;
   className?: string;
   pinnedInsightIds?: string[]; // 이미 Pin된 인사이트 ID 목록
-  onPinInsight?: (insightId: string) => Promise<void>;
-  onUnpinInsight?: (insightId: string) => Promise<void>;
+  onPinInsight?: (insightId: string) => void | Promise<void>;
+  onUnpinInsight?: (insightId: string) => void | Promise<void>;
 }
 
 export function InsightPanel({

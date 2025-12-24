@@ -3,6 +3,7 @@
  * A/B 테스트 실험 관리 페이지
  */
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   FlaskConical,
   Play,
@@ -47,6 +48,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function ExperimentsPage() {
+  const { isAuthenticated } = useAuth();
   const toast = useToast();
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [selectedExperiment, setSelectedExperiment] = useState<Experiment | null>(null);
@@ -86,8 +88,9 @@ export default function ExperimentsPage() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadExperiments();
-  }, [loadExperiments]);
+  }, [isAuthenticated, loadExperiments]);
 
   useEffect(() => {
     if (selectedExperiment) {

@@ -120,6 +120,16 @@ export const agentService = {
               }
             }
           }
+
+          // Tauri: response_data 이벤트 전송 (BI 인사이트, 차트, 테이블 등)
+          if (result.response_data) {
+            console.log('[agentService] response_data detected:', Object.keys(result.response_data));
+            onEvent({
+              type: 'response_data',
+              data: result.response_data,
+            });
+          }
+
           onEvent({ type: 'done', agent_name: result.agent_name });
         } else {
           // 브라우저: 기존 SSE 스트리밍 사용

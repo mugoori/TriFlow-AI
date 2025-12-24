@@ -17,9 +17,16 @@ interface BarChartComponentProps {
 export function BarChartComponent({ config }: BarChartComponentProps) {
   const { data, xAxis, yAxis, bars } = config;
 
+  // bars가 문자열 배열인 경우 객체 배열로 변환 (Backend 호환성)
+  const normalizedBars = (bars as (string | { dataKey: string; fill?: string; name?: string })[]).map((bar) =>
+    typeof bar === 'string'
+      ? { dataKey: bar, name: bar }
+      : bar
+  );
+
   return (
-    <div className="w-full h-[400px]">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full h-[400px] min-h-[400px]">
+      <ResponsiveContainer width="100%" height="100%" minHeight={400}>
         <BarChart data={data} margin={DEFAULT_CHART_STYLE.margin}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
@@ -39,7 +46,7 @@ export function BarChartComponent({ config }: BarChartComponentProps) {
             }}
           />
           <Legend wrapperStyle={{ fontSize: DEFAULT_CHART_STYLE.fontSize }} />
-          {bars.map((bar, index) => (
+          {normalizedBars.map((bar, index) => (
             <Bar
               key={bar.dataKey}
               dataKey={bar.dataKey}

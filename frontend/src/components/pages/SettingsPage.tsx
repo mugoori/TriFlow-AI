@@ -3,6 +3,7 @@
  * 일반 설정, Backend 연결, AI 모델, 알림 설정, 앱 정보
  */
 import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { settingsService, NotificationTestResult } from '../../services/settingsService';
 
 type Theme = 'system' | 'light' | 'dark';
@@ -79,6 +80,8 @@ function getInitialSettings(): Settings {
 }
 
 export function SettingsPage() {
+  const { isAuthenticated } = useAuth();
+
   // 초기 상태를 localStorage에서 동기적으로 로드 (깜빡임 방지)
   const [settings, setSettings] = useState<Settings>(getInitialSettings);
 
@@ -159,8 +162,10 @@ export function SettingsPage() {
     checkBackendConnection();
   }, []);
 
-  // Load notification settings from backend
+  // Load notification settings from backend (인증 후에만)
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const loadNotificationSettings = async () => {
       try {
         const response = await settingsService.getSettings('notification');
@@ -177,7 +182,7 @@ export function SettingsPage() {
       }
     };
     loadNotificationSettings();
-  }, []);
+  }, [isAuthenticated]);
 
   const checkBackendConnection = async () => {
     setConnectionStatus(prev => ({ ...prev, backend: 'checking' }));

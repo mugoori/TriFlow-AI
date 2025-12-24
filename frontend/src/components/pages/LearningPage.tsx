@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   ThumbsUp,
   ThumbsDown,
@@ -37,6 +38,8 @@ import {
 } from '@/services/experimentService';
 
 export function LearningPage() {
+  const { isAuthenticated } = useAuth();
+
   // Feedback State
   const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
   const [recentFeedback, setRecentFeedback] = useState<FeedbackResponse[]>([]);
@@ -132,8 +135,9 @@ export function LearningPage() {
   }, [loadFeedbackData, loadProposalData, loadExperimentData]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadAllData();
-  }, [loadAllData]);
+  }, [isAuthenticated, loadAllData]);
 
   // Handle Proposal Review
   const handleProposalReview = async (proposalId: string, action: 'approve' | 'reject') => {

@@ -23,6 +23,10 @@ interface DashboardContextType {
   removeChart: (id: string) => void;
   // 차트 존재 여부 확인
   hasChart: (config: ChartConfig) => boolean;
+  // 저장된 차트들 일괄 로드 (대시보드 로드 시 사용)
+  loadCharts: (charts: SavedChart[]) => void;
+  // 모든 차트 삭제
+  clearCharts: () => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | null>(null);
@@ -69,8 +73,18 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     return savedCharts.some(chart => isSameChart(chart.config, config));
   }, [savedCharts]);
 
+  // 저장된 차트들 일괄 로드 (대시보드 로드 시 사용)
+  const loadCharts = useCallback((charts: SavedChart[]) => {
+    setSavedCharts(charts);
+  }, []);
+
+  // 모든 차트 삭제
+  const clearCharts = useCallback(() => {
+    setSavedCharts([]);
+  }, []);
+
   return (
-    <DashboardContext.Provider value={{ savedCharts, addChart, removeChart, hasChart }}>
+    <DashboardContext.Provider value={{ savedCharts, addChart, removeChart, hasChart, loadCharts, clearCharts }}>
       {children}
     </DashboardContext.Provider>
   );

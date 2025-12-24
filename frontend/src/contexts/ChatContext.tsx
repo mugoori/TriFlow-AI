@@ -5,10 +5,26 @@
  * 워크플로우 프리뷰 패널 상태 관리
  */
 
-import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react';
 import type { ChatMessage, SSEEvent, StreamingState, ConversationMessage } from '../types/agent';
 import { agentService } from '../services/agentService';
 import type { WorkflowDSL } from '../components/workflow/WorkflowPreviewPanel';
+
+// localStorage 키
+const CHAT_STORAGE_KEY = 'triflow_chat_messages';
+
+// localStorage에서 메시지 불러오기
+function loadMessagesFromStorage(): ChatMessage[] {
+  try {
+    const stored = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load chat messages from storage:', e);
+  }
+  return [];
+}
 
 // 워크플로우 프리뷰 상태
 interface PendingWorkflow {
@@ -38,12 +54,21 @@ interface ChatContextType {
 const ChatContext = createContext<ChatContextType | null>(null);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessagesFromStorage);
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState>({
     isStreaming: false,
   });
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 메시지 변경 시 localStorage에 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+    } catch (e) {
+      console.error('Failed to save chat messages to storage:', e);
+    }
+  }, [messages]);
 
   // 워크플로우 프리뷰 상태
   const [pendingWorkflow, setPendingWorkflowState] = useState<PendingWorkflow | null>(null);
@@ -237,6 +262,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           }
           break;
 
+        case 'response_data':
+          // BI 인사이트, 차트, 테이블 등 구조화된 데이터
+          if (event.data) {
+            console.log('[ChatContext] Received response_data:', Object.keys(event.data));
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, response_data: event.data }
+                  : msg
+              )
+            );
+          }
+          break;
+
         case 'error':
           setMessages((prev) =>
             prev.map((msg) =>
@@ -289,6 +328,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const clearMessages = useCallback(() => {
     cancelStream();
     setMessages([]);
+    // localStorage에서도 삭제
+    localStorage.removeItem(CHAT_STORAGE_KEY);
   }, [cancelStream]);
 
   return (

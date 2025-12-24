@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS bi.chat_messages (
     content TEXT NOT NULL,
 
     -- AI 응답 메타데이터 (role='assistant'일 때)
-    response_type TEXT CHECK (response_type IN ('text', 'insight', 'chart', 'story', 'error')),
+    response_type TEXT CHECK (response_type IN ('text', 'insight', 'chart', 'story', 'error', 'card_action')),
     response_data JSONB,  -- 인사이트/차트/스토리 데이터
 
     -- 연결된 객체
