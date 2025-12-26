@@ -114,9 +114,17 @@ class TestFeedbackAnalyzer:
 
     def test_analyze_by_agent_unknown_agent(self, analyzer):
         """에이전트별 분석 - unknown 에이전트"""
-        fb = MagicMock(spec=FeedbackLog)
-        fb.context_data = None  # context_data 없음
-        feedbacks = [fb, fb, fb]
+        # _feedback_to_summary에 필요한 모든 속성 설정
+        def create_mock_fb():
+            fb = MagicMock(spec=FeedbackLog)
+            fb.context_data = None  # context_data 없음
+            fb.feedback_id = uuid4()
+            fb.feedback_type = "negative"
+            fb.feedback_text = "Test feedback"
+            fb.created_at = datetime.utcnow()
+            return fb
+
+        feedbacks = [create_mock_fb() for _ in range(3)]
 
         result = analyzer._analyze_by_agent(feedbacks, min_frequency=2)
 

@@ -36,7 +36,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { StatCardWithValue, StatusType, TrendType, SourceType } from '@/types/statcard';
-import { STATUS_COLORS, SOURCE_TYPE_INFO } from '@/types/statcard';
+import { SOURCE_TYPE_INFO } from '@/types/statcard';
 
 // Lucide 아이콘 매핑
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {

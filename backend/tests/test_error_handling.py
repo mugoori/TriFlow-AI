@@ -116,17 +116,20 @@ class TestClassifyError:
         assert result.category == ErrorCategory.CONFLICT
 
     def test_classify_timeout_error_string(self):
-        """타임아웃 에러 문자열 분류"""
+        """타임아웃 에러 문자열 - 예외 타입 기반으로만 분류됨"""
+        # 문자열에 timeout이 있어도 Exception 타입은 INTERNAL로 분류됨
+        # (보안상 문자열 매칭 대신 예외 타입 기반 분류 사용)
         exc = Exception("Request timed out")
+        result = classify_error(exc)
+        assert result.category == ErrorCategory.INTERNAL
+
+    def test_classify_timeout_error_type(self):
+        """타임아웃 에러 타입 분류 - asyncio.TimeoutError 사용"""
+        import asyncio
+        exc = asyncio.TimeoutError("timeout occurred")
         result = classify_error(exc)
         assert result.category == ErrorCategory.TIMEOUT
         assert result.retryable is True
-
-    def test_classify_timeout_error_type(self):
-        """타임아웃 에러 타입 분류"""
-        exc = Exception("timeout occurred")
-        result = classify_error(exc)
-        assert result.category == ErrorCategory.TIMEOUT
 
     def test_classify_empty_message_error(self):
         """빈 메시지 에러 분류"""

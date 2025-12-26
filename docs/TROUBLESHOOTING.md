@@ -37,7 +37,58 @@
 ### 카테고리별 자주 발생하는 에러와 해결책
 
 #### 🐍 Backend (Python/FastAPI)
-- 아직 기록된 이슈 없음
+
+**[2025-12-26] CORS 에러로 표시되는 500 Internal Server Error**
+- **에러**: `Access to fetch has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header` + `500 Internal Server Error`
+- **발생 위치**: 모든 API 엔드포인트 (특히 `/api/v1/feedback/stats`)
+- **증상**:
+  - 브라우저 콘솔에 CORS 에러 표시
+  - Network 탭에서 500 상태 코드 확인 가능
+  - 백엔드 로그에 실제 예외 메시지 존재
+- **시도한 해결책**:
+  1. CORSMiddleware 설정 확인 (결과: 이미 정상)
+  2. 예외 핸들러에 CORS 헤더 추가 (결과: **성공**)
+- **근본 원인 (RCA)**:
+  - CORSMiddleware가 정상 응답에만 CORS 헤더를 추가
+  - 예외 핸들러가 반환하는 JSONResponse에는 CORS 헤더가 없음
+  - 브라우저는 CORS 헤더 없는 응답을 CORS 정책 위반으로 표시
+  - **실제 에러(DB 테이블 없음, 필드명 불일치 등)가 CORS 에러로 가려짐**
+- **최종 해결책**:
+  - `backend/app/main.py`에 `add_cors_headers()` 함수 추가
+  - 모든 예외 핸들러에서 `return add_cors_headers(response, request)` 호출
+  ```python
+  def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
+      origin = request.headers.get("origin", "")
+      if origin and origin in settings.cors_origins_list:
+          response.headers["Access-Control-Allow-Origin"] = origin
+          response.headers["Access-Control-Allow-Credentials"] = "true"
+          response.headers["Access-Control-Allow-Methods"] = "*"
+          response.headers["Access-Control-Allow-Headers"] = "*"
+      return response
+  ```
+- **디버깅 팁**:
+  > ⚠️ **CORS 에러가 보이면, 먼저 백엔드 터미널 로그를 확인하세요!**
+  > 대부분 실제 서버 에러(500)가 CORS로 가려진 것입니다.
+- **수정 파일**:
+  - `backend/app/main.py:223-238` - `add_cors_headers()` 함수
+  - `backend/app/main.py:254,264,298,316` - 예외 핸들러에 적용
+
+**[2025-12-26] feedback_logs 테이블 없음**
+- **에러**: `relation "core.feedback_logs" does not exist`
+- **발생 위치**: `/api/v1/feedback/*` 엔드포인트
+- **근본 원인 (RCA)**:
+  - SQLAlchemy 모델은 `core.feedback_logs` 참조
+  - SQL 초기화 스크립트에 테이블 정의 누락
+  - 모델의 `comment` 속성과 라우터의 `feedback_text` 필드명 불일치
+- **최종 해결책**:
+  1. `backend/db/init/03_create_core_tables.sql`에 `feedback_logs` 테이블 추가
+  2. `backend/app/init_db.py`에 `_ensure_tables_exist()` 함수 추가 (서버 시작 시 자동 생성)
+  3. `backend/app/routers/feedback.py`에서 `feedback_text` → `comment` 수정
+- **새 모델 추가 시 체크리스트**:
+  - [ ] SQLAlchemy 모델 정의 (`backend/app/models/`)
+  - [ ] SQL 초기화 스크립트에 테이블 추가 (`backend/db/init/`)
+  - [ ] 모델 필드명과 라우터 속성명 일치 확인
+  - [ ] 서버 재시작하여 테이블 자동 생성 확인
 
 #### 🎨 Frontend (Tauri/React)
 

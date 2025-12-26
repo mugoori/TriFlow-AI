@@ -666,7 +666,9 @@ async def test_data_source_connection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """데이터 소스 연결 테스트 (MVP: Mock 응답)"""
+    """데이터 소스 연결 테스트 (실제 헬스체크 수행)"""
+    from app.services.datasource_mcp_service import DataSourceMCPService
+
     source = db.query(DataSource).filter(
         DataSource.source_id == source_id,
         DataSource.tenant_id == current_user.tenant_id
@@ -675,7 +677,23 @@ async def test_data_source_connection(
     if not source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
-    # MVP: 항상 성공 (실제 연결 테스트는 V2에서 구현)
+    # REST API 연결 타입인 경우 실제 헬스체크 수행
+    if source.connection_type == "rest_api" and source.connection_config.get("base_url"):
+        service = DataSourceMCPService(db)
+        result = await service.health_check(source_id, current_user.tenant_id)
+
+        return {
+            "success": result.get("status") == "healthy",
+            "message": f"Connection test {'successful' if result.get('status') == 'healthy' else 'failed'}",
+            "response_time_ms": result.get("latency_ms", 0),
+            "server_info": {
+                "type": source.source_system,
+                "status": result.get("status"),
+                "error": result.get("error"),
+            },
+        }
+
+    # 다른 연결 타입은 Mock 응답 (DB Direct, SOAP 등은 별도 구현 필요)
     return {
         "success": True,
         "message": f"Connection test successful (Mock - {source.connection_type})",
@@ -684,6 +702,90 @@ async def test_data_source_connection(
             "type": source.source_system,
             "version": "Mock 1.0",
         },
+    }
+
+
+# ========== DataSource MCP Tools ==========
+
+
+@router.get("/sources/{source_id}/tools")
+async def get_datasource_tools(
+    source_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """DataSource에서 사용 가능한 MCP 도구 목록 조회"""
+    from app.services.datasource_mcp_service import DataSourceMCPService
+
+    source = db.query(DataSource).filter(
+        DataSource.source_id == source_id,
+        DataSource.tenant_id == current_user.tenant_id
+    ).first()
+
+    if not source:
+        raise HTTPException(status_code=404, detail="Data source not found")
+
+    service = DataSourceMCPService(db)
+    tools = service.get_tools_for_source_type(source.source_type)
+
+    return {
+        "source_id": str(source_id),
+        "source_name": source.name,
+        "source_type": source.source_type,
+        "tools": [
+            {
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.input_schema
+            }
+            for t in tools
+        ]
+    }
+
+
+@router.post("/sources/{source_id}/tools/{tool_name}/call")
+async def call_datasource_tool(
+    source_id: UUID,
+    tool_name: str,
+    request: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """DataSource의 MCP 도구 호출"""
+    from app.services.datasource_mcp_service import DataSourceMCPService
+
+    service = DataSourceMCPService(db)
+    result = await service.call_tool(
+        source_id=source_id,
+        tenant_id=current_user.tenant_id,
+        tool_name=tool_name,
+        args=request.get("arguments", {})
+    )
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Tool execution failed")
+        )
+
+    return result
+
+
+@router.get("/tools")
+async def get_all_datasource_tools(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """테넌트의 모든 DataSource에서 사용 가능한 MCP 도구 목록 조회"""
+    from app.services.datasource_mcp_service import DataSourceMCPService
+
+    service = DataSourceMCPService(db)
+    tools = service.get_all_tools_for_tenant(current_user.tenant_id)
+
+    return {
+        "sources": tools,
+        "total_sources": len(tools),
+        "total_tools": sum(len(s["tools"]) for s in tools)
     }
 
 

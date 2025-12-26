@@ -655,8 +655,8 @@ interface InsightCardProps {
   onToggle: () => void;
   onFeedback: (score: number) => void;
   isPinned?: boolean;
-  onPin?: (insightId: string) => Promise<void>;
-  onUnpin?: (insightId: string) => Promise<void>;
+  onPin?: (insightId: string) => void | Promise<void>;
+  onUnpin?: (insightId: string) => void | Promise<void>;
 }
 
 function InsightCard({

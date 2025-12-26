@@ -449,7 +449,7 @@ export type ChatContextType = 'general' | 'dashboard' | 'chart' | 'dataset';
 /**
  * 응답 타입
  */
-export type ChatResponseType = 'text' | 'insight' | 'chart' | 'story' | 'error';
+export type ChatResponseType = 'text' | 'insight' | 'chart' | 'story' | 'error' | 'card_action';
 
 /**
  * 채팅 세션

@@ -1,8 +1,8 @@
-import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical, GraduationCap, TrendingUp } from 'lucide-react';
+import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
 
-export type ViewType = 'chat' | 'dashboard' | 'analytics' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings';
+export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings';
 
 interface SidebarProps {
   currentView: ViewType;
@@ -29,12 +29,6 @@ const navItems: NavItem[] = [
     label: 'Dashboard',
     icon: BarChart3,
     description: '데이터 시각화',
-  },
-  {
-    id: 'analytics',
-    label: 'Analytics',
-    icon: TrendingUp,
-    description: '생산 분석',
   },
   {
     id: 'workflows',

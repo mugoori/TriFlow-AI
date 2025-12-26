@@ -459,6 +459,52 @@ curl -X POST http://localhost:8000/api/v1/mcp/servers \
 
 </details>
 
+<details>
+<summary><b>🔗 V2 Phase 2: DataSource 기반 MCP 통합 (2025-12-26)</b></summary>
+
+### 구현 내역
+DataSource(MES/ERP) 등록 시 자동으로 MCP 도구를 사용할 수 있도록 통합
+
+| 컴포넌트 | 설명 | 상태 |
+|----------|------|:----:|
+| **DataSourceMCPService** | DataSource 기반 동적 MCP 도구 관리 | ✅ |
+| **MCP API 확장** | datasource-tools 엔드포인트 (목록/호출/헬스체크) | ✅ |
+| **테스트** | 단위 테스트 42개 추가 (742 passed, 83 skipped) | ✅ |
+
+### 신규 파일
+- `backend/app/services/datasource_mcp_service.py` - DataSource MCP 서비스
+- `backend/tests/test_datasource_mcp.py` - 테스트
+
+### 수정 파일
+- `backend/app/routers/mcp.py` - 3개 API 엔드포인트 추가
+- `backend/app/mcp_wrappers/__init__.py` - export 추가
+
+### API 엔드포인트
+```
+GET  /api/v1/mcp/datasource-tools        # DataSource별 도구 목록
+POST /api/v1/mcp/datasource-tools/{id}/call   # 도구 호출
+GET  /api/v1/mcp/datasource-tools/{id}/health # 헬스체크
+```
+
+</details>
+
+<details>
+<summary><b>🎨 V2 Phase 2: React Flow 다크/라이트 모드 (2025-12-26)</b></summary>
+
+### 구현 내역
+워크플로우 노드 편집기의 줌 컨트롤 버튼이 다크/라이트 모드에서 모두 보이도록 수정
+
+### 수정 파일
+- `frontend/src/index.css` - React Flow Controls/MiniMap 스타일
+- `frontend/src/components/workflow/FlowEditor.tsx` - 다크 모드 감지 (MutationObserver)
+
+### 프론트엔드 TypeScript 에러 수정 (19개)
+- `ChatResponseType`에 'card_action' 추가
+- 미사용 import 제거 (STATUS_COLORS, ChevronDown 등)
+- 타입 불일치 수정 (onPin/onUnpin, toast.success)
+
+</details>
+
 ---
 
 ## 📌 참고 사항

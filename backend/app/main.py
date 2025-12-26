@@ -219,6 +219,25 @@ app.mount("/metrics", metrics_app)
 
 # ========== 전역 예외 핸들러 ==========
 
+
+def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
+    """
+    예외 응답에 CORS 헤더를 추가합니다.
+
+    CORSMiddleware가 예외 핸들러의 응답에 CORS 헤더를 추가하지 못하는 경우가 있어,
+    모든 에러 응답에도 CORS 헤더가 포함되도록 수동으로 추가합니다.
+
+    이를 통해 500 에러가 브라우저에서 CORS 에러로 표시되는 문제를 방지합니다.
+    """
+    origin = request.headers.get("origin", "")
+    if origin and origin in settings.cors_origins_list:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """HTTP 예외 핸들러 - 사용자 친화적 메시지로 변환"""
@@ -228,19 +247,21 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
     # HTTPException의 detail이 이미 dict인 경우 그대로 반환
     if isinstance(exc.detail, dict):
-        return JSONResponse(
+        response = JSONResponse(
             status_code=exc.status_code,
             content=exc.detail,
         )
+        return add_cors_headers(response, request)
 
     # 에러 분류 및 포맷팅
     user_error = classify_error(exc)
     error_response = format_error_response(user_error, lang=lang)
 
-    return JSONResponse(
+    response = JSONResponse(
         status_code=exc.status_code,
         content=error_response,
     )
+    return add_cors_headers(response, request)
 
 
 @app.exception_handler(RequestValidationError)
@@ -263,7 +284,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         message = "Invalid input data."
         suggestion = "Please check your request data."
 
-    return JSONResponse(
+    response = JSONResponse(
         status_code=422,
         content={
             "error": True,
@@ -274,6 +295,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "retryable": False,
         },
     )
+    return add_cors_headers(response, request)
 
 
 @app.exception_handler(Exception)
@@ -287,10 +309,11 @@ async def general_exception_handler(request: Request, exc: Exception):
     user_error = classify_error(exc)
     error_response = format_error_response(user_error, lang=lang)
 
-    return JSONResponse(
+    response = JSONResponse(
         status_code=user_error.http_status,
         content=error_response,
     )
+    return add_cors_headers(response, request)
 
 
 @app.get("/")

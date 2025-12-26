@@ -185,6 +185,16 @@ concurrency:
 - 동일한 에러로 **2회 이상 실패**할 경우, 즉시 멈추고 사용자에게 다음을 요청한다:
   - *"이전 시도들이 실패했습니다. 로그를 확인하고 새로운 전략을 제안해 주십시오."*
 
+### 4. 오류 해결 후 필수 기록 (Mandatory Documentation)
+- **에러 해결 즉시 기록**: 오류를 성공적으로 해결한 후, 반드시 `docs/TROUBLESHOOTING.md`에 다음 항목을 기록한다:
+  - **에러 메시지**: 발생한 오류의 핵심 메시지
+  - **발생 위치**: 파일명, 라인번호 또는 컴포넌트명
+  - **근본 원인 (RCA)**: 왜 이 에러가 발생했는지 분석
+  - **최종 해결책**: 어떻게 수정했는지 구체적인 코드 예시 포함
+  - **디버깅 팁**: 향후 같은 문제 발생 시 빠르게 해결할 수 있는 힌트
+- **목적**: 동일한 오류가 재발했을 때 이전 해결책을 참조하여 **Loop를 방지**하고 효율적으로 해결한다.
+- **체크리스트화**: 자주 발생하는 패턴(예: CORS 에러, 테이블 누락)은 "Common Issues & Solutions" 섹션에 체크리스트로 정리한다.
+
 ---
 
 ## 📉 Rule 10: Resource Efficiency & Minimalism (Core Engineering Principle)
@@ -204,3 +214,65 @@ concurrency:
 ### 3. YAGNI & Simple Design
 - **Complexity on Demand**: 확장성(Sharding, Microservices)은 **실제 병목이 발생했을 때** 도입한다. 미리 예측해서 구현하지 않는다.
 - **Understandable Code**: "멋진 코드"보다 "동료가 이해하기 쉬운 직관적인 코드"를 작성한다.
+
+---
+
+## 🗄️ Rule 11: Database Schema Management (Alembic Migration)
+**모든 데이터베이스 스키마 변경은 Alembic 마이그레이션을 통해 관리한다.**
+
+### 1. 스키마 관리 원칙
+- **Alembic 마이그레이션 필수**: 모든 스키마 변경은 마이그레이션 파일로 추적한다.
+- **스펙 문서 기준**: B-3-1 (Core), B-3-2 (BI Analytics), B-3-3 (RAG & AAS) 스펙 문서를 기준으로 스키마를 정의한다.
+- **멀티 스키마 지원**: `core`, `analytics`, `rag`, `aas` 4개 스키마를 분리하여 관리한다.
+
+### 2. 모델 변경 시 필수 프로세스
+SQLAlchemy 모델을 수정하거나 새 테이블을 추가할 때 반드시 다음 순서를 따른다:
+
+1. **모델 수정**: `backend/app/models/` 파일에서 ORM 모델을 수정한다.
+2. **마이그레이션 생성**: `alembic revision --autogenerate -m "변경_설명"` 실행.
+3. **마이그레이션 검토**: 생성된 마이그레이션 파일(`backend/alembic/versions/`)을 검토하고 필요시 수정한다.
+4. **마이그레이션 적용**: `alembic upgrade head` 실행.
+5. **커밋**: 마이그레이션 파일과 모델 파일을 함께 커밋한다.
+
+### 3. 금지 사항
+- ❌ **모델만 수정하고 마이그레이션 없이 커밋** - 개발/프로덕션 스키마 불일치 발생
+- ❌ **수동 ALTER TABLE 실행** (긴급 상황 제외) - 마이그레이션 이력 깨짐
+- ❌ **이미 적용된 마이그레이션 파일 수정/삭제** - 다른 환경과 충돌 발생
+
+### 4. 자동 마이그레이션
+- 서버 시작 시 `init_db.py`가 자동으로 `alembic upgrade head`를 실행한다.
+- 환경변수 `USE_ALEMBIC_MIGRATION=false`로 비활성화 가능 (테스트 환경 등).
+
+### 5. 마이그레이션 파일 구조
+```
+backend/
+├── alembic.ini                      # Alembic 설정
+├── alembic/
+│   ├── env.py                       # 마이그레이션 환경 설정
+│   ├── script.py.mako               # 마이그레이션 템플릿
+│   └── versions/
+│       ├── 001_core_schema_baseline.py       # Core 스키마 (B-3-1)
+│       ├── 002_bi_analytics_schema.py        # BI Analytics (B-3-2)
+│       └── 003_rag_aas_schema.py             # RAG & AAS (B-3-3)
+```
+
+### 6. 주요 명령어
+```bash
+# 현재 마이그레이션 상태 확인
+alembic current
+
+# 마이그레이션 이력 확인
+alembic history
+
+# 새 마이그레이션 생성 (autogenerate)
+alembic revision --autogenerate -m "Add new table"
+
+# 마이그레이션 적용
+alembic upgrade head
+
+# 마이그레이션 롤백 (1단계)
+alembic downgrade -1
+
+# 특정 버전으로 이동
+alembic upgrade 001_core_baseline
+```

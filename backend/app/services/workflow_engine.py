@@ -42,6 +42,17 @@ from uuid import UUID, uuid4
 
 from app.services.notifications import notification_manager, NotificationStatus
 
+# Retry & Circuit Breaker 유틸리티
+from app.utils.retry import RetryableOperation, is_retryable_error
+from app.utils.circuit_breaker import (
+    get_circuit_breaker,
+    get_external_api_circuit_breaker,
+    get_mcp_circuit_breaker,
+    CircuitBreakerConfig,
+    CircuitBreakerError,
+    CircuitState,
+)
+
 logger = logging.getLogger(__name__)
 
 # Optional AWS S3 import
@@ -2182,49 +2193,141 @@ class WorkflowEngine:
         config: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """액션 노드 실행"""
+        """액션 노드 실행 (Retry 지원)"""
+        import random
+
         action_name = config.get("action", "")
         parameters = config.get("parameters", {})
+
+        # Retry 설정
+        retry_config = config.get("retry", {})
+        max_retries = retry_config.get("max_retries", 2)  # 액션은 기본 2회
 
         # 파라미터에서 컨텍스트 변수 치환 ({{변수명}} 형식)
         resolved_params = self._resolve_parameters(parameters, context)
 
+        retry_count = 0
+        last_error = None
+
         # 알림 액션은 notification_manager에서 실행
         if action_name in ["send_slack_notification", "send_email", "send_sms"]:
+            for attempt in range(max_retries + 1):
+                retry_count = attempt
+                try:
+                    result = await notification_manager.execute_action(
+                        action_name, resolved_params
+                    )
+                    success = result.status in [NotificationStatus.SUCCESS, NotificationStatus.SKIPPED]
+
+                    if success or result.status == NotificationStatus.SKIPPED:
+                        return {
+                            "node_id": node_id,
+                            "type": "action",
+                            "action": action_name,
+                            "success": success,
+                            "status": result.status.value,
+                            "message": result.message,
+                            "details": result.details,
+                            "retry_count": retry_count,
+                        }
+
+                    # 실패 시 재시도
+                    if attempt < max_retries:
+                        delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                        logger.warning(
+                            f"알림 액션 실패, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {action_name}"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        return {
+                            "node_id": node_id,
+                            "type": "action",
+                            "action": action_name,
+                            "success": False,
+                            "status": result.status.value,
+                            "message": result.message,
+                            "details": result.details,
+                            "retry_count": retry_count,
+                        }
+
+                except Exception as e:
+                    last_error = e
+                    if is_retryable_error(e) and attempt < max_retries:
+                        delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                        logger.warning(
+                            f"알림 액션 오류, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {e}"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"알림 액션 실행 오류: {action_name} - {e}")
+                        return {
+                            "node_id": node_id,
+                            "type": "action",
+                            "action": action_name,
+                            "success": False,
+                            "status": "error",
+                            "message": f"알림 액션 실행 오류: {str(e)}",
+                            "retry_count": retry_count,
+                        }
+
+        # 기타 액션 직접 실행 (Retry 적용)
+        for attempt in range(max_retries + 1):
+            retry_count = attempt
             try:
-                result = await notification_manager.execute_action(
-                    action_name, resolved_params
+                action_result = await self.action_executor.execute(
+                    action_name, resolved_params, context
                 )
-                success = result.status in [NotificationStatus.SUCCESS, NotificationStatus.SKIPPED]
-                return {
-                    "node_id": node_id,
-                    "type": "action",
-                    "action": action_name,
-                    "success": success,
-                    "status": result.status.value,
-                    "message": result.message,
-                    "details": result.details,
-                }
+
+                # 성공 또는 비재시도 가능 실패
+                if action_result.get("success", False):
+                    return {
+                        "node_id": node_id,
+                        "type": "action",
+                        **action_result,
+                        "retry_count": retry_count,
+                    }
+
+                # 실패 시 재시도
+                if attempt < max_retries:
+                    delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                    logger.warning(
+                        f"액션 실패, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {action_name}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    return {
+                        "node_id": node_id,
+                        "type": "action",
+                        **action_result,
+                        "retry_count": retry_count,
+                    }
+
             except Exception as e:
-                logger.error(f"알림 액션 실행 오류: {action_name} - {e}")
-                return {
-                    "node_id": node_id,
-                    "type": "action",
-                    "action": action_name,
-                    "success": False,
-                    "status": "error",
-                    "message": f"알림 액션 실행 오류: {str(e)}",
-                }
+                last_error = e
+                if is_retryable_error(e) and attempt < max_retries:
+                    delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                    logger.warning(
+                        f"액션 오류, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {e}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    return {
+                        "node_id": node_id,
+                        "type": "action",
+                        "action": action_name,
+                        "success": False,
+                        "message": f"액션 실행 오류: {str(e)}",
+                        "retry_count": retry_count,
+                    }
 
-        # 기타 액션 직접 실행
-        action_result = await self.action_executor.execute(
-            action_name, resolved_params, context
-        )
-
+        # 모든 재시도 실패 (도달하지 않아야 함)
         return {
             "node_id": node_id,
             "type": "action",
-            **action_result,
+            "action": action_name,
+            "success": False,
+            "message": f"액션 실행 실패: {str(last_error) if last_error else 'Unknown error'}",
+            "retry_count": retry_count,
         }
 
     def _resolve_parameters(
@@ -2548,11 +2651,13 @@ class WorkflowEngine:
 
         config 형식:
         {
-            "source_type": "database" | "api" | "sensor" | "connector",
-            "source_id": "connector_uuid" (connector 타입인 경우),
+            "source_type": "database" | "api" | "sensor" | "connector" | "datasource",
+            "source_id": "uuid" (connector/datasource 타입),
             "query": "SELECT * FROM ...", (database 타입)
             "endpoint": "/api/...", (api 타입)
             "sensor_ids": ["TEMP_01", "TEMP_02"], (sensor 타입)
+            "tool": "get_production_status", (datasource 타입 - MCP 도구명)
+            "arguments": {"line_id": "LINE-001"}, (datasource 타입 - 도구 인자)
             "time_range": {"start": "...", "end": "..."}, (선택)
             "limit": 100, (선택)
             "output_variable": "sensor_data" (컨텍스트에 저장할 변수명)
@@ -2759,6 +2864,7 @@ class WorkflowEngine:
             elif source_type == "api":
                 # 외부 API 호출
                 import httpx
+                import random
 
                 api_config = config.get("api", {})
                 endpoint = api_config.get("url") or config.get("endpoint", "")
@@ -2768,6 +2874,12 @@ class WorkflowEngine:
                 body = api_config.get("body", {})
                 timeout_sec = api_config.get("timeout_seconds", 30)
 
+                # Retry/Circuit Breaker 설정
+                retry_config = config.get("retry", {})
+                cb_config = config.get("circuit_breaker", {})
+                max_retries = retry_config.get("max_retries", 3)
+                cb_enabled = cb_config.get("enabled", True)
+
                 if not endpoint:
                     return {
                         "node_id": node_id,
@@ -2776,88 +2888,222 @@ class WorkflowEngine:
                         "message": "endpoint 또는 api.url은 필수입니다",
                     }
 
+                # Circuit Breaker 설정 (엔드포인트 도메인 기반)
+                circuit_breaker = None
+                if cb_enabled:
+                    from urllib.parse import urlparse
+                    domain = urlparse(endpoint).netloc or "unknown"
+                    circuit_breaker = get_external_api_circuit_breaker(domain)
+
                 # 파라미터 해석 (컨텍스트 변수 치환)
                 resolved_params = self._resolve_parameters(params, context)
                 resolved_headers = self._resolve_parameters(headers, context)
                 resolved_body = self._resolve_parameters(body, context) if body else None
 
-                try:
-                    async with httpx.AsyncClient(timeout=timeout_sec) as client:
-                        if method == "GET":
-                            response = await client.get(
-                                endpoint,
-                                params=resolved_params,
-                                headers=resolved_headers,
+                retry_count = 0
+                last_error = None
+
+                for attempt in range(max_retries + 1):
+                    retry_count = attempt
+                    try:
+                        # Circuit Breaker 확인
+                        if circuit_breaker and circuit_breaker.is_open:
+                            raise CircuitBreakerError(
+                                circuit_breaker.name,
+                                circuit_breaker.config.recovery_timeout
                             )
-                        elif method == "POST":
-                            response = await client.post(
-                                endpoint,
-                                params=resolved_params,
-                                headers=resolved_headers,
-                                json=resolved_body,
-                            )
-                        elif method == "PUT":
-                            response = await client.put(
-                                endpoint,
-                                params=resolved_params,
-                                headers=resolved_headers,
-                                json=resolved_body,
-                            )
-                        elif method == "DELETE":
-                            response = await client.delete(
-                                endpoint,
-                                params=resolved_params,
-                                headers=resolved_headers,
-                            )
-                        else:
+
+                        async with httpx.AsyncClient(timeout=timeout_sec) as client:
+                            if method == "GET":
+                                response = await client.get(
+                                    endpoint,
+                                    params=resolved_params,
+                                    headers=resolved_headers,
+                                )
+                            elif method == "POST":
+                                response = await client.post(
+                                    endpoint,
+                                    params=resolved_params,
+                                    headers=resolved_headers,
+                                    json=resolved_body,
+                                )
+                            elif method == "PUT":
+                                response = await client.put(
+                                    endpoint,
+                                    params=resolved_params,
+                                    headers=resolved_headers,
+                                    json=resolved_body,
+                                )
+                            elif method == "DELETE":
+                                response = await client.delete(
+                                    endpoint,
+                                    params=resolved_params,
+                                    headers=resolved_headers,
+                                )
+                            else:
+                                return {
+                                    "node_id": node_id,
+                                    "type": "data",
+                                    "success": False,
+                                    "message": f"지원하지 않는 HTTP 메서드: {method}",
+                                }
+
+                            response.raise_for_status()
+
+                            # 성공 시 Circuit Breaker 기록
+                            if circuit_breaker:
+                                circuit_breaker._record_success()
+
+                            # 응답 파싱
+                            try:
+                                response_data = response.json()
+                            except Exception:
+                                response_data = {"text": response.text}
+
+                            # 배열 형태면 rows로, 객체면 data로
+                            if isinstance(response_data, list):
+                                rows = response_data
+                            else:
+                                rows = response_data.get("data", [response_data])
+
                             return {
                                 "node_id": node_id,
                                 "type": "data",
-                                "success": False,
-                                "message": f"지원하지 않는 HTTP 메서드: {method}",
+                                "source_type": source_type,
+                                "success": True,
+                                "message": f"API {endpoint} 호출 완료 (HTTP {response.status_code})",
+                                "data": {
+                                    "rows": rows[:limit] if isinstance(rows, list) else rows,
+                                    "endpoint": endpoint,
+                                    "status_code": response.status_code,
+                                    "total_count": len(rows) if isinstance(rows, list) else 1,
+                                },
+                                "retry_count": retry_count,
                             }
 
-                        response.raise_for_status()
+                    except CircuitBreakerError as e:
+                        logger.warning(f"Circuit Breaker OPEN for API: {e}")
+                        last_error = e
+                        break  # 회로 열림 시 재시도 안 함
 
-                        # 응답 파싱
-                        try:
-                            response_data = response.json()
-                        except Exception:
-                            response_data = {"text": response.text}
+                    except httpx.HTTPStatusError as http_err:
+                        last_error = http_err
+                        status_code = http_err.response.status_code
+                        if circuit_breaker:
+                            circuit_breaker._record_failure()
 
-                        # 배열 형태면 rows로, 객체면 data로
-                        if isinstance(response_data, list):
-                            rows = response_data
+                        # 5xx 에러만 재시도
+                        if status_code >= 500 and attempt < max_retries:
+                            delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                            logger.warning(
+                                f"API 5xx 오류, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): HTTP {status_code}"
+                            )
+                            await asyncio.sleep(delay)
                         else:
-                            rows = response_data.get("data", [response_data])
+                            break
 
+                    except (httpx.RequestError, httpx.TimeoutException) as req_err:
+                        last_error = req_err
+                        if circuit_breaker:
+                            circuit_breaker._record_failure()
+
+                        if attempt < max_retries:
+                            delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                            logger.warning(
+                                f"API 요청 오류, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {req_err}"
+                            )
+                            await asyncio.sleep(delay)
+                        else:
+                            break
+
+                # 모든 재시도 실패
+                error_msg = str(last_error) if last_error else "Unknown error"
+                if isinstance(last_error, httpx.HTTPStatusError):
+                    error_msg = f"HTTP {last_error.response.status_code}"
+
+                return {
+                    "node_id": node_id,
+                    "type": "data",
+                    "success": False,
+                    "message": f"API 요청 실패: {error_msg}",
+                    "retry_count": retry_count,
+                }
+
+            elif source_type == "datasource":
+                # DataSource 기반 MCP 도구 호출
+                from app.services.datasource_mcp_service import DataSourceMCPService
+                from uuid import UUID as UUIDType
+
+                source_id = config.get("source_id")
+                tool_name = config.get("tool")
+                tool_args = config.get("arguments", {})
+
+                if not source_id:
+                    return {
+                        "node_id": node_id,
+                        "type": "data",
+                        "success": False,
+                        "message": "source_id는 필수입니다 (datasource 타입)",
+                    }
+
+                if not tool_name:
+                    return {
+                        "node_id": node_id,
+                        "type": "data",
+                        "success": False,
+                        "message": "tool은 필수입니다 (datasource 타입)",
+                    }
+
+                # 인자 해석 (컨텍스트 변수 치환)
+                resolved_args = self._resolve_parameters(tool_args, context)
+
+                with get_db_context() as db:
+                    # 테넌트 ID 가져오기 (workflow_instance에서)
+                    tenant_id = context.get("tenant_id")
+                    if not tenant_id:
+                        # 워크플로우에서 테넌트 조회
+                        from app.models.core import Workflow
+                        workflow_id = context.get("workflow_id")
+                        if workflow_id:
+                            workflow = db.query(Workflow).filter(
+                                Workflow.workflow_id == workflow_id
+                            ).first()
+                            if workflow:
+                                tenant_id = workflow.tenant_id
+
+                    if not tenant_id:
+                        return {
+                            "node_id": node_id,
+                            "type": "data",
+                            "success": False,
+                            "message": "tenant_id를 확인할 수 없습니다",
+                        }
+
+                    service = DataSourceMCPService(db)
+                    result = await service.call_tool(
+                        source_id=UUIDType(source_id),
+                        tenant_id=tenant_id,
+                        tool_name=tool_name,
+                        args=resolved_args
+                    )
+
+                    if not result.get("success"):
                         return {
                             "node_id": node_id,
                             "type": "data",
                             "source_type": source_type,
-                            "success": True,
-                            "message": f"API {endpoint} 호출 완료 (HTTP {response.status_code})",
-                            "data": {
-                                "rows": rows[:limit] if isinstance(rows, list) else rows,
-                                "endpoint": endpoint,
-                                "status_code": response.status_code,
-                                "total_count": len(rows) if isinstance(rows, list) else 1,
-                            },
+                            "success": False,
+                            "message": result.get("error", "도구 실행 실패"),
                         }
 
-                except httpx.HTTPStatusError as http_err:
                     return {
                         "node_id": node_id,
                         "type": "data",
-                        "success": False,
-                        "message": f"API 오류: HTTP {http_err.response.status_code}",
-                    }
-                except httpx.RequestError as req_err:
-                    return {
-                        "node_id": node_id,
-                        "type": "data",
-                        "success": False,
-                        "message": f"API 요청 오류: {str(req_err)}",
+                        "source_type": source_type,
+                        "success": True,
+                        "message": f"DataSource '{result.get('source_name')}' 도구 '{tool_name}' 실행 완료",
+                        "data": result.get("data", {}),
+                        "latency_ms": result.get("latency_ms"),
                     }
 
             else:
@@ -4501,6 +4747,8 @@ result = {
         }
         """
         from app.agents.judgment_agent import JudgmentAgent
+        from app.utils.circuit_breaker import get_circuit_breaker, CircuitBreakerConfig
+        import random
 
         start_time = time.time()
 
@@ -4508,6 +4756,24 @@ result = {
         policy_config = config.get("policy", {})
         policy_type = policy_config.get("type", "HYBRID_WEIGHTED")
         rule_pack_id = policy_config.get("rule_pack_id")
+
+        # Retry/Circuit Breaker 설정
+        retry_config = config.get("retry", {})
+        cb_config = config.get("circuit_breaker", {})
+        max_retries = retry_config.get("max_retries", 2)  # LLM은 기본 2회
+        cb_enabled = cb_config.get("enabled", True)
+
+        # LLM용 Circuit Breaker
+        circuit_breaker = None
+        if cb_enabled:
+            circuit_breaker = get_circuit_breaker(
+                name="llm_judgment",
+                config=CircuitBreakerConfig(
+                    failure_threshold=3,
+                    recovery_timeout=60.0,
+                    call_timeout=120.0,
+                )
+            )
 
         # 입력 데이터 해석
         input_config = config.get("input", {})
@@ -4520,69 +4786,106 @@ result = {
             "line_code": input_data.get("line_code"),
         }
 
-        try:
-            # JudgmentAgent 인스턴스 생성
-            agent = JudgmentAgent()
+        retry_count = 0
+        last_error = None
 
-            # 하이브리드 판단 실행
-            if rule_pack_id:
-                # hybrid_judgment 도구 호출
-                judgment_result = agent._hybrid_judgment(
-                    ruleset_id=rule_pack_id,
-                    input_data=input_data,
-                    policy=policy_type.lower().replace("_", "_"),
-                    context=extra_context,
-                )
-            else:
-                # rule_pack_id가 없으면 LLM_ONLY로 실행
-                judgment_result = agent._hybrid_judgment(
-                    ruleset_id="00000000-0000-0000-0000-000000000000",  # 기본 룰셋
-                    input_data=input_data,
-                    policy="llm_only",
-                    context=extra_context,
-                )
+        for attempt in range(max_retries + 1):
+            retry_count = attempt
+            try:
+                # Circuit Breaker 확인
+                if circuit_breaker and circuit_breaker.is_open:
+                    raise CircuitBreakerError(
+                        circuit_breaker.name,
+                        circuit_breaker.config.recovery_timeout
+                    )
 
-            execution_time_ms = int((time.time() - start_time) * 1000)
+                # JudgmentAgent 인스턴스 생성
+                agent = JudgmentAgent()
 
-            # 로그 기록
-            execution_log_store.add_log({
-                "event_type": "judgment_executed",
-                "workflow_id": context.get("workflow_id"),
-                "node_id": node_id,
-                "policy_type": policy_type,
-                "decision": judgment_result.get("decision", "UNKNOWN"),
-                "confidence": judgment_result.get("confidence", 0),
-                "execution_time_ms": execution_time_ms,
-            })
+                # 하이브리드 판단 실행
+                if rule_pack_id:
+                    judgment_result = agent._hybrid_judgment(
+                        ruleset_id=rule_pack_id,
+                        input_data=input_data,
+                        policy=policy_type.lower().replace("_", "_"),
+                        context=extra_context,
+                    )
+                else:
+                    judgment_result = agent._hybrid_judgment(
+                        ruleset_id="00000000-0000-0000-0000-000000000000",
+                        input_data=input_data,
+                        policy="llm_only",
+                        context=extra_context,
+                    )
 
-            success = judgment_result.get("success", False)
+                # 성공 시 Circuit Breaker 기록
+                if circuit_breaker:
+                    circuit_breaker._record_success()
 
-            return {
-                "node_id": node_id,
-                "type": "judgment",
-                "success": success,
-                "message": f"판단 완료: {judgment_result.get('decision', 'UNKNOWN')} "
-                          f"(신뢰도: {judgment_result.get('confidence', 0):.2f})",
-                "result": {
-                    "decision": judgment_result.get("decision"),
-                    "confidence": judgment_result.get("confidence"),
-                    "source": judgment_result.get("source"),
-                    "policy_used": judgment_result.get("policy_used"),
-                    "details": judgment_result.get("details", {}),
-                    "recommendation": judgment_result.get("recommendation"),
-                },
-                "execution_time_ms": execution_time_ms,
-            }
+                execution_time_ms = int((time.time() - start_time) * 1000)
 
-        except Exception as e:
-            logger.error(f"JUDGMENT 노드 실행 오류: {node_id} - {e}")
-            return {
-                "node_id": node_id,
-                "type": "judgment",
-                "success": False,
-                "message": f"판단 실행 오류: {str(e)}",
-                "result": None,
-            }
+                # 로그 기록
+                execution_log_store.add_log({
+                    "event_type": "judgment_executed",
+                    "workflow_id": context.get("workflow_id"),
+                    "node_id": node_id,
+                    "policy_type": policy_type,
+                    "decision": judgment_result.get("decision", "UNKNOWN"),
+                    "confidence": judgment_result.get("confidence", 0),
+                    "execution_time_ms": execution_time_ms,
+                    "retry_count": retry_count,
+                    "circuit_breaker_state": circuit_breaker.state.value if circuit_breaker else None,
+                })
+
+                success = judgment_result.get("success", False)
+
+                return {
+                    "node_id": node_id,
+                    "type": "judgment",
+                    "success": success,
+                    "message": f"판단 완료: {judgment_result.get('decision', 'UNKNOWN')} "
+                              f"(신뢰도: {judgment_result.get('confidence', 0):.2f})",
+                    "result": {
+                        "decision": judgment_result.get("decision"),
+                        "confidence": judgment_result.get("confidence"),
+                        "source": judgment_result.get("source"),
+                        "policy_used": judgment_result.get("policy_used"),
+                        "details": judgment_result.get("details", {}),
+                        "recommendation": judgment_result.get("recommendation"),
+                    },
+                    "execution_time_ms": execution_time_ms,
+                    "retry_count": retry_count,
+                }
+
+            except CircuitBreakerError as e:
+                logger.warning(f"Circuit Breaker OPEN for Judgment: {e}")
+                last_error = e
+                break
+
+            except Exception as e:
+                last_error = e
+                if circuit_breaker:
+                    circuit_breaker._record_failure()
+
+                if is_retryable_error(e) and attempt < max_retries:
+                    delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                    logger.warning(
+                        f"Judgment 오류, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {e}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    break
+
+        # 모든 재시도 실패
+        logger.error(f"JUDGMENT 노드 실행 오류: {node_id} - {last_error}")
+        return {
+            "node_id": node_id,
+            "type": "judgment",
+            "success": False,
+            "message": f"판단 실행 오류: {str(last_error)}",
+            "result": None,
+            "retry_count": retry_count,
+        }
 
     async def _execute_bi_node(
         self,
@@ -4614,6 +4917,8 @@ result = {
         }
         """
         from app.agents.bi_planner import BIPlannerAgent
+        from app.utils.circuit_breaker import get_circuit_breaker, CircuitBreakerConfig
+        import random
 
         start_time = time.time()
 
@@ -4624,66 +4929,123 @@ result = {
         time_range = analysis_config.get("time_range", "7d")
         filters = analysis_config.get("filters", [])
 
-        try:
-            # BIPlannerAgent 인스턴스 생성
-            agent = BIPlannerAgent()
+        # Retry/Circuit Breaker 설정
+        retry_config = config.get("retry", {})
+        cb_config = config.get("circuit_breaker", {})
+        max_retries = retry_config.get("max_retries", 2)  # LLM은 기본 2회
+        cb_enabled = cb_config.get("enabled", True)
 
-            # 분석 쿼리 생성
-            analysis_query = f"{analysis_type} analysis for {', '.join(metrics)}"
-            if dimensions:
-                analysis_query += f" by {', '.join(dimensions)}"
-            if time_range:
-                analysis_query += f" over {time_range}"
-
-            # tenant_id 가져오기
-            from uuid import UUID
-            tenant_id = context.get("tenant_id")
-            if isinstance(tenant_id, str):
-                tenant_id = UUID(tenant_id)
-            elif not tenant_id:
-                tenant_id = UUID("446e39b3-455e-4ca9-817a-4913921eb41d")
-
-            # BI Agent 실행 (run 메서드 호출)
-            bi_result = agent.run(
-                user_message=analysis_query,
-                context={"tenant_id": str(tenant_id)},
+        # LLM용 Circuit Breaker
+        circuit_breaker = None
+        if cb_enabled:
+            circuit_breaker = get_circuit_breaker(
+                name="llm_bi",
+                config=CircuitBreakerConfig(
+                    failure_threshold=3,
+                    recovery_timeout=60.0,
+                    call_timeout=120.0,
+                )
             )
 
-            execution_time_ms = int((time.time() - start_time) * 1000)
+        retry_count = 0
+        last_error = None
 
-            # 로그 기록
-            execution_log_store.add_log({
-                "event_type": "bi_analysis_executed",
-                "workflow_id": context.get("workflow_id"),
-                "node_id": node_id,
-                "analysis_type": analysis_type,
-                "execution_time_ms": execution_time_ms,
-            })
+        for attempt in range(max_retries + 1):
+            retry_count = attempt
+            try:
+                # Circuit Breaker 확인
+                if circuit_breaker and circuit_breaker.is_open:
+                    raise CircuitBreakerError(
+                        circuit_breaker.name,
+                        circuit_breaker.config.recovery_timeout
+                    )
 
-            return {
-                "node_id": node_id,
-                "type": "bi",
-                "success": True,
-                "message": f"BI 분석 완료 ({execution_time_ms}ms)",
-                "result": {
+                # BIPlannerAgent 인스턴스 생성
+                agent = BIPlannerAgent()
+
+                # 분석 쿼리 생성
+                analysis_query = f"{analysis_type} analysis for {', '.join(metrics)}"
+                if dimensions:
+                    analysis_query += f" by {', '.join(dimensions)}"
+                if time_range:
+                    analysis_query += f" over {time_range}"
+
+                # tenant_id 가져오기
+                from uuid import UUID
+                tenant_id = context.get("tenant_id")
+                if isinstance(tenant_id, str):
+                    tenant_id = UUID(tenant_id)
+                elif not tenant_id:
+                    tenant_id = UUID("446e39b3-455e-4ca9-817a-4913921eb41d")
+
+                # BI Agent 실행 (run 메서드 호출)
+                bi_result = agent.run(
+                    user_message=analysis_query,
+                    context={"tenant_id": str(tenant_id)},
+                )
+
+                # 성공 시 Circuit Breaker 기록
+                if circuit_breaker:
+                    circuit_breaker._record_success()
+
+                execution_time_ms = int((time.time() - start_time) * 1000)
+
+                # 로그 기록
+                execution_log_store.add_log({
+                    "event_type": "bi_analysis_executed",
+                    "workflow_id": context.get("workflow_id"),
+                    "node_id": node_id,
                     "analysis_type": analysis_type,
-                    "response": bi_result.get("response", ""),
-                    "insight": bi_result.get("insight"),
-                    "chart_data": bi_result.get("chart_data"),
-                    "sql_query": bi_result.get("sql_query"),
-                },
-                "execution_time_ms": execution_time_ms,
-            }
+                    "execution_time_ms": execution_time_ms,
+                    "retry_count": retry_count,
+                    "circuit_breaker_state": circuit_breaker.state.value if circuit_breaker else None,
+                })
 
-        except Exception as e:
-            logger.error(f"BI 노드 실행 오류: {node_id} - {e}")
-            return {
-                "node_id": node_id,
-                "type": "bi",
-                "success": False,
-                "message": f"BI 분석 오류: {str(e)}",
-                "result": None,
-            }
+                return {
+                    "node_id": node_id,
+                    "type": "bi",
+                    "success": True,
+                    "message": f"BI 분석 완료 ({execution_time_ms}ms)",
+                    "result": {
+                        "analysis_type": analysis_type,
+                        "response": bi_result.get("response", ""),
+                        "insight": bi_result.get("insight"),
+                        "chart_data": bi_result.get("chart_data"),
+                        "sql_query": bi_result.get("sql_query"),
+                    },
+                    "execution_time_ms": execution_time_ms,
+                    "retry_count": retry_count,
+                }
+
+            except CircuitBreakerError as e:
+                logger.warning(f"Circuit Breaker OPEN for BI: {e}")
+                last_error = e
+                break
+
+            except Exception as e:
+                last_error = e
+                if circuit_breaker:
+                    circuit_breaker._record_failure()
+
+                if is_retryable_error(e) and attempt < max_retries:
+                    delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                    logger.warning(
+                        f"BI 분석 오류, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {e}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    break
+
+        # 모든 재시도 실패
+        logger.error(f"BI 노드 실행 오류: {node_id} - {last_error}")
+        return {
+            "node_id": node_id,
+            "type": "bi",
+            "success": False,
+            "message": f"BI 분석 오류: {str(last_error)}",
+            "result": None,
+            "retry_count": retry_count,
+        }
 
     async def _execute_mcp_node(
         self,
@@ -4734,6 +5096,19 @@ result = {
         # 파라미터 해석
         resolved_params = self._resolve_parameters(parameters, context)
 
+        # Retry/Circuit Breaker 설정 읽기
+        retry_config = config.get("retry", {})
+        cb_config = config.get("circuit_breaker", {})
+        max_retries = retry_config.get("max_retries", 3)
+        cb_enabled = cb_config.get("enabled", True)  # 기본 활성화
+
+        # Circuit Breaker 설정
+        circuit_breaker = None
+        if cb_enabled:
+            circuit_breaker = get_mcp_circuit_breaker(f"{server_id}_{tool_name}")
+
+        retry_count = 0
+
         try:
             # MCPToolHubService 인스턴스
             mcp_service = get_mcp_toolhub_service()
@@ -4754,37 +5129,121 @@ result = {
                 correlation_id=correlation_id or f"wf_{context.get('workflow_id', 'unknown')}_{node_id}",
             )
 
-            # MCP 도구 호출 (동기 함수)
-            mcp_response = mcp_service.call_tool(
-                tenant_id=tenant_id,
-                request=call_request,
-            )
+            # Retry 로직 적용
+            mcp_response = None
+            last_error = None
+
+            for attempt in range(max_retries + 1):
+                retry_count = attempt
+                try:
+                    # Circuit Breaker 확인
+                    if circuit_breaker and circuit_breaker.is_open:
+                        raise CircuitBreakerError(
+                            circuit_breaker.name,
+                            circuit_breaker.config.recovery_timeout
+                        )
+
+                    # MCP 도구 호출 (동기 함수)
+                    mcp_response = mcp_service.call_tool(
+                        tenant_id=tenant_id,
+                        request=call_request,
+                    )
+
+                    # 성공 시 Circuit Breaker 기록
+                    if mcp_response.success and circuit_breaker:
+                        circuit_breaker._record_success()
+                    elif not mcp_response.success and circuit_breaker:
+                        circuit_breaker._record_failure()
+
+                    # 성공하면 루프 종료
+                    if mcp_response.success:
+                        break
+
+                    # 실패해도 재시도 가능한지 확인
+                    if attempt < max_retries:
+                        import random
+                        delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                        logger.warning(
+                            f"MCP 호출 실패, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {tool_name}"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        break
+
+                except CircuitBreakerError as e:
+                    logger.warning(f"Circuit Breaker OPEN: {e}")
+                    last_error = e
+                    break  # 회로 열림 시 재시도 안 함
+
+                except Exception as e:
+                    last_error = e
+                    if circuit_breaker:
+                        circuit_breaker._record_failure()
+
+                    if not is_retryable_error(e) or attempt >= max_retries:
+                        break
+
+                    import random
+                    delay = min(1.0 * (2 ** attempt) * (0.5 + random.random()), 30.0)
+                    logger.warning(
+                        f"MCP 호출 오류, {delay:.2f}초 후 재시도 ({attempt + 1}/{max_retries}): {e}"
+                    )
+                    await asyncio.sleep(delay)
 
             execution_time_ms = int((time.time() - start_time) * 1000)
 
-            # mcp_toolhub.MCPCallResponse 필드: success, output_data, error_message, latency_ms
-            success = mcp_response.success
+            # 결과 처리
+            if mcp_response:
+                success = mcp_response.success
 
-            # 로그 기록
-            execution_log_store.add_log({
-                "event_type": "mcp_tool_called",
-                "workflow_id": context.get("workflow_id"),
-                "node_id": node_id,
-                "server_id": str(server_id),
-                "tool_name": tool_name,
-                "execution_time_ms": execution_time_ms,
-                "status": "success" if success else "failed",
-            })
+                # 로그 기록 (retry_count, circuit_breaker_state 추가)
+                execution_log_store.add_log({
+                    "event_type": "mcp_tool_called",
+                    "workflow_id": context.get("workflow_id"),
+                    "node_id": node_id,
+                    "server_id": str(server_id),
+                    "tool_name": tool_name,
+                    "execution_time_ms": execution_time_ms,
+                    "status": "success" if success else "failed",
+                    "retry_count": retry_count,
+                    "circuit_breaker_state": circuit_breaker.state.value if circuit_breaker else None,
+                })
 
-            return {
-                "node_id": node_id,
-                "type": "mcp",
-                "success": success,
-                "message": f"MCP 도구 호출 완료: {tool_name} ({mcp_response.latency_ms or 0}ms)"
-                          if success else f"MCP 도구 호출 실패: {mcp_response.error_message or 'Unknown error'}",
-                "result": mcp_response.output_data if success else None,
-                "execution_time_ms": execution_time_ms,
-            }
+                return {
+                    "node_id": node_id,
+                    "type": "mcp",
+                    "success": success,
+                    "message": f"MCP 도구 호출 완료: {tool_name} ({mcp_response.latency_ms or 0}ms)"
+                              if success else f"MCP 도구 호출 실패: {mcp_response.error_message or 'Unknown error'}",
+                    "result": mcp_response.output_data if success else None,
+                    "execution_time_ms": execution_time_ms,
+                    "retry_count": retry_count,
+                }
+            else:
+                # mcp_response가 None인 경우 (Circuit Breaker 또는 예외)
+                error_msg = str(last_error) if last_error else "Unknown error"
+                execution_log_store.add_log({
+                    "event_type": "mcp_tool_called",
+                    "workflow_id": context.get("workflow_id"),
+                    "node_id": node_id,
+                    "server_id": str(server_id),
+                    "tool_name": tool_name,
+                    "execution_time_ms": execution_time_ms,
+                    "status": "failed",
+                    "retry_count": retry_count,
+                    "circuit_breaker_state": circuit_breaker.state.value if circuit_breaker else None,
+                    "error": error_msg,
+                })
+
+                return {
+                    "node_id": node_id,
+                    "type": "mcp",
+                    "success": False,
+                    "message": f"MCP 도구 호출 실패: {error_msg}",
+                    "result": None,
+                    "execution_time_ms": execution_time_ms,
+                    "retry_count": retry_count,
+                }
 
         except Exception as e:
             logger.error(f"MCP 노드 실행 오류: {node_id} - {e}")
@@ -4794,6 +5253,7 @@ result = {
                 "success": False,
                 "message": f"MCP 도구 호출 오류: {str(e)}",
                 "result": None,
+                "retry_count": retry_count,
             }
 
     # ============ P2 노드: COMPENSATION ============

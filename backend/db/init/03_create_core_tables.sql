@@ -79,6 +79,27 @@ CREATE TABLE IF NOT EXISTS judgment_executions (
     executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 피드백 로그 (Learning System용)
+CREATE TABLE IF NOT EXISTS feedback_logs (
+    feedback_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    judgment_execution_id UUID REFERENCES judgment_executions(execution_id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(user_id),
+    feedback_type VARCHAR(50) NOT NULL,  -- positive, negative, correction
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+    feedback_text TEXT,
+    corrected_result VARCHAR(20) CHECK (corrected_result IN ('normal', 'warning', 'critical')),
+    original_output JSONB,
+    corrected_output JSONB,
+    context_data JSONB DEFAULT '{}',
+    is_processed BOOLEAN DEFAULT false,
+    processed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_feedback_type CHECK (
+        feedback_type IN ('correct', 'incorrect', 'partial', 'helpful', 'not_helpful', 'positive', 'negative', 'correction')
+    )
+);
+
 -- Workflow 실행 인스턴스
 CREATE TABLE IF NOT EXISTS workflow_instances (
     instance_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -123,6 +144,8 @@ CREATE INDEX idx_workflows_trigger_config ON workflows USING GIN (trigger_config
 CREATE INDEX idx_judgment_executions_tenant_workflow ON judgment_executions(tenant_id, workflow_id, executed_at DESC);
 CREATE INDEX idx_workflow_instances_tenant_status ON workflow_instances(tenant_id, status, started_at DESC);
 CREATE INDEX idx_sensor_data_line_type_time ON sensor_data(tenant_id, line_code, sensor_type, recorded_at DESC);
+CREATE INDEX idx_feedback_logs_tenant ON feedback_logs(tenant_id, created_at DESC);
+CREATE INDEX idx_feedback_logs_type ON feedback_logs(feedback_type, is_processed);
 
 -- 코멘트
 COMMENT ON TABLE tenants IS '멀티테넌트 관리';
@@ -130,5 +153,6 @@ COMMENT ON TABLE users IS '사용자 계정';
 COMMENT ON TABLE rulesets IS 'Rhai 룰 엔진 코드';
 COMMENT ON TABLE workflows IS 'Workflow DSL 정의';
 COMMENT ON TABLE judgment_executions IS 'Judgment 실행 로그';
+COMMENT ON TABLE feedback_logs IS '사용자 피드백 로그 (Learning System용)';
 COMMENT ON TABLE workflow_instances IS 'Workflow 실행 인스턴스';
 COMMENT ON TABLE sensor_data IS '센서 시계열 데이터 (파티션)';

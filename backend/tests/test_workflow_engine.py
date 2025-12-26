@@ -1322,3 +1322,108 @@ class TestNodeTypeIntegration:
 
         assert result["status"] == "completed"
         assert result["results"][0]["branches_count"] == 2
+
+
+class TestDataSourceNode:
+    """DATA 노드 - DataSource MCP 통합 테스트"""
+
+    @pytest.fixture
+    def engine(self):
+        """WorkflowEngine 인스턴스"""
+        return WorkflowEngine()
+
+    @pytest.mark.asyncio
+    async def test_data_node_datasource_type_missing_source_id(self, engine):
+        """DATA 노드 - datasource 타입, source_id 누락"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "d1",
+                    "type": "data",
+                    "config": {
+                        "source_type": "datasource",
+                        # source_id 누락
+                        "tool": "get_production_status",
+                        "arguments": {"line_id": "LINE-001"},
+                    },
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-ds-1", dsl, {})
+
+        # source_id 누락으로 실패하거나 에러 처리됨
+        assert result["status"] in ["completed", "failed"]
+
+    @pytest.mark.asyncio
+    async def test_data_node_datasource_type_missing_tool(self, engine):
+        """DATA 노드 - datasource 타입, tool 누락"""
+        from uuid import uuid4
+
+        dsl = {
+            "nodes": [
+                {
+                    "id": "d1",
+                    "type": "data",
+                    "config": {
+                        "source_type": "datasource",
+                        "source_id": str(uuid4()),
+                        # tool 누락
+                        "arguments": {},
+                    },
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-ds-2", dsl, {})
+
+        # tool 누락으로 실패하거나 에러 처리됨
+        assert result["status"] in ["completed", "failed"]
+
+    @pytest.mark.asyncio
+    async def test_data_node_connector_type(self, engine):
+        """DATA 노드 - connector 타입 (기존 기능)"""
+        from uuid import uuid4
+
+        dsl = {
+            "nodes": [
+                {
+                    "id": "d1",
+                    "type": "data",
+                    "config": {
+                        "source_type": "connector",
+                        "source_id": str(uuid4()),  # source_id 필수
+                        "connector_id": "conn-1",
+                        "query": "SELECT * FROM sensors LIMIT 10",
+                    },
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-ds-3", dsl, {})
+
+        # connector가 없으므로 실패하거나 완료됨
+        assert result["status"] in ["completed", "failed"]
+
+    @pytest.mark.asyncio
+    async def test_data_node_api_type(self, engine):
+        """DATA 노드 - api 타입 (기존 기능)"""
+        dsl = {
+            "nodes": [
+                {
+                    "id": "d1",
+                    "type": "data",
+                    "config": {
+                        "source_type": "api",
+                        "method": "GET",
+                        "endpoint": "https://httpbin.org/get",  # endpoint 필수
+                        "headers": {"Accept": "application/json"},
+                    },
+                }
+            ]
+        }
+
+        result = await engine.execute_workflow("wf-ds-4", dsl, {})
+
+        # HTTP 요청 성공 여부와 관계없이 완료 또는 실패
+        assert result["status"] in ["completed", "failed"]

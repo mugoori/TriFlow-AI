@@ -10,7 +10,6 @@ import ExperimentsPage from "./components/pages/ExperimentsPage";
 import { LearningPage } from "./components/pages/LearningPage";
 import { SettingsPage } from "./components/pages/SettingsPage";
 import { LoginPage } from "./components/pages/LoginPage";
-import { AnalyticsPage } from "./components/pages/AnalyticsPage";
 import { DashboardProvider } from "./contexts/DashboardContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -21,7 +20,6 @@ import { ToastProvider } from "./components/ui/Toast";
 const PAGE_INFO: Record<ViewType, { title: string; description: string }> = {
   chat: { title: 'AI Chat', description: '에이전트와 대화하기' },
   dashboard: { title: 'Dashboard', description: '제조 현장 실시간 모니터링' },
-  analytics: { title: 'Analytics', description: '생산 현황 및 품질 분석' },
   workflows: { title: 'Workflows', description: '자동화 워크플로우 관리' },
   rulesets: { title: 'Rulesets', description: 'Rhai 규칙 스크립트 관리' },
   experiments: { title: 'A/B Tests', description: '규칙 변형 실험 관리' },
@@ -51,7 +49,7 @@ function MainLayout() {
   // navigate-to-tab 이벤트 리스너 (ChatMessage에서 탭 링크 클릭 시)
   const handleNavigateToTab = useCallback((event: CustomEvent<{ tab: string }>) => {
     const tabName = event.detail.tab as ViewType;
-    const validTabs: ViewType[] = ['chat', 'dashboard', 'analytics', 'workflows', 'rulesets', 'experiments', 'learning', 'data', 'settings'];
+    const validTabs: ViewType[] = ['chat', 'dashboard', 'workflows', 'rulesets', 'experiments', 'learning', 'data', 'settings'];
     if (validTabs.includes(tabName)) {
       setCurrentView(tabName);
     }
@@ -72,8 +70,6 @@ function MainLayout() {
         return <ChatContainer />;
       case 'dashboard':
         return <DashboardPage />;
-      case 'analytics':
-        return <AnalyticsPage />;
       case 'workflows':
         return <WorkflowsPage />;
       case 'rulesets':

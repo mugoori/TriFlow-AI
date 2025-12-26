@@ -12,7 +12,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BarChart3, TrendingUp, AlertTriangle, X, LayoutDashboard, RefreshCw,
-  Thermometer, Gauge, Droplets, Activity, Loader2, Sparkles, BookOpen,
+  Thermometer, Gauge, Droplets, Loader2, Sparkles, BookOpen,
   ChevronDown, ChevronUp, MessageSquare, Save, FolderOpen, Trash2, Check,
   MoreVertical, Edit2,
 } from 'lucide-react';
@@ -110,7 +110,7 @@ export function DashboardPage() {
   };
 
   // 기본 카드 편집 핸들러 (모달 열기)
-  const handleEditDefaultCard = (cardId: string) => {
+  const handleEditDefaultCard = (_cardId: string) => {
     // 기본 카드 편집 시 새 카드 생성 모달을 열어 같은 타입의 카드를 만들 수 있게 함
     setEditingStatCardId(null);
     setShowStatCardModal(true);
@@ -869,13 +869,13 @@ export function DashboardPage() {
               onInsightGenerated={handleInsightGenerated}
               onPinInsight={handlePinInsight}
               onUnpinInsight={handleUnpinInsight}
-              onCardAction={(action, kpiCode, success) => {
+              onCardAction={(action, _kpiCode, success) => {
                 if (success) {
                   // 카드 추가/삭제 성공 시 StatCard 목록 새로고침
                   refreshValues();
                   toast.success(
                     action === 'add' ? '카드가 추가되었습니다' : '카드가 삭제되었습니다',
-                    { duration: 2000 }
+                    2000
                   );
                 }
               }}

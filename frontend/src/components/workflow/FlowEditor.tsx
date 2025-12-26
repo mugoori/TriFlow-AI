@@ -1129,33 +1129,88 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
 
         {/* ============ P2 고급 노드 ============ */}
 
-        {/* COMPENSATION 노드 - 보상 트랜잭션 설정 */}
+        {/* COMPENSATION 노드 - 보상 트랜잭션 설정 (Saga 패턴) */}
         {nodeType === 'compensation' && (
           <div className="space-y-3">
+            {/* 보상 타입 */}
             <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">보상 전략</label>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">보상 타입</label>
               <select
                 className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
-                value={(data.config.strategy as string) || 'reverse'}
-                onChange={(e) => updateConfig('strategy', e.target.value)}
+                value={(data.config.compensation_type as string) || 'auto'}
+                onChange={(e) => updateConfig('compensation_type', e.target.value)}
               >
-                <option value="reverse">역순 실행</option>
-                <option value="selective">선택적 보상</option>
-                <option value="custom">커스텀</option>
+                <option value="auto">자동 (역순 실행)</option>
+                <option value="manual">수동 (액션 지정)</option>
               </select>
             </div>
 
+            {/* 실패 시 동작 */}
             <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대상 노드 ID (쉼표 구분)</label>
-              <input
-                type="text"
-                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
-                placeholder="node_1, node_2, node_3"
-                value={(data.config.nodes as string[])?.join(', ') || ''}
-                onChange={(e) => updateConfig('nodes', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-              />
-              <p className="text-xs text-slate-500 mt-1">비워두면 모든 실행된 노드 대상</p>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">보상 실패 시</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.on_failure as string) || 'continue'}
+                onChange={(e) => updateConfig('on_failure', e.target.value)}
+              >
+                <option value="continue">계속 진행 (다음 보상 실행)</option>
+                <option value="abort">중단 (보상 중지)</option>
+              </select>
             </div>
+
+            {/* 수동 모드: 대상 노드 */}
+            {(data.config.compensation_type as string) === 'manual' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대상 노드 ID (쉼표 구분)</label>
+                <input
+                  type="text"
+                  className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                  placeholder="node_1, node_2, node_3"
+                  value={(data.config.target_nodes as string[])?.join(', ') || ''}
+                  onChange={(e) => updateConfig('target_nodes', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                />
+              </div>
+            )}
+
+            {/* 수동 모드: 보상 액션 정의 */}
+            {(data.config.compensation_type as string) === 'manual' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  보상 액션 (JSON)
+                </label>
+                <textarea
+                  className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                  rows={4}
+                  placeholder={`{
+  "node_1": {
+    "action_type": "api_call",
+    "config": { "url": "/api/rollback", "method": "POST" }
+  }
+}`}
+                  value={typeof data.config.compensation_actions === 'object'
+                    ? JSON.stringify(data.config.compensation_actions, null, 2)
+                    : '{}'}
+                  onChange={(e) => {
+                    try {
+                      const parsed = JSON.parse(e.target.value);
+                      updateConfig('compensation_actions', parsed);
+                    } catch {
+                      // JSON 파싱 실패 - 입력 중이므로 무시
+                    }
+                  }}
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  action_type: api_call | db_rollback | state_restore
+                </p>
+              </div>
+            )}
+
+            {/* 자동 모드 안내 */}
+            {(data.config.compensation_type as string) !== 'manual' && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 p-2 rounded">
+                💡 자동 모드: 실행된 노드들을 역순으로 자동 보상합니다
+              </p>
+            )}
           </div>
         )}
 
@@ -1186,6 +1241,20 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
               />
             </div>
 
+            {/* 버전 (선택) */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">버전 (선택)</label>
+              <input
+                type="number"
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                placeholder="비워두면 최신 버전"
+                min={1}
+                value={(data.config.version as number) || ''}
+                onChange={(e) => updateConfig('version', e.target.value ? Number(e.target.value) : undefined)}
+              />
+              <p className="text-xs text-slate-500 mt-1">버전을 지정하지 않으면 최신 버전 배포</p>
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">환경</label>
               <select
@@ -1197,6 +1266,67 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
                 <option value="staging">스테이징 (Staging)</option>
                 <option value="production">운영 (Production)</option>
               </select>
+            </div>
+
+            {/* 실패 시 롤백 */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="rollback_on_failure"
+                checked={(data.config.rollback_on_failure as boolean) ?? true}
+                onChange={(e) => updateConfig('rollback_on_failure', e.target.checked)}
+                className="rounded"
+              />
+              <label htmlFor="rollback_on_failure" className="text-xs text-slate-600 dark:text-slate-400">
+                배포 실패 시 자동 롤백
+              </label>
+            </div>
+
+            {/* 배포 검증 규칙 */}
+            <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  id="validation_enabled"
+                  checked={((data.config.validation as Record<string, unknown>)?.enabled as boolean) ?? false}
+                  onChange={(e) => updateConfig('validation', {
+                    ...(data.config.validation as Record<string, unknown> || {}),
+                    enabled: e.target.checked
+                  })}
+                  className="rounded"
+                />
+                <label htmlFor="validation_enabled" className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  배포 전 검증 활성화
+                </label>
+              </div>
+
+              {Boolean((data.config.validation as Record<string, unknown>)?.enabled) && (
+                <div className="space-y-1 pl-4">
+                  {[
+                    { key: 'no_syntax_errors', label: '문법 오류 없음' },
+                    { key: 'test_coverage_80', label: '테스트 커버리지 80% 이상' },
+                  ].map(({ key, label }) => (
+                    <label key={key} className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                      <input
+                        type="checkbox"
+                        checked={(((data.config.validation as Record<string, unknown>)?.rules as string[]) || []).includes(key)}
+                        onChange={(e) => {
+                          const currentRules = ((data.config.validation as Record<string, unknown>)?.rules as string[]) || [];
+                          const newRules = e.target.checked
+                            ? [...currentRules, key]
+                            : currentRules.filter((r: string) => r !== key);
+                          updateConfig('validation', {
+                            ...(data.config.validation as Record<string, unknown> || {}),
+                            rules: newRules
+                          });
+                        }}
+                        className="rounded"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1231,11 +1361,26 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">버전 (선택)</label>
               <input
-                type="text"
+                type="number"
+                min="1"
                 className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
-                placeholder="비워두면 이전 버전으로"
-                value={(data.config.version as string) || ''}
-                onChange={(e) => updateConfig('version', e.target.value || null)}
+                placeholder="예: 3"
+                value={(data.config.version as number) || ''}
+                onChange={(e) => updateConfig('version', e.target.value ? parseInt(e.target.value) : null)}
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                💡 비워두면 직전 버전으로 자동 롤백됩니다
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">롤백 사유</label>
+              <textarea
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                rows={2}
+                placeholder="롤백 이유를 입력하세요 (감사 로그용)"
+                value={(data.config.reason as string) || ''}
+                onChange={(e) => updateConfig('reason', e.target.value)}
               />
             </div>
           </div>
@@ -1244,6 +1389,21 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
         {/* SIMULATE 노드 - 시뮬레이션 설정 */}
         {nodeType === 'simulate' && (
           <div className="space-y-3">
+            {/* 시뮬레이션 타입 선택 */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">시뮬레이션 타입</label>
+              <select
+                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                value={(data.config.simulation_type as string) || 'scenario'}
+                onChange={(e) => updateConfig('simulation_type', e.target.value)}
+              >
+                <option value="scenario">시나리오 기반</option>
+                <option value="parameter_sweep">파라미터 스윕</option>
+                <option value="monte_carlo">몬테카를로</option>
+              </select>
+            </div>
+
+            {/* 대상 노드 */}
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">대상 노드 (쉼표 구분)</label>
               <input
@@ -1255,25 +1415,151 @@ function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelP
               />
             </div>
 
+            {/* 측정 메트릭 */}
             <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">시뮬레이션 시나리오 (JSON)</label>
-              <textarea
-                className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
-                rows={4}
-                placeholder={`[
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">측정 메트릭</label>
+              <div className="flex gap-3 flex-wrap">
+                {[
+                  { key: 'success_rate', label: '성공률' },
+                  { key: 'execution_time', label: '실행시간' },
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={(data.config.metrics as string[] || ['success_rate']).includes(key)}
+                      onChange={(e) => {
+                        const current = (data.config.metrics as string[]) || ['success_rate'];
+                        if (e.target.checked) {
+                          updateConfig('metrics', [...current, key]);
+                        } else {
+                          updateConfig('metrics', current.filter(m => m !== key));
+                        }
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* 시나리오 타입일 때 */}
+            {(data.config.simulation_type || 'scenario') === 'scenario' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">시뮬레이션 시나리오 (JSON)</label>
+                <textarea
+                  className="w-full px-2 py-1.5 text-sm border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                  rows={4}
+                  placeholder={`[
   {"name": "고온 시나리오", "overrides": {"temp": 90}},
   {"name": "정상 시나리오", "overrides": {"temp": 70}}
 ]`}
-                value={JSON.stringify(data.config.scenarios || [], null, 2)}
-                onChange={(e) => {
-                  try {
-                    updateConfig('scenarios', JSON.parse(e.target.value));
-                  } catch {
-                    // JSON 파싱 실패 시 무시
-                  }
-                }}
-              />
-            </div>
+                  value={JSON.stringify(data.config.scenarios || [], null, 2)}
+                  onChange={(e) => {
+                    try {
+                      updateConfig('scenarios', JSON.parse(e.target.value));
+                    } catch {
+                      // JSON 파싱 실패 시 무시
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {/* 파라미터 스윕 타입일 때 */}
+            {data.config.simulation_type === 'parameter_sweep' && (
+              <div className="space-y-2 p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-400">파라미터 스윕 설정</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-xs text-slate-500 dark:text-slate-400">파라미터명</label>
+                    <input
+                      type="text"
+                      className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                      placeholder="temperature"
+                      value={((data.config.sweep_config as Record<string, unknown>)?.parameter as string) || ''}
+                      onChange={(e) => updateConfig('sweep_config', {
+                        ...(data.config.sweep_config as Record<string, unknown> || {}),
+                        parameter: e.target.value
+                      })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">시작값</label>
+                    <input
+                      type="number"
+                      className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                      value={((data.config.sweep_config as Record<string, unknown>)?.start as number) ?? 0}
+                      onChange={(e) => updateConfig('sweep_config', {
+                        ...(data.config.sweep_config as Record<string, unknown> || {}),
+                        start: Number(e.target.value)
+                      })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">종료값</label>
+                    <input
+                      type="number"
+                      className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                      value={((data.config.sweep_config as Record<string, unknown>)?.end as number) ?? 100}
+                      onChange={(e) => updateConfig('sweep_config', {
+                        ...(data.config.sweep_config as Record<string, unknown> || {}),
+                        end: Number(e.target.value)
+                      })}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-slate-500 dark:text-slate-400">증가값 (step)</label>
+                    <input
+                      type="number"
+                      className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                      value={((data.config.sweep_config as Record<string, unknown>)?.step as number) ?? 10}
+                      onChange={(e) => updateConfig('sweep_config', {
+                        ...(data.config.sweep_config as Record<string, unknown> || {}),
+                        step: Number(e.target.value)
+                      })}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 몬테카를로 타입일 때 */}
+            {data.config.simulation_type === 'monte_carlo' && (
+              <div className="space-y-2 p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-400">몬테카를로 설정</p>
+                <div>
+                  <label className="text-xs text-slate-500 dark:text-slate-400">반복 횟수</label>
+                  <input
+                    type="number"
+                    className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                    placeholder="100"
+                    min={1}
+                    max={1000}
+                    value={(data.config.iterations as number) || 100}
+                    onChange={(e) => updateConfig('iterations', Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 dark:text-slate-400">분포 설정 (JSON)</label>
+                  <textarea
+                    className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600 font-mono"
+                    rows={4}
+                    placeholder={`{
+  "temperature": {"type": "normal", "mean": 70, "std": 10},
+  "pressure": {"type": "uniform", "min": 80, "max": 120}
+}`}
+                    value={JSON.stringify(data.config.distributions || {}, null, 2)}
+                    onChange={(e) => {
+                      try {
+                        updateConfig('distributions', JSON.parse(e.target.value));
+                      } catch {
+                        // JSON 파싱 실패 시 무시
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1429,6 +1715,153 @@ result = input_data.get('temperature', 0) * 1.8 + 32
                 </code>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ============ 고급 설정 (Retry / Circuit Breaker) ============ */}
+        {/* 외부 호출 노드: mcp, data(api), action, judgment, bi */}
+        {(['mcp', 'action', 'judgment', 'bi'].includes(nodeType) ||
+          (nodeType === 'data' && data.config.source_type === 'api')) && (
+          <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-3">
+            <details className="group">
+              <summary className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-800 dark:hover:text-slate-200">
+                <Settings className="w-3.5 h-3.5" />
+                <span>고급 설정 (Retry / Circuit Breaker)</span>
+                <span className="ml-auto text-slate-400 group-open:rotate-90 transition-transform">▶</span>
+              </summary>
+
+              <div className="mt-3 space-y-4 pl-1">
+                {/* Retry 설정 */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">재시도 설정</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">최대 재시도</label>
+                      <input
+                        type="number"
+                        className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                        min={0}
+                        max={10}
+                        value={((data.config.retry as Record<string, unknown>)?.max_retries as number) ?? 3}
+                        onChange={(e) => updateConfig('retry', {
+                          ...(data.config.retry as Record<string, unknown> || {}),
+                          max_retries: parseInt(e.target.value) || 0
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">백오프 전략</label>
+                      <select
+                        className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                        value={((data.config.retry as Record<string, unknown>)?.backoff_strategy as string) || 'exponential'}
+                        onChange={(e) => updateConfig('retry', {
+                          ...(data.config.retry as Record<string, unknown> || {}),
+                          backoff_strategy: e.target.value
+                        })}
+                      >
+                        <option value="exponential">Exponential</option>
+                        <option value="linear">Linear</option>
+                        <option value="fixed">Fixed</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">초기 지연 (ms)</label>
+                      <input
+                        type="number"
+                        className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                        min={100}
+                        max={30000}
+                        step={100}
+                        value={((data.config.retry as Record<string, unknown>)?.initial_delay_ms as number) ?? 1000}
+                        onChange={(e) => updateConfig('retry', {
+                          ...(data.config.retry as Record<string, unknown> || {}),
+                          initial_delay_ms: parseInt(e.target.value) || 1000
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">최대 지연 (ms)</label>
+                      <input
+                        type="number"
+                        className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                        min={1000}
+                        max={60000}
+                        step={1000}
+                        value={((data.config.retry as Record<string, unknown>)?.max_delay_ms as number) ?? 30000}
+                        onChange={(e) => updateConfig('retry', {
+                          ...(data.config.retry as Record<string, unknown> || {}),
+                          max_delay_ms: parseInt(e.target.value) || 30000
+                        })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Circuit Breaker 설정 */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">회로 차단기</span>
+                    <label className="ml-auto flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        className="w-3.5 h-3.5"
+                        checked={((data.config.circuit_breaker as Record<string, unknown>)?.enabled as boolean) ?? true}
+                        onChange={(e) => updateConfig('circuit_breaker', {
+                          ...(data.config.circuit_breaker as Record<string, unknown> || {}),
+                          enabled: e.target.checked
+                        })}
+                      />
+                      <span className="text-xs text-slate-500">활성화</span>
+                    </label>
+                  </div>
+
+                  {((data.config.circuit_breaker as Record<string, unknown>)?.enabled ?? true) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">실패 임계값</label>
+                        <input
+                          type="number"
+                          className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                          min={1}
+                          max={20}
+                          value={((data.config.circuit_breaker as Record<string, unknown>)?.failure_threshold as number) ?? 5}
+                          onChange={(e) => updateConfig('circuit_breaker', {
+                            ...(data.config.circuit_breaker as Record<string, unknown> || {}),
+                            failure_threshold: parseInt(e.target.value) || 5
+                          })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">복구 대기 (초)</label>
+                        <input
+                          type="number"
+                          className="w-full px-2 py-1 text-xs border rounded text-slate-900 dark:text-slate-100 dark:bg-slate-700 dark:border-slate-600"
+                          min={5}
+                          max={300}
+                          value={((data.config.circuit_breaker as Record<string, unknown>)?.timeout_seconds as number) ?? 30}
+                          onChange={(e) => updateConfig('circuit_breaker', {
+                            ...(data.config.circuit_breaker as Record<string, unknown> || {}),
+                            timeout_seconds: parseInt(e.target.value) || 30
+                          })}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                    연속 실패 시 일시적으로 호출 차단
+                  </p>
+                </div>
+              </div>
+            </details>
           </div>
         )}
       </div>
@@ -2039,6 +2472,22 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
   const toast = useToast();
+
+  // 다크 모드 감지
+  const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
+
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          setIsDarkMode(document.documentElement.classList.contains('dark'));
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, { attributes: true });
+    return () => observer.disconnect();
+  }, []);
   // 기본 DSL
   const defaultDSL: WorkflowDSL = {
     name: '새 워크플로우',
@@ -2255,25 +2704,36 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
       // P2 고급 노드
       case 'compensation':
         return {
-          strategy: 'reverse',  // reverse | custom
-          nodes: [],
+          compensation_type: 'auto',      // auto | manual
+          target_nodes: [],               // 수동 모드 시 대상 노드
+          compensation_actions: {},       // 노드별 보상 액션 정의
+          on_failure: 'continue',         // continue | abort
         };
       case 'deploy':
         return {
           deploy_type: 'ruleset',  // ruleset | model | workflow
           target_id: '',
+          version: undefined,  // undefined = 최신 버전
           environment: 'production',
+          rollback_on_failure: true,
+          validation: { enabled: false, rules: [] },
         };
       case 'rollback':
         return {
           target_type: 'workflow',
           target_id: '',
-          version: null,  // null = 이전 버전
+          version: null,  // null = 직전 버전
+          reason: '',     // 롤백 사유 (감사 로그)
         };
       case 'simulate':
         return {
+          simulation_type: 'scenario',
           scenarios: [],
           target_nodes: [],
+          metrics: ['success_rate'],
+          sweep_config: { parameter: '', start: 0, end: 100, step: 10 },
+          iterations: 100,
+          distributions: {},
         };
       // 추가 노드
       case 'switch':
@@ -2634,7 +3094,7 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
                 markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8' },
               }}
             >
-              <Background color="#e2e8f0" gap={15} />
+              <Background color={isDarkMode ? "#334155" : "#e2e8f0"} gap={15} />
               <Controls />
               <MiniMap
                 nodeColor={(node) => {

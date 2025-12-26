@@ -39,6 +39,98 @@ export type WorkflowNodeType =
   | 'rollback'
   | 'simulate';
 
+// Retry 설정 (외부 호출 노드용)
+export interface RetryConfig {
+  max_retries: number;        // 0-10, 기본값 3
+  backoff_strategy?: 'exponential' | 'linear' | 'fixed';
+  initial_delay_ms?: number;   // 기본값 1000
+  max_delay_ms?: number;       // 기본값 30000
+}
+
+// Circuit Breaker 설정 (외부 호출 노드용)
+export interface CircuitBreakerConfig {
+  enabled: boolean;            // 기본값 true
+  failure_threshold?: number;  // 기본값 5
+  timeout_seconds?: number;    // 기본값 30
+}
+
+// ============ P2 고급 노드 설정 타입 ============
+
+// COMPENSATION 노드 - Saga 패턴 보상 트랜잭션
+export interface CompensationAction {
+  action_type: 'api_call' | 'db_rollback' | 'state_restore';
+  config: {
+    url?: string;              // api_call: 롤백 API URL
+    method?: string;           // api_call: HTTP 메서드
+    params?: Record<string, unknown>;  // api_call: 요청 파라미터
+    table?: string;            // db_rollback: 대상 테이블
+    query?: string;            // db_rollback: SQL 쿼리
+    key?: string;              // state_restore: 복원할 상태 키
+    value?: unknown;           // state_restore: 복원할 값
+  };
+}
+
+export interface CompensationNodeConfig {
+  compensation_type: 'auto' | 'manual';
+  target_nodes: string[];
+  compensation_actions: Record<string, CompensationAction>;
+  on_failure: 'continue' | 'abort';
+}
+
+// DEPLOY 노드 - 배포 자동화
+export interface DeployNodeConfig {
+  deploy_type: 'ruleset' | 'model' | 'workflow';
+  target_id: string;
+  version?: number;
+  environment: 'development' | 'staging' | 'production';
+  rollback_on_failure: boolean;
+  validation: {
+    enabled: boolean;
+    rules: string[];
+  };
+}
+
+// ROLLBACK 노드 - 버전 롤백
+export interface RollbackNodeConfig {
+  target_type: 'ruleset' | 'workflow' | 'model';
+  target_id: string;
+  version?: number | null;  // null = 직전 버전
+  reason?: string;
+}
+
+// SIMULATE 노드 - What-if 시뮬레이션
+export interface SimulationScenario {
+  name: string;
+  overrides: Record<string, unknown>;
+}
+
+export interface ParameterSweepConfig {
+  parameter: string;
+  start: number;
+  end: number;
+  step: number;
+}
+
+export interface MonteCarloDistribution {
+  type: 'uniform' | 'normal';
+  min?: number;   // uniform
+  max?: number;   // uniform
+  mean?: number;  // normal
+  std?: number;   // normal
+}
+
+export interface SimulateNodeConfig {
+  simulation_type: 'scenario' | 'parameter_sweep' | 'monte_carlo';
+  scenarios?: SimulationScenario[];
+  target_nodes: string[];
+  metrics: string[];
+  // parameter_sweep 전용
+  sweep_config?: ParameterSweepConfig;
+  // monte_carlo 전용
+  iterations?: number;
+  distributions?: Record<string, MonteCarloDistribution>;
+}
+
 export interface WorkflowNode {
   id: string;
   type: WorkflowNodeType;
@@ -49,6 +141,9 @@ export interface WorkflowNode {
   else_nodes?: WorkflowNode[];
   loop_nodes?: WorkflowNode[];
   parallel_nodes?: WorkflowNode[];
+  // Retry & Circuit Breaker (외부 호출 노드: mcp, data(api), action, judgment, bi)
+  retry?: RetryConfig;
+  circuit_breaker?: CircuitBreakerConfig;
 }
 
 // 승인 요청 인터페이스

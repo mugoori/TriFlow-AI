@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, BarChart3, Database, Plug, Loader2, ChevronDown } from 'lucide-react';
+import { X, BarChart3, Database, Plug, Loader2 } from 'lucide-react';
 import { useStatCards } from '@/contexts/StatCardContext';
 import type {
   SourceType,
@@ -17,9 +17,6 @@ import type {
   StatCardConfigCreate,
   StatCardConfigUpdate,
   StatCardConfig,
-  KpiInfo,
-  TableInfo,
-  McpToolInfo,
 } from '@/types/statcard';
 import { SOURCE_TYPE_INFO, AGGREGATION_LABELS } from '@/types/statcard';
 
@@ -217,7 +214,7 @@ export function StatCardConfigModal({ isOpen, onClose, editConfig }: StatCardCon
       if (sourceType === 'kpi') {
         config.kpi_code = selectedKpiCode;
       } else if (sourceType === 'db_query') {
-        const [schemaName, tableName] = selectedTable.split('.');
+        const [_schemaName, tableName] = selectedTable.split('.');
         config.table_name = tableName;
         config.column_name = selectedColumn;
         config.aggregation = selectedAggregation;

@@ -357,3 +357,112 @@ def reset_circuit_breaker(
 ) -> None:
     """Circuit Breaker를 closed 상태로 리셋합니다."""
     service.reset_circuit_breaker(server_id, current_user.tenant_id)
+
+
+# =========================================
+# DataSource MCP Tools (동적 MES/ERP 도구)
+# =========================================
+@router.get(
+    "/datasource-tools",
+    summary="DataSource 기반 MCP 도구 목록",
+)
+def list_datasource_tools(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    source_type: str | None = Query(None, description="mes 또는 erp"),
+):
+    """
+    DataSource에 등록된 MES/ERP 시스템의 사용 가능한 MCP 도구를 조회합니다.
+
+    각 DataSource(MES/ERP 연결)에 대해 사용 가능한 도구 목록을 반환합니다.
+    워크플로우 DATA 노드나 Agent에서 이 도구들을 호출할 수 있습니다.
+    """
+    from app.services.datasource_mcp_service import DataSourceMCPService
+
+    service = DataSourceMCPService(db)
+
+    if source_type:
+        # 특정 타입만 조회
+        sources = service.get_active_sources(current_user.tenant_id, source_type)
+        result = []
+        for source in sources:
+            tools = service.get_tools_for_source_type(source.source_type)
+            result.append({
+                "source_id": str(source.source_id),
+                "source_name": source.name,
+                "source_type": source.source_type,
+                "source_system": source.source_system,
+                "tools": [
+                    {
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.input_schema,
+                    }
+                    for t in tools
+                ]
+            })
+        return {"sources": result, "total": len(result)}
+    else:
+        # 전체 조회
+        tools = service.get_all_tools_for_tenant(current_user.tenant_id)
+        return {
+            "sources": tools,
+            "total_sources": len(tools),
+            "total_tools": sum(len(s["tools"]) for s in tools)
+        }
+
+
+@router.post(
+    "/datasource-tools/{source_id}/call",
+    summary="DataSource MCP 도구 호출",
+)
+async def call_datasource_tool(
+    source_id: UUID,
+    tool_name: str = Query(..., description="호출할 도구 이름"),
+    arguments: dict = {},
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    DataSource의 MCP 도구를 호출합니다.
+
+    예시:
+    - source_id: MES DataSource ID
+    - tool_name: "get_production_status"
+    - arguments: {"line_id": "LINE-001"}
+    """
+    from app.services.datasource_mcp_service import DataSourceMCPService
+
+    service = DataSourceMCPService(db)
+    result = await service.call_tool(
+        source_id=source_id,
+        tenant_id=current_user.tenant_id,
+        tool_name=tool_name,
+        args=arguments
+    )
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "도구 실행 실패")
+        )
+
+    return result
+
+
+@router.get(
+    "/datasource-tools/{source_id}/health",
+    summary="DataSource 연결 상태 확인",
+)
+async def datasource_health_check(
+    source_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """DataSource(MES/ERP) 연결 상태를 확인합니다."""
+    from app.services.datasource_mcp_service import DataSourceMCPService
+
+    service = DataSourceMCPService(db)
+    result = await service.health_check(source_id, current_user.tenant_id)
+
+    return result

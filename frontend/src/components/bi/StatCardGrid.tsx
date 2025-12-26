@@ -9,10 +9,9 @@
  */
 
 import { useState, useCallback } from 'react';
-import { Settings, GripVertical, Plus, Minus, Check, X } from 'lucide-react';
+import { Settings, GripVertical, Check } from 'lucide-react';
 import { DynamicStatCard, AddStatCardButton, StatCardSkeleton } from './DynamicStatCard';
 import { useStatCards } from '@/contexts/StatCardContext';
-import type { StatCardWithValue } from '@/types/statcard';
 
 interface StatCardGridProps {
   onAddCard: () => void;

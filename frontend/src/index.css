@@ -144,3 +144,87 @@ body {
   height: 100vh;
   overflow: hidden;
 }
+
+/* React Flow Controls 라이트 모드 스타일 */
+.react-flow__controls {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.react-flow__controls-button {
+  background-color: #ffffff;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  fill: #334155;
+  color: #334155;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.react-flow__controls-button:hover {
+  background-color: #f1f5f9;
+}
+
+.react-flow__controls-button svg {
+  fill: #334155;
+  width: 16px;
+  height: 16px;
+}
+
+/* React Flow MiniMap 라이트 모드 스타일 */
+.react-flow__minimap {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+/* React Flow Controls 다크 모드 스타일 */
+.dark .react-flow__controls {
+  background-color: #1e293b;
+  border-color: #475569;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+}
+
+.dark .react-flow__controls-button {
+  background-color: #1e293b;
+  border-color: #475569;
+  fill: #e2e8f0;
+  color: #e2e8f0;
+}
+
+.dark .react-flow__controls-button:hover {
+  background-color: #334155;
+}
+
+.dark .react-flow__controls-button svg {
+  fill: #e2e8f0;
+}
+
+/* React Flow MiniMap 다크 모드 스타일 */
+.dark .react-flow__minimap {
+  background-color: #1e293b;
+  border-color: #475569;
+}
+
+.dark .react-flow__minimap-mask {
+  fill: rgb(30 41 59 / 0.6);
+}
+
+/* React Flow Background 다크 모드 스타일 */
+.dark .react-flow__background {
+  background-color: #0f172a;
+}
+
+/* React Flow Panel 다크 모드 스타일 */
+.dark .react-flow__panel {
+  background-color: transparent;
+}

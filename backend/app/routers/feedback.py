@@ -81,7 +81,7 @@ def _feedback_to_response(feedback: FeedbackLog) -> FeedbackResponse:
         feedback_type=feedback.feedback_type,
         original_output=feedback.original_output,
         corrected_output=feedback.corrected_output,
-        feedback_text=feedback.feedback_text,
+        feedback_text=feedback.comment,  # 모델에서는 comment 속성으로 정의됨
         context_data=feedback.context_data or {},
         is_processed=feedback.is_processed,
         created_at=feedback.created_at,
@@ -122,7 +122,7 @@ async def create_feedback(
         feedback_type=feedback_data.feedback_type,
         original_output=feedback_data.original_output,
         corrected_output=feedback_data.corrected_output,
-        feedback_text=feedback_data.feedback_text,
+        comment=feedback_data.feedback_text,  # 모델에서는 comment 속성으로 정의됨
         context_data=context,
         is_processed=False,
         created_at=datetime.utcnow(),

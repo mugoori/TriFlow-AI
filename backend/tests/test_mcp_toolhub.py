@@ -45,7 +45,7 @@ class TestInMemoryCircuitBreaker:
         config = CircuitBreakerConfig(
             failure_threshold=3,
             success_threshold=2,
-            timeout_seconds=1,  # 테스트를 위해 짧게 설정
+            timeout_seconds=10,  # 최소값 10초 (Pydantic 검증)
         )
         return InMemoryCircuitBreaker(config)
 
@@ -108,8 +108,9 @@ class TestInMemoryCircuitBreaker:
 
         assert await circuit_breaker.is_open(server_id) is True
 
-        # 타임아웃 대기 (1초)
-        await asyncio.sleep(1.1)
+        # opened_at을 과거로 설정하여 타임아웃 시뮬레이션
+        internal_state = circuit_breaker._states[server_id]
+        internal_state["opened_at"] = datetime.now(timezone.utc) - timedelta(seconds=15)
 
         # is_open 호출 시 HALF_OPEN으로 전환
         is_open = await circuit_breaker.is_open(server_id)
@@ -125,8 +126,9 @@ class TestInMemoryCircuitBreaker:
         for _ in range(3):
             await circuit_breaker.record_failure(server_id)
 
-        # 타임아웃 대기 → HALF_OPEN
-        await asyncio.sleep(1.1)
+        # opened_at을 과거로 설정하여 타임아웃 시뮬레이션 → HALF_OPEN
+        internal_state = circuit_breaker._states[server_id]
+        internal_state["opened_at"] = datetime.now(timezone.utc) - timedelta(seconds=15)
         await circuit_breaker.is_open(server_id)
 
         # success_threshold = 2
@@ -145,8 +147,9 @@ class TestInMemoryCircuitBreaker:
         for _ in range(3):
             await circuit_breaker.record_failure(server_id)
 
-        # 타임아웃 대기 → HALF_OPEN
-        await asyncio.sleep(1.1)
+        # opened_at을 과거로 설정하여 타임아웃 시뮬레이션 → HALF_OPEN
+        internal_state = circuit_breaker._states[server_id]
+        internal_state["opened_at"] = datetime.now(timezone.utc) - timedelta(seconds=15)
         await circuit_breaker.is_open(server_id)
 
         state = await circuit_breaker.get_state(server_id)
