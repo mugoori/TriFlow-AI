@@ -2,61 +2,238 @@
 
 > **최종 업데이트**: 2025-12-26
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → V2 Phase 2 진행 중
-> **현재 브랜치**: `develop` (V1 개발용)
+> **현재 브랜치**: `develop`
 
 ---
 
-## 📊 TriFlow AI Project Dashboard
+## 📊 Project Dashboard
 
 ### 📅 Product Roadmap
-| Milestone | Goal | Status | Progress | 완료/전체 |
-| :--- | :--- | :--- | :--- | :--- |
-| **MVP** | **PC 설치형 데스크톱 앱** (Core + Chat UI) | ✅ v0.1.0 릴리즈 | ██████████ 100% | 18/18 |
-| **V1** | Builder UI & Learning Pipeline & 외부연동 & 보안 | ✅ 완료 | ██████████ 100% | 25/25 |
-| **V2** | Mobile App & Advanced Simulation | ⏳ Pending | ░░░░░░░░░░ 0% | 0/6 |
-
-### 🚀 MVP Detailed Progress (Sprint 1~6)
-
-#### 📋 Phase 0: 프로젝트 기획 및 문서화
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| 프로젝트 문서 (A-1 ~ D-4) 작성 | ✅ 완료 | ██████████ 100% |
-| AI_GUIDELINES.md 작성 | ✅ 완료 | ██████████ 100% |
-| TASKS.md 작성 | ✅ 완료 | ██████████ 100% |
-| README.md 작성 | ✅ 완료 | ██████████ 100% |
-| Git 저장소 초기화 | ✅ 완료 | ██████████ 100% |
-
-#### 🔙 Backend (Python/FastAPI)
-| Sprint | Task | Status | Progress |
-| :--- | :--- | :--- | :--- |
-| **Sprint 1** | **[Infra]** Docker Compose (Postgres, Redis, MinIO) | ✅ 완료 | ██████████ 100% |
-| | **[DB]** Init Schemas (Core, BI, RAG, Audit) | ✅ 완료 | ██████████ 100% |
-| | **[Core]** `tools/rhai.py` (Rust Binding) 구현 | ✅ 완료 | ██████████ 100% |
-| | **[Core]** `tools/db.py` (Safe Query) 구현 | ✅ 완료 | ██████████ 100% |
-| | **[CI/CD]** GitHub Actions 워크플로우 설정 | ✅ 완료 | ██████████ 100% |
-| | **[Docker]** backend/Dockerfile 생성 | ✅ 완료 | ██████████ 100% |
-| **Sprint 2** | **[Agent]** Meta Router & Judgment Agent 구현 | ✅ 완료 | ██████████ 100% |
-| | **[Agent]** Workflow Planner (NL->DSL) 구현 | ✅ 완료 | ██████████ 100% |
-| | **[Agent]** BI Planner (Text-to-SQL) 구현 | ✅ 완료 | ██████████ 100% |
-| **Sprint 4** | **[Learning]** Feedback Loop & Zwave Sim Tool | ✅ 완료 | ██████████ 100% |
-| **Sprint 5** | **[Security]** Auth & PII Masking Middleware | ✅ 완료 | ██████████ 100% |
-
-#### 🎨 Frontend (Tauri/React)
-| Sprint | Task | Status | Progress |
-| :--- | :--- | :--- | :--- |
-| **Sprint 1** | **[Setup]** Tauri v2 + React + Vite Init | ✅ 완료 | ██████████ 100% |
-| | **[Setup]** Tailwind + Shadcn/ui Config | ✅ 완료 | ██████████ 100% |
-| **Sprint 3** | **[UI]** Chat-Centric Interface Layout | ✅ 완료 | ██████████ 100% |
-| | **[UI]** Dashboard & Chart Visualization | ✅ 완료 | ██████████ 100% |
-| **Sprint 6** | **[Release]** UAT & Production Build | ✅ 완료 | ██████████ 100% |
+| Milestone | Goal | Status | Progress |
+|-----------|------|--------|----------|
+| **MVP** | PC 설치형 데스크톱 앱 (Core + Chat UI) | ✅ v0.1.0 | ██████████ 100% |
+| **V1** | Builder UI & Learning & 외부연동 & 보안 | ✅ 완료 | ██████████ 100% |
+| **V2** | Advanced Workflow & MCP 연동 | 🔄 진행중 | ████████░░ 80% |
 
 ---
 
-## 🏷️ MVP v0.1.0 릴리즈 (2025-11-28)
+## 🎯 구현 완료 기능 요약
+
+### 🔷 1. AI 에이전트 시스템
+> 5개 AI 에이전트 기반 자연어 인터페이스
+
+| 에이전트 | 역할 | 핵심 기능 |
+|----------|------|----------|
+| **Meta Router** | 의도 분류 & 라우팅 | 사용자 입력 → 적절한 에이전트로 전달 |
+| **Judgment** | AI 판정 | Rhai 규칙 실행, RAG 지식 조회, 센서 분석 |
+| **Workflow Planner** | 워크플로우 생성 | 자연어 → DSL 변환, 노드 스키마 검증 |
+| **BI Planner** | 데이터 분석 | Text-to-SQL, 차트 설정 생성 |
+| **Learning** | 학습 & 개선 | 피드백 분석, 규칙 제안, 룰셋 생성 |
+
+**핵심 파일**: `backend/app/agents/`, `backend/app/prompts/`
+
+---
+
+### 🔷 2. 워크플로우 엔진 (18개 노드)
+> 비주얼 워크플로우 빌더 + 실행 엔진
+
+#### P0: 기본 노드 (7개)
+| 노드 | 설명 | UI | 실행 |
+|------|------|:--:|:----:|
+| `condition` | 조건 평가 | ✅ | ✅ |
+| `action` | 액션 실행 | ✅ | ✅ |
+| `if_else` | 조건 분기 | ✅ | ✅ |
+| `loop` | 반복 실행 | ✅ | ✅ |
+| `parallel` | 병렬 실행 | ✅ | ✅ |
+| `switch` | 다중 분기 | ✅ | ✅ |
+| `code` | Python 실행 | ✅ | ✅ |
+
+#### P1: 비즈니스 노드 (7개)
+| 노드 | 설명 | UI | 실행 |
+|------|------|:--:|:----:|
+| `data` | 데이터 조회 | ✅ | ✅ |
+| `judgment` | AI 판정 | ✅ | ✅ |
+| `bi` | BI 분석 | ✅ | ✅ |
+| `mcp` | MCP 도구 호출 | ✅ | ✅ |
+| `trigger` | 트리거 설정 | ✅ | ✅ |
+| `wait` | 대기 | ✅ | ✅ |
+| `approval` | 인간 승인 | ✅ | ✅ |
+
+#### P2: 고급 노드 (4개)
+| 노드 | 설명 | UI | 실행 |
+|------|------|:--:|:----:|
+| `compensation` | Saga 보상 트랜잭션 | ✅ | ✅ |
+| `deploy` | 버전 배포 | ✅ | ✅ |
+| `rollback` | 버전 롤백 | ✅ | ✅ |
+| `simulate` | What-if 시뮬레이션 | ✅ | ✅ |
+
+**핵심 파일**:
+- `backend/app/services/workflow_engine.py` (6,552줄)
+- `frontend/src/components/workflow/FlowEditor.tsx` (3,203줄)
+
+---
+
+### 🔷 3. MCP (Model Context Protocol) 시스템
+> 외부 시스템 연동을 위한 표준화된 인터페이스
+
+| 컴포넌트 | 설명 | 상태 |
+|----------|------|:----:|
+| **MCP ToolHub** | 서버/도구 레지스트리 | ✅ |
+| **HTTP Proxy** | JSON-RPC 2.0 통신 | ✅ |
+| **Circuit Breaker** | 장애 차단/복구 | ✅ |
+| **MES 래퍼** | 제조실행시스템 연동 (5개 도구) | ✅ |
+| **ERP 래퍼** | 전사자원관리 연동 (6개 도구) | ✅ |
+
+**래퍼 서버 도구**:
+```
+MES: get_production_status, get_defect_data, get_equipment_status,
+     get_work_orders, update_production_count
+
+ERP: get_inventory, get_purchase_orders, create_purchase_order,
+     get_sales_orders, get_bom, check_material_availability
+```
+
+**핵심 파일**: `backend/app/mcp_wrappers/`, `backend/app/services/mcp_*.py`
+
+---
+
+### 🔷 4. 룰셋 & 규칙 엔진
+> Rhai (Rust) 기반 안전한 규칙 실행
+
+| 기능 | 설명 | 상태 |
+|------|------|:----:|
+| **Rhai 편집기** | Monaco 기반, 구문 하이라이팅 | ✅ |
+| **버전 관리** | 스냅샷 저장, 롤백 | ✅ |
+| **테스트 실행** | 즉시 테스트 & 결과 표시 | ✅ |
+| **AI 생성** | 자연어 → Rhai 스크립트 | ✅ |
+
+**핵심 파일**: `backend/app/tools/rhai.py`, `frontend/src/components/ruleset/`
+
+---
+
+### 🔷 5. 학습 & 피드백 시스템
+> 지속적인 개선을 위한 피드백 루프
+
+| 기능 | 설명 | 상태 |
+|------|------|:----:|
+| **피드백 수집** | 👍/👎 + 상세 피드백 모달 | ✅ |
+| **AI 규칙 제안** | 피드백 분석 → 규칙 자동 제안 | ✅ |
+| **A/B 테스트** | 통계적 유의성 검정 (Z-test) | ✅ |
+| **학습 대시보드** | 피드백/제안/실험 통합 뷰 | ✅ |
+
+**핵심 파일**: `backend/app/services/feedback_analyzer.py`, `backend/app/services/experiment_service.py`
+
+---
+
+### 🔷 6. 외부 시스템 연동
+> 알림, 데이터 가져오기, 실시간 스트리밍
+
+| 기능 | 설명 | 상태 |
+|------|------|:----:|
+| **Slack 알림** | Webhook 기반 | ✅ |
+| **Email 알림** | SMTP 지원 | ✅ |
+| **CSV/Excel 가져오기** | 드래그앤드롭 업로드 | ✅ |
+| **센서 스트리밍** | WebSocket 실시간 | ✅ |
+| **데이터 동기화** | APScheduler 스케줄러 | ✅ |
+
+**핵심 파일**: `backend/app/services/notifications.py`, `backend/app/services/data_sync.py`
+
+---
+
+### 🔷 7. BI & 대시보드
+> 데이터 시각화 및 KPI 모니터링
+
+| 기능 | 설명 | 상태 |
+|------|------|:----:|
+| **StatCard** | KPI 카드 (집계 기간 표시) | ✅ |
+| **차트** | Recharts 기반 시각화 | ✅ |
+| **Text-to-SQL** | 자연어 → SQL 변환 | ✅ |
+| **GenBI** | AI 기반 분석 응답 | ✅ |
+
+**핵심 파일**: `backend/app/services/stat_card_service.py`, `frontend/src/components/pages/DashboardPage.tsx`
+
+---
+
+### 🔷 8. 보안 & 인증
+> JWT 인증 및 데이터 보호
+
+| 기능 | 설명 | 상태 |
+|------|------|:----:|
+| **JWT 인증** | Access + Refresh Token | ✅ |
+| **RBAC** | 역할 기반 메뉴 필터링 | ✅ |
+| **PII 마스킹** | 개인정보 자동 마스킹 | ✅ |
+| **Security Headers** | HSTS 등 프로덕션 헤더 | ✅ |
+
+**핵심 파일**: `backend/app/core/security.py`, `backend/app/middleware/`
+
+---
+
+### 🔷 9. 인프라 & 배포
+> Docker 기반 개발/배포 환경
+
+| 기능 | 설명 | 상태 |
+|------|------|:----:|
+| **Docker Compose** | PostgreSQL, Redis | ✅ |
+| **AWS S3** | 파일 저장소 (로컬 fallback) | ✅ |
+| **GitHub Actions** | CI/CD 파이프라인 | ✅ |
+| **Tauri 빌드** | Windows MSI/NSIS | ✅ |
+
+**핵심 파일**: `docker-compose.yml`, `.github/workflows/`
+
+---
+
+## 📁 프로젝트 구조
+
+```
+triflow-ai/
+├── backend/                      # Python FastAPI 백엔드
+│   ├── app/
+│   │   ├── agents/               # AI 에이전트 (5개)
+│   │   ├── services/             # 비즈니스 로직
+│   │   │   ├── workflow_engine.py    # 워크플로우 엔진 (6,552줄)
+│   │   │   ├── mcp_proxy.py          # MCP HTTP 프록시
+│   │   │   ├── mcp_toolhub.py        # MCP 서버 레지스트리
+│   │   │   └── ...
+│   │   ├── mcp_wrappers/         # MCP 래퍼 서버
+│   │   │   ├── base_wrapper.py       # 베이스 클래스
+│   │   │   ├── mes_wrapper.py        # MES 래퍼
+│   │   │   └── erp_wrapper.py        # ERP 래퍼
+│   │   ├── routers/              # API 엔드포인트
+│   │   ├── models/               # Pydantic 모델
+│   │   ├── tools/                # 에이전트 도구
+│   │   └── prompts/              # 프롬프트 템플릿
+│   └── migrations/               # DB 마이그레이션
+│
+├── frontend/                     # Tauri + React 프론트엔드
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── workflow/
+│   │   │   │   └── FlowEditor.tsx    # 비주얼 에디터 (3,203줄)
+│   │   │   ├── ruleset/              # 룰셋 편집기
+│   │   │   ├── pages/                # 페이지 컴포넌트
+│   │   │   └── layout/               # 레이아웃
+│   │   └── services/             # API 클라이언트
+│   └── src-tauri/                # Tauri (Rust)
+│
+├── docs/                         # 문서
+│   ├── specs/                    # 기술 명세서
+│   └── archive/                  # 아카이브
+│
+├── AI_GUIDELINES.md              # AI 개발 가이드라인
+├── TASKS.md                      # 작업 목록 (현재 파일)
+└── docker-compose.yml            # Docker 환경
+```
+
+---
+
+## 📋 상세 작업 히스토리
+
+<details>
+<summary><b>🏷️ MVP v0.1.0 릴리즈 (2025-11-28)</b></summary>
 
 ### 릴리즈 정보
 - **태그**: `v0.1.0`
-- **브랜치**: `main` (안정 버전), `develop` (V1 개발)
+- **브랜치**: `main` (안정 버전), `develop` (개발)
 - **빌드**: Windows MSI/NSIS, Docker Image (ghcr.io)
 
 ### 주요 기능
@@ -66,2343 +243,221 @@
 - Workflows/Data/Settings 페이지
 - JWT 인증 + PII 마스킹
 
----
-
-## 📋 V1 개발 작업 목록
-
-### 🔧 V1 Sprint 1: Builder UI & Workflow Execution ✅ (100%)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[UI]** Workflow Visual Editor (노드 추가/삭제/이동) | ✅ 완료 | ██████████ 100% |
-| **[UI]** Workflow Visual Editor (Drag & Drop) | ✅ 완료 | ██████████ 100% |
-| **[UI]** Ruleset Editor (Rhai Script 편집기) | ✅ 완료 | ██████████ 100% |
-| **[UI]** Action Catalog 관리 UI | ✅ 완료 | ██████████ 100% |
-| **[i18n]** Action Catalog 한글화 | ✅ 완료 | ██████████ 100% |
-| **[Engine]** Workflow Execution Pipeline (순차 실행) | ✅ 완료 | ██████████ 100% |
-| **[Engine]** Workflow Execution (If/Else 분기) | ✅ 완료 | ██████████ 100% |
-| **[Engine]** Workflow Execution (Loop/Parallel) | ✅ 완료 | ██████████ 100% |
-| **[Engine]** Sensor Data Simulator | ✅ 완료 | ██████████ 100% |
-| **[UI]** Simulation Test Panel | ✅ 완료 | ██████████ 100% |
-| **[UI]** Execution Log Panel | ✅ 완료 | ██████████ 100% |
-
-#### 📋 V1 Sprint 1 완료 작업 내역 (2025-11-28)
-- [x] **[UI]** ActionDetailModal 컴포넌트 구현 (`frontend/src/components/workflow/ActionDetailModal.tsx`)
-  - 액션 상세 정보 표시 (이름, 설명, 카테고리)
-  - 파라미터 목록 및 타입 정보
-  - DSL 예시 생성 및 복사 기능
-  - 카테고리별 아이콘/색상 매핑
-- [x] **[UI]** WorkflowsPage 액션 카탈로그 개선 (`frontend/src/components/pages/WorkflowsPage.tsx`)
-  - 카테고리 필터링 (알림, 데이터, 제어, 분석)
-  - 액션 카드 클릭 시 상세 모달
-  - 개선된 UI (카테고리별 색상, 아이콘, 파라미터 수 표시)
-  - 필터 초기화 기능
-- [x] **[UI]** WorkflowEditor 컴포넌트 구현 (`frontend/src/components/workflow/WorkflowEditor.tsx`)
-  - 워크플로우 이름/설명 편집
-  - 트리거 타입 선택 (수동, 이벤트, 스케줄)
-  - 조건/액션 노드 추가/삭제/이동
-  - 노드 설정 (조건식, 액션 선택, 파라미터 JSON)
-  - DSL 실시간 미리보기
-  - WorkflowsPage와 통합 (새 워크플로우 버튼)
-- [x] **[Engine]** Workflow Execution Pipeline 구현 (`backend/app/services/workflow_engine.py`)
-  - `SensorSimulator`: 시나리오별 센서 데이터 생성 (normal, alert, random, preset)
-  - `ConditionEvaluator`: 조건식 평가 (>, <, >=, <=, ==, !=, &&, ||)
-  - `ActionExecutor`: 비알림 액션 실행 (log_event, save_to_database 등)
-  - `WorkflowEngine`: 전체 워크플로우 오케스트레이션
-  - `ExecutionLogStore`: 인메모리 실행 로그 저장소
-- [x] **[API]** Workflow Execution APIs 확장 (`backend/app/routers/workflows.py`)
-  - `POST /simulator/generate` - 센서 시뮬레이션 데이터 생성
-  - `GET /logs/execution` - 실행 로그 조회
-  - `DELETE /logs/execution` - 실행 로그 초기화
-  - `POST /test/condition` - 조건식 테스트
-  - `POST /{workflow_id}/run` - 시뮬레이션 옵션 지원
-- [x] **[Service]** Frontend Workflow Service 확장 (`frontend/src/services/workflowService.ts`)
-  - WorkflowRunOptions, SimulatorResponse, ConditionTestResponse, ExecutionLog 타입
-  - generateSimulatedData(), testCondition(), getExecutionLogs(), clearExecutionLogs()
-- [x] **[UI]** Simulation Test Panel 구현 (`frontend/src/components/pages/WorkflowsPage.tsx`)
-  - 시나리오 선택 (normal, alert, random)
-  - 시뮬레이션 데이터 생성 및 표시
-  - 워크플로우 실행 버튼 (시뮬레이션 모드)
-- [x] **[UI]** Execution Log Panel 구현
-  - 실행 로그 실시간 표시
-  - 로그 초기화 기능
-  - 이벤트 타입/시간/상세정보 표시
-- [x] **[UI]** Ruleset Editor 구현 (`frontend/src/components/ruleset/`)
-  - `RulesetsPage.tsx` - 룰셋 목록/상세 페이지
-    - 검색 및 활성 상태 필터
-    - 룰셋 CRUD (생성, 편집, 삭제)
-    - 빠른 테스트 실행 패널
-  - `RulesetEditorModal.tsx` - Monaco Editor 기반 Rhai 편집기
-    - 커스텀 Rhai 구문 하이라이팅 (Monarch Tokenizer)
-    - 자동완성 (키워드, input 속성)
-    - 샘플 스크립트 선택 드롭다운
-    - 테스트 실행 및 결과 표시
-  - `rulesetService.ts` - Ruleset API 클라이언트
-- [x] **[i18n]** Action Catalog 한글화
-  - display_name, category_display_name 필드 추가
-  - 12개 액션 한글 이름 적용
-  - 4개 카테고리 한글 표시
-- [x] **[UI]** Workflow Visual Editor (Drag & Drop) 구현 (`frontend/src/components/workflow/FlowEditor.tsx`)
-  - React Flow (@xyflow/react) 기반 비주얼 에디터
-  - 노드 팔레트: 조건, 액션, If/Else, 반복, 병렬 노드 드래그 앤 드롭
-  - 커스텀 노드 컴포넌트 (타입별 색상/아이콘)
-  - 노드 설정 패널 (조건식, 액션, 파라미터 편집)
-  - DSL ↔ Flow 양방향 변환 (기존 워크플로우 로드/저장)
-  - 트리거 타입 선택 (수동, 이벤트, 스케줄)
-  - 실시간 DSL 미리보기
-  - WorkflowsPage 통합 (폼 에디터/플로우 에디터 전환)
-
-### 🧠 V1 Sprint 2: Learning Pipeline 강화 ✅ (100%)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[Learning]** 채팅으로 룰셋 생성 기능 | ✅ 완료 | ██████████ 100% |
-| **[Learning]** 피드백 수집 UI | ✅ 완료 | ██████████ 100% |
-| **[Learning]** 규칙 자동 제안 개선 | ✅ 완료 | ██████████ 100% |
-| **[Learning]** A/B 테스트 프레임워크 | ✅ 완료 | ██████████ 100% |
-| **[Learning]** Rhai 규칙 버전 관리 | ✅ 완료 | ██████████ 100% |
-| **[UI]** Frontend 학습 대시보드 | ✅ 완료 | ██████████ 100% |
-| **[UI]** 역할 기반 메뉴 필터링 (RBAC) | ✅ 완료 | ██████████ 100% |
-
-#### 📋 V1 Sprint 2 완료 작업 내역 (2025-12-01)
-- [x] **[UI]** 피드백 수집 UI 구현
-  - Backend: `backend/app/routers/feedback.py` - 피드백 CRUD API
-    - POST / - 피드백 생성 (positive, negative, correction)
-    - GET / - 피드백 목록 조회 (필터링, 페이지네이션)
-    - GET /stats - 피드백 통계
-    - GET /{id} - 피드백 상세
-    - PATCH /{id}/process - 처리됨 마킹
-    - DELETE /{id} - 삭제
-  - Frontend: `frontend/src/services/feedbackService.ts` - API 클라이언트
-  - Frontend: `frontend/src/components/FeedbackModal.tsx` - 상세 피드백 모달
-    - 피드백 유형 선택 (개선 필요/수정 제안)
-    - 6가지 이유 선택 (틀림, 부족, 관련없음, 이해어려움, 느림, 기타)
-    - 상세 내용 입력
-    - 수정 제안 시 원하는 답변 입력
-  - Frontend: ChatMessage에 피드백 버튼 추가
-    - 👍/👎 빠른 피드백
-    - 💬 상세 피드백 모달 열기
-- [x] **[Agent]** LearningAgent에 `create_ruleset` 도구 추가
-  - 자연어 요청을 Rhai 스크립트로 자동 변환
-  - DB 저장 (Ruleset 모델 사용)
-  - 센서 타입: temperature, pressure, humidity, vibration, flow_rate, defect_rate
-  - 액션 타입: notification, stop_line, log, maintenance
-- [x] **[Router]** MetaRouter 프롬프트 업데이트
-  - "룰셋", "규칙 만들어", "판단 규칙", "~면 경고", "~면 위험" 키워드 → learning 라우팅
-- [x] **[API]** agents.py에 tool_choice 조건부 설정
-  - 룰셋 생성 요청 감지 시 `create_ruleset` 도구 강제 호출
-- [x] **[UX]** 에이전트 응답 형식 간결화 (Chat-Optimized)
-  - LearningAgent, WorkflowPlannerAgent, BIPlannerAgent 프롬프트 업데이트
-  - UUID/코드 전문 출력 금지
-  - 테이블 1개 + 다음 단계 액션 형식으로 통일
-- [x] **[Bug Fix]** Workflow 저장 안되는 버그 수정
-  - 원인: SQLAlchemy JSONB 필드 mutation detection 실패
-  - 해결: `copy.deepcopy()` + `flag_modified()` 적용
-  - 파일: `backend/app/routers/workflows.py`
-- [x] **[DX]** 백엔드 서버 관리 스크립트 추가
-  - `backend/start_server.bat` - 기존 프로세스 종료 + 서버 시작
-  - `scripts/kill_port.bat` - 포트 점유 프로세스 종료 유틸리티
-  - 다중 서버 인스턴스 문제 방지
-- [x] **[Docs]** AI_GUIDELINES.md Verification Protocol 추가
-  - Rule 2에 "3. Verification Protocol (Mandatory)" 섹션 추가
-  - Backend: pytest 명령어 제시 필수
-  - Frontend: UI 동작 시나리오 명시 필수
-  - Infra/DB: Health Check 명령어 제시 필수
-- [x] **[Learning]** 규칙 자동 제안 시스템 구현
-  - Backend: `backend/app/services/feedback_analyzer.py` - 피드백 분석 서비스
-    - 피드백 패턴 분석 (analyze_feedback_patterns)
-    - 규칙 제안 생성 (generate_rule_proposals)
-    - 제안 승인/거절 처리 (approve_proposal, reject_proposal)
-  - Backend: `backend/app/routers/proposals.py` - Proposals API
-    - GET / - 제안 목록 조회
-    - GET /stats - 제안 통계
-    - POST /analyze - 피드백 분석 실행
-    - POST /{id}/review - 제안 승인/거절
-  - Backend: LearningAgent에 3개 도구 추가
-    - analyze_and_suggest_rules: 피드백 분석 및 규칙 제안
-    - list_pending_proposals: 대기 중인 제안 조회
-    - review_proposal: 제안 승인/거절
-  - Frontend: `frontend/src/components/ruleset/ProposalsPanel.tsx` - AI 제안 탭 UI
-  - Frontend: `frontend/src/services/proposalService.ts` - API 클라이언트
-  - Frontend: RulesetsPage에 룰셋/AI제안 탭 전환 UI 추가
-- [x] **[Learning]** A/B 테스트 프레임워크 구현
-  - Backend: `backend/app/models/core.py` - 4개 모델 추가
-    - `Experiment` - 실험 설정 (status, traffic_percentage, confidence_level)
-    - `ExperimentVariant` - 변형 (Control/Treatment, traffic_weight)
-    - `ExperimentAssignment` - 사용자 할당 (deterministic hashing)
-    - `ExperimentMetric` - 메트릭 기록
-  - Backend: `backend/app/services/experiment_service.py` - 서비스 구현
-    - 실험 CRUD, 생명주기 관리 (draft→running→paused→completed)
-    - MD5 해싱 기반 결정론적 사용자 할당
-    - Z-test 통계적 유의성 검정 (p-value 계산)
-  - Backend: `backend/app/routers/experiments.py` - REST API
-    - CRUD: GET/POST/PUT/DELETE /experiments
-    - 생명주기: /start, /pause, /resume, /complete, /cancel
-    - 할당: POST /assign (user_id/session_id 기반)
-    - 통계: GET /stats, GET /significance/{metric_name}
-  - Backend: `backend/migrations/006_experiments.sql` - DB 마이그레이션
-  - Frontend: `frontend/src/services/experimentService.ts` - API 클라이언트
-  - Frontend: `frontend/src/components/pages/ExperimentsPage.tsx` - 실험 관리 UI
-    - 실험 목록/상세 뷰
-    - 상태별 필터링 (draft, running, paused, completed, cancelled)
-    - 생명주기 액션 버튼 (시작, 일시정지, 재개, 완료, 취소)
-    - 변형별 통계 표시 (할당 수, 메트릭 평균)
-  - Frontend: Sidebar에 A/B 테스트 메뉴 추가
-  - Frontend: App.tsx에 experiments 라우트 추가
-
-#### 📋 V1 Sprint 2 추가 완료 작업 내역 (2025-12-02)
-- [x] **[Learning]** Rhai 규칙 버전 관리 구현
-  - Backend: `backend/app/models/core.py` - RulesetVersion 모델 추가
-    - version_id, ruleset_id, version_number, version_label
-    - rhai_script, description, change_summary, created_at
-    - Ruleset과 1:N 관계 (cascade delete)
-  - Backend: `backend/app/routers/rulesets.py` - 버전 관리 API
-    - GET /{ruleset_id}/versions - 버전 히스토리 조회
-    - GET /{ruleset_id}/versions/{version_id} - 특정 버전 상세
-    - POST /{ruleset_id}/versions - 현재 상태 스냅샷 저장
-    - POST /{ruleset_id}/versions/{version_id}/rollback - 버전 롤백
-    - DELETE /{ruleset_id}/versions/{version_id} - 최근 버전 삭제
-  - Frontend: `frontend/src/services/rulesetVersionService.ts` - API 클라이언트
-  - Frontend: `frontend/src/components/ruleset/VersionHistoryPanel.tsx` - 버전 히스토리 UI
-    - 접이식 패널 (버전 목록 표시)
-    - 스냅샷 저장, 미리보기, 롤백, 삭제 기능
-  - Frontend: RulesetsPage에 VersionHistoryPanel 통합
-- [x] **[UI]** Frontend 학습 대시보드 구현
-  - Frontend: `frontend/src/components/pages/LearningPage.tsx`
-    - 피드백 통계 섹션 (positive/negative/correction 비율)
-    - AI 제안 목록 (pending 제안 표시)
-    - A/B 테스트 요약 (running 실험 목록)
-  - Frontend: Sidebar에 Learning 메뉴 추가
-  - Frontend: App.tsx에 learning 라우트 추가
-- [x] **[UI]** 역할 기반 메뉴 필터링 (RBAC)
-  - Frontend: `frontend/src/components/layout/Sidebar.tsx`
-    - NavItem에 adminOnly 속성 추가
-    - Rulesets, A/B Tests, Learning 탭 admin 전용 설정
-    - user.role 기반 메뉴 필터링 로직
-
-### 🔌 V1 Sprint 3: 외부 시스템 연동 ✅ (100%)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[Integration]** Slack 알림 실제 연동 | ✅ 완료 | ██████████ 100% |
-| **[Integration]** Email 알림 연동 (SMTP) | ✅ 완료 | ██████████ 100% |
-| **[Integration]** ERP/MES Mock API | ✅ 완료 | ██████████ 100% |
-| **[Integration]** 실시간 센서 스트리밍 (WebSocket) | ✅ 완료 | ██████████ 100% |
-| **[Integration]** CSV/Excel Import | ✅ 완료 | ██████████ 100% |
-| **[Integration]** 데이터 동기화 스케줄러 | ✅ 완료 | ██████████ 100% |
-| **[UI]** Data 페이지 파일 업로드 UI | ✅ 완료 | ██████████ 100% |
-
-#### 📋 V1 Sprint 3 완료 작업 내역 (2025-11-28)
-- [x] **[Service]** Notification Service 구현 (`backend/app/services/notifications.py`)
-  - `SlackNotificationService` - Slack Webhook 알림 (httpx async)
-  - `EmailNotificationService` - SMTP 이메일 (smtplib)
-  - `SMSNotificationService` - SMS 알림 플레이스홀더 (V2 예정)
-  - `NotificationManager` - 알림 통합 관리자
-  - 환경변수 기반 설정 (graceful degradation)
-- [x] **[API]** Notifications Router 구현 (`backend/app/routers/notifications.py`)
-  - `GET /api/v1/notifications/status` - 알림 서비스 상태 조회
-  - `POST /api/v1/notifications/test/slack` - Slack 테스트
-  - `POST /api/v1/notifications/test/email` - Email 테스트
-  - `POST /api/v1/notifications/send` - 범용 알림 전송
-- [x] **[Workflow]** 워크플로우 실행기 통합 (`backend/app/routers/workflows.py`)
-  - DSL 노드 순차 실행
-  - 알림 액션 자동 실행 (send_slack_notification, send_email, send_sms)
-  - 실행 결과 상세 로깅
-- [x] **[Config]** 환경변수 업데이트 (`.env.example`)
-  - Slack: SLACK_WEBHOOK_URL, SLACK_DEFAULT_CHANNEL
-  - Email: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS
-
-#### 📋 V1 Sprint 3 추가 완료 작업 내역 (2025-12-01)
-- [x] **[Engine]** Workflow If/Else 분기 로직 구현 (`backend/app/services/workflow_engine.py`)
-  - `_execute_if_else_node()` - 조건 평가 후 true_branch/false_branch 분기 실행
-  - 중첩 분기 지원
-- [x] **[Engine]** Workflow Loop/Parallel 실행 구현
-  - `_execute_loop_node()` - 반복 실행 (max_iterations, condition 지원)
-  - `_execute_parallel_node()` - asyncio.gather() 기반 병렬 실행
-- [x] **[UI]** WorkflowEditor UI 업데이트 (`frontend/src/components/workflow/WorkflowEditor.tsx`)
-  - if_else, loop, parallel 노드 타입 추가
-  - 노드별 아이콘/색상/레이블 설정
-  - 노드 설정 UI (조건, 반복 횟수, 병렬 브랜치)
-- [x] **[WebSocket]** 실시간 센서 스트리밍 구현
-  - Backend: `sensors.py` WebSocket 엔드포인트 `/stream`
-  - Backend: `ConnectionManager` 연결 관리
-  - Frontend: `sensorStreamService.ts` WebSocket 클라이언트
-  - Frontend: `useSensorStream.ts` React Hook
-- [x] **[Import]** CSV/Excel Import 구현 (`backend/app/routers/sensors.py`)
-  - `POST /import` - 파일 업로드 (CSV, XLSX)
-  - `GET /import/template` - 템플릿 다운로드
-  - pandas + openpyxl 의존성 추가
-- [x] **[Scheduler]** 데이터 동기화 스케줄러 구현
-  - `backend/app/services/scheduler_service.py` - SchedulerService 클래스
-  - `backend/app/routers/scheduler.py` - 스케줄러 관리 API
-  - 기본 작업: 오래된 데이터 정리, 샘플 데이터 생성
-  - 작업 활성화/비활성화/즉시 실행 지원
-
-#### 📋 V1 Sprint 3 추가 완료 작업 내역 (2025-12-04)
-- [x] **[UI]** Data 페이지 파일 업로드 UI 구현
-  - Frontend: `frontend/src/services/api.ts` - FormData 지원 추가
-    - ApiClient에 multipart/form-data 업로드 지원
-  - Frontend: `frontend/src/components/ui/FileUploadZone.tsx` (신규)
-    - 드래그 앤 드롭 파일 업로드 컴포넌트
-    - 파일 검증, 상태 표시 (idle, uploading, success, error)
-    - 파일 크기/타입 제한 옵션
-  - Frontend: `frontend/src/components/pages/DataPage.tsx` 탭 구조 변경
-    - 3개 탭: [센서 데이터] [ERP/MES] [지식 베이스]
-  - Frontend: `frontend/src/components/data/SensorDataTab.tsx` (신규)
-    - 기존 DataPage에서 센서 데이터 로직 추출
-    - CSV/Excel 업로드 기능 추가 (POST /sensors/import)
-  - Frontend: `frontend/src/components/data/ErpMesDataTab.tsx` (신규)
-    - ERP/MES 데이터 목록/필터링
-    - Mock 데이터 생성기 (소스 타입, 레코드 타입, 개수 선택)
-    - CSV/Excel 파일 Import 기능
-  - Frontend: `frontend/src/services/erpMesService.ts` (신규)
-    - ERP/MES API 클라이언트 (목록 조회, Mock 생성, 파일 Import)
-  - Frontend: `frontend/src/components/data/RagDocumentsTab.tsx` (신규)
-    - RAG 문서 관리 UI (목록, 추가, 삭제)
-    - 파일 업로드 (PDF, TXT, MD) + 텍스트 직접 추가
-    - 벡터 검색 기능 (유사도 표시)
-  - Frontend: `frontend/src/services/ragService.ts` (신규)
-    - RAG API 클라이언트 (문서 CRUD, 검색, 파일 업로드)
-  - Backend: `backend/app/routers/erp_mes.py` - Import API 추가
-    - `POST /erp-mes/import` - CSV/Excel 파일 Import
-    - 인코딩 자동 감지 (UTF-8, CP949, Latin-1)
-    - 필드 자동 매핑 (external_id, quantity, status, timestamp)
-
-#### 📋 V1 Sprint 3 추가 완료 작업 내역 (2025-12-02)
-- [x] **[Integration]** ERP/MES Mock API 구현
-  - Backend: `backend/app/models/core.py` - 3개 ORM 모델 추가
-    - `ErpMesData` - JSONB 기반 유연한 ERP/MES 데이터 저장
-    - `FieldMapping` - 소스 필드 → 정규화 필드 매핑 설정
-    - `DataSource` - ERP/MES 연결 설정 (REST/SOAP/DB Direct)
-  - Backend: `backend/app/routers/erp_mes.py` - Mock API 라우터 (700+ lines)
-    - `GET /mock/types` - 지원 데이터 유형 조회
-    - `POST /mock/generate` - Mock 데이터 생성 (SAP/Oracle/MES 포맷)
-    - `GET /data` - ERP/MES 데이터 목록 조회
-    - `POST /data` - 데이터 수동 생성
-    - `GET /stats` - 데이터 통계
-    - `CRUD /mappings` - 필드 매핑 관리
-    - `CRUD /sources` - 데이터 소스 관리
-    - `POST /sources/{id}/test` - 연결 테스트 (MVP: Mock 응답)
-  - Mock 데이터 유형:
-    - ERP: production_order, inventory, bom (SAP/Oracle 필드명 형식)
-    - MES: work_order, equipment_status, quality_record
-  - 확장성 설계: V2에서 실제 Connector 추가 시 모델/API 재사용 가능
-
-### 🔐 V1 Sprint 4: 보안 강화 ✅ (100%)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[Security]** RBAC 접근 제어 | ✅ 완료 | ██████████ 100% |
-| **[Security]** 감사 로그 (Audit Log) | ✅ 완료 | ██████████ 100% |
-| **[Security]** OAuth2 Provider 연동 (Google) | ✅ 완료 | ██████████ 100% |
-| **[Security]** API Key 관리 | ✅ 완료 | ██████████ 100% |
-
-#### 📋 V1 Sprint 4 완료 작업 내역 (2025-12-01)
-- [x] **[DB]** RBAC & Audit Log 마이그레이션 (`backend/migrations/007_rbac_audit.sql`)
-  - `core.permissions` - 권한 정의 테이블
-  - `core.role_permissions` - 역할-권한 매핑 테이블
-  - `audit.audit_logs` - 감사 로그 테이블 (인덱스 포함)
-  - 기본 권한 시드 데이터 (workflows, rulesets, sensors, experiments, users, settings, audit)
-  - 역할별 권한 매핑 (admin: 전체, user: CRUD+실행, viewer: 조회만)
-- [x] **[Service]** RBAC 서비스 구현 (`backend/app/services/rbac_service.py`)
-  - `Role`, `Resource`, `Action` Enum 정의
-  - 인메모리 권한 매핑 (ROLE_PERMISSIONS)
-  - `has_permission()` - 권한 체크 함수
-  - `check_permission()` - FastAPI 의존성 생성자
-  - `require_role()` - 역할 요구 의존성 생성자
-  - `PermissionChecker` - 클래스 기반 권한 체커
-  - 리소스별 권한 체커 인스턴스 (WorkflowsPermission, RulesetsPermission 등)
-- [x] **[Service]** Audit Log 서비스 구현 (`backend/app/services/audit_service.py`)
-  - `mask_sensitive_data()` - 민감 정보 마스킹 (password, token 등)
-  - `extract_resource_from_path()` - API 경로에서 리소스 추출
-  - `method_to_action()` - HTTP 메서드를 액션으로 변환
-  - `create_audit_log()` - 감사 로그 생성
-  - `get_audit_logs()` - 감사 로그 조회 (필터링 지원)
-  - `get_audit_stats()` - 감사 로그 통계
-- [x] **[Middleware]** Audit Log 미들웨어 (`backend/app/middleware/audit.py`)
-  - `AuditMiddleware` - 모든 API 요청 자동 기록
-  - 제외 경로 설정 (/health, /docs, /api/v1/audit)
-  - 클라이언트 IP 추출 (X-Forwarded-For 지원)
-  - JWT 토큰에서 사용자 정보 추출
-  - 비동기 로그 기록 (응답 지연 최소화)
-- [x] **[API]** Audit Log API 라우터 (`backend/app/routers/audit.py`)
-  - `GET /api/v1/audit` - 감사 로그 목록 조회 (관리자 전용)
-  - `GET /api/v1/audit/stats` - 감사 로그 통계
-  - `GET /api/v1/audit/my` - 내 감사 로그 조회 (모든 사용자)
-- [x] **[Schema]** Audit Log 스키마 (`backend/app/schemas/audit.py`)
-  - `AuditLogResponse`, `AuditLogListResponse`, `AuditStatsResponse`, `AuditLogFilter`
-- [x] **[Config]** main.py 업데이트
-  - Audit Log 미들웨어 등록 (AUDIT_LOG_ENABLED 환경변수)
-  - Audit 라우터 등록 (/api/v1/audit)
-
-#### 📋 V1 Sprint 4 추가 완료 작업 내역 (2025-12-02)
-- [x] **[Security]** API Key 관리 시스템 구현
-  - Backend: `backend/app/models/core.py` - ApiKey ORM 모델 추가
-    - key_id, tenant_id, user_id, name, description
-    - key_prefix (tfk_XXXXXXXX), key_hash (SHA-256)
-    - scopes (JSONB): read, write, delete, admin, sensors, workflows, rulesets, erp_mes, notifications
-    - expires_at, last_used_at, last_used_ip, usage_count
-    - is_active, revoked_at, revoked_reason
-  - Backend: `backend/app/services/api_key_service.py` - API Key 서비스
-    - generate_api_key(): tfk_ 접두사 + 32자 랜덤 키 생성
-    - create_api_key(): 키 생성 (해시만 저장, 평문 키는 최초 1회만 반환)
-    - validate_api_key(): 키 검증 + 사용 기록 업데이트
-    - rotate_api_key(): 키 회전 (기존 폐기 + 새 키 발급)
-    - revoke_api_key(): 키 폐기
-    - list_api_keys(), get_api_key_stats(): 조회/통계
-  - Backend: `backend/app/routers/api_keys.py` - API Key REST API
-    - GET /scopes - 사용 가능한 스코프 목록
-    - GET / - API Key 목록 조회
-    - GET /stats - API Key 통계
-    - POST / - API Key 생성 (전체 키 1회 반환)
-    - GET /{key_id} - API Key 상세
-    - POST /{key_id}/rotate - API Key 회전
-    - POST /{key_id}/revoke - API Key 폐기
-    - DELETE /{key_id} - API Key 삭제
-  - Backend: `backend/app/auth/dependencies.py` - 이중 인증 지원
-    - JWT Bearer Token + X-API-Key 헤더 동시 지원
-    - API Key 접두사(tfk_) 감지 시 API Key 인증으로 전환
-    - 사용 기록 자동 업데이트 (last_used_at, last_used_ip, usage_count)
-  - 테스트 완료:
-    - ✅ API Key 생성 (tfk_1DkPC8i7...)
-    - ✅ API Key로 인증 (X-API-Key 헤더)
-    - ✅ API Key 회전 (새 키 발급 + 이전 키 폐기)
-    - ✅ 폐기된 키로 인증 실패 (401)
-- [x] **[Security]** Google OAuth2 연동 구현
-  - Backend: `backend/app/config.py` - OAuth 설정 추가
-    - google_client_id, google_client_secret, google_redirect_uri
-  - Backend: `backend/app/models/core.py` - User 모델 OAuth 필드 추가
-    - oauth_provider, oauth_provider_id, profile_image_url, display_name
-    - password_hash nullable 처리 (OAuth 사용자는 비밀번호 없음)
-  - Backend: `backend/app/services/oauth_service.py` - OAuth 서비스 (NEW)
-    - get_google_auth_url(): 로그인 URL + state 토큰 생성
-    - exchange_google_code(): Authorization code → Access Token 교환
-    - get_google_user_info(): Access Token으로 사용자 정보 조회
-  - Backend: `backend/app/schemas/auth.py` - OAuth 스키마 추가
-    - GoogleAuthUrlResponse, OAuthCallbackRequest, OAuthLoginResponse
-  - Backend: `backend/app/routers/auth.py` - OAuth 엔드포인트 추가
-    - GET /google/login - 로그인 시작 (리다이렉트 URL 반환)
-    - GET /google/callback - 콜백 처리 (JWT 토큰 발급)
-  - Backend: `backend/migrations/008_oauth_fields.sql` - DB 마이그레이션
-  - 테스트 완료:
-    - ✅ Google OAuth 로그인 URL 생성 확인
-    - ✅ State 토큰 (CSRF 방지) 생성 확인
-
----
-
-## 🚀 Production 배포 준비 ✅ (2025-12-03)
-
-### 📋 완료 작업 내역
-- [x] **[Docker]** Production Docker Compose 구성 (`docker-compose.prod.yml`)
-  - 내부/외부 네트워크 분리 (triflow-internal, triflow-external)
-  - 리소스 제한 설정 (memory limits/reservations)
-  - 헬스체크 개선 (start_period 추가)
-  - Backend, Prometheus, Grafana, Nginx 서비스 포함
-- [x] **[Config]** 환경별 설정 분리
-  - `.env.production.example` - Production 환경 템플릿
-  - `.env.staging.example` - Staging 환경 템플릿
-  - 필수 환경변수 검증 로직 포함
-- [x] **[Monitoring]** Prometheus + Grafana 설정
-  - `monitoring/prometheus.yml` - Prometheus 설정
-  - `monitoring/grafana/provisioning/` - Grafana 프로비저닝
-  - `triflow-overview.json` - Overview 대시보드 (RPS, 에러율, 응답시간)
-- [x] **[Scripts]** 배포 스크립트 정리
-  - `scripts/deploy.sh` - Linux/macOS 배포 스크립트
-  - `scripts/deploy.ps1` - Windows PowerShell 배포 스크립트
-  - `scripts/health-check.sh` - 헬스체크 스크립트
-  - `scripts/backup.sh` - DB 백업 스크립트
-- [x] **[Docs]** 배포 문서 작성
-  - `docs/DEPLOYMENT.md` - Production 배포 가이드
-  - `docs/TESTING.md` - 테스트 가이드
-
-### 🧪 E2E 테스트 강화
-- [x] **[Test]** pytest 테스트 프레임워크 설정
-  - `backend/pytest.ini` - pytest 설정
-  - `backend/tests/conftest.py` - fixtures 및 설정
-  - `backend/requirements-test.txt` - 테스트 의존성
-- [x] **[Test]** 테스트 케이스 작성
-  - `test_auth.py` - 인증 테스트 (9개 케이스)
-  - `test_sensors.py` - 센서 테스트 (6개 케이스)
-  - `test_workflows.py` - 워크플로우 테스트 (10개 케이스)
-  - `test_rulesets.py` - 규칙 테스트 (8개 케이스)
-  - `test_chat.py` - 채팅/AI 테스트 (8개 케이스)
-  - `test_e2e_flows.py` - E2E 플로우 테스트 (10개 케이스)
-- [x] **[Scripts]** 테스트 실행 스크립트
-  - `scripts/run-tests.sh` - bash 테스트 러너
-  - `scripts/run-tests.ps1` - PowerShell 테스트 러너
-
-### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. 테스트 실행
-.\scripts\run-tests.ps1 -Coverage
-
-# 2. Production 배포 (Staging 환경)
-cp .env.staging.example .env.staging
-# .env.staging 파일 편집 (API 키, 비밀번호 설정)
-.\scripts\deploy.ps1 -Environment staging -Build
-
-# 3. 헬스체크
-curl http://localhost:8000/health
-curl http://localhost:9090/-/healthy  # Prometheus
-curl http://localhost:3000/api/health  # Grafana
-```
-
----
-
-## 📊 모니터링 시스템 구축 ✅ (2025-12-10)
-
-### 📋 완료 작업 내역
-- [x] **[Backend]** Prometheus 커스텀 메트릭 정의 (`backend/app/utils/metrics.py`)
-  - HTTP 요청 메트릭 (requests_total, duration_seconds, active_connections)
-  - LLM 토큰 사용량/비용 메트릭 (calls_total, tokens_total, cost_usd)
-  - Agent 호출 메트릭 (agent_calls_total, response_duration)
-  - 인증 메트릭 (auth_attempts, failures, token_operations)
-- [x] **[Backend]** 메트릭 수집 미들웨어 (`backend/app/middleware/metrics.py`)
-  - 모든 HTTP 요청 자동 메트릭 수집
-  - 엔드포인트 정규화 (UUID → `{id}`)
-  - `/metrics`, `/health`, `/docs` 경로 제외
-- [x] **[Backend]** Sentry 에러 트래킹 연동 (`backend/app/main.py`)
-  - FastAPI, SQLAlchemy, Redis 통합
-  - 환경별 샘플링 설정 (traces, profiles)
-  - PII 필터링 (`send_default_pii=False`)
-- [x] **[Infra]** Docker Compose 업데이트 (`docker-compose.yml`)
-  - Prometheus v2.47.0 서비스 추가
-  - Grafana 10.2.0 서비스 추가
-  - 볼륨 및 네트워크 설정
-- [x] **[Config]** Prometheus 설정 개선 (`monitoring/prometheus.yml`)
-  - `metrics_path: '/metrics/'` (trailing slash 수정)
-  - Local 개발용 `host.docker.internal` 타겟 추가
-- [x] **[Dashboard]** Grafana 대시보드 업데이트 (`monitoring/grafana/provisioning/dashboards/json/triflow-overview.json`)
-  - System Overview 패널 (RPS, 에러율, 응답시간)
-  - LLM Token Usage 패널 (토큰, 비용)
-  - Agent Metrics 패널 (호출 수, 성공률)
-
-### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. Backend 서버 실행
-cd backend && python -m uvicorn app.main:app --reload
-
-# 2. 메트릭 수집 확인
-curl http://localhost:8000/metrics/ | findstr http_requests_total
-
-# 3. Prometheus/Grafana 실행
-docker-compose up -d prometheus grafana
-
-# 4. Prometheus Targets 확인
-curl http://localhost:9090/api/v1/targets
-
-# 5. Grafana 접속 (admin / triflow_grafana_password)
-# http://localhost:3001
-```
-
----
-
-## 🐛 V2 버그 수정 (2025-12-16)
-
-### 📋 완료 작업 내역
-- [x] **[Bug Fix]** Workflows 테이블 스키마 불일치 수정
-  - 문제: `dsl_digest` 등 7개 컬럼이 DB에 없어 워크플로우 저장 시 500 에러
-  - 해결: `backend/migrations/013_workflows_schema_extension.sql` 마이그레이션 생성
-  - 추가 컬럼: dsl_digest, trigger_config, timeout_seconds, max_retry, tags, metadata, activated_at
-- [x] **[Bug Fix]** 504 Timeout 오류 분류 버그 수정 (`backend/app/utils/errors.py`)
-  - 문제: `classify_error()`가 에러 메시지에 "timeout" 문자열 포함 시 모두 504로 분류
-  - 해결: 예외 타입 기반 분류로 변경 (`_is_timeout_exception()` 헬퍼 추가)
-- [x] **[Bug Fix]** 워크플로우 삭제 시 500 에러 수정
-  - 문제: `workflow_steps.step_id` 컬럼이 DB에서는 `id`로 정의되어 스키마 불일치
-  - 해결: `backend/migrations/014_workflow_steps_column_rename.sql` 마이그레이션 생성
-  - 작업: `workflow_steps.id` → `step_id` 컬럼명 변경
-- [x] **[UI]** 로딩 인디케이터 가시성 개선 (`frontend/src/components/ChatContainer.tsx`)
-  - 문제: `animate-pulse` 애니메이션이 멈춘 것처럼 보임
-  - 해결: 회전 스피너 (`animate-spin`)로 변경
-
-### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. 마이그레이션 적용
-docker exec triflow-postgres psql -U triflow -d triflow_ai -f /tmp/013_workflows_schema_extension.sql
-docker exec triflow-postgres psql -U triflow -d triflow_ai -f /tmp/014_workflow_steps_column_rename.sql
-
-# 2. 워크플로우 삭제 테스트
-# Frontend에서 Workflows 탭 → 워크플로우 선택 → 삭제 버튼 클릭
-
-# 3. 워크플로우 저장 테스트 (채팅)
-# "온도 80도 넘으면 슬랙 알림 보내" → 워크플로우 미리보기 → "적용" 버튼 클릭
-```
-
----
-
-## 🧠 V1+ 에이전트 고도화 (Agent Enhancement)
-
-### RAG (Retrieval-Augmented Generation) 시스템 ✅ (2025-12-03)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[DB]** RAG 스키마 생성 (rag.documents, rag.embeddings) | ✅ 완료 | ██████████ 100% |
-| **[Service]** RAG Service 구현 (문서 추가/검색/삭제) | ✅ 완료 | ██████████ 100% |
-| **[API]** RAG API 엔드포인트 구현 | ✅ 완료 | ██████████ 100% |
-| **[Fix]** pgvector 검색 SQL 구문 오류 수정 | ✅ 완료 | ██████████ 100% |
-
-#### 📋 RAG 시스템 완료 작업 내역
-- [x] **[DB]** RAG 데이터베이스 스키마 (`backend/migrations/002_init_schemas.sql`)
-  - `rag.documents` - 문서 메타데이터 (document_id, tenant_id, title, document_type 등)
-  - `rag.embeddings` - 벡터 임베딩 (embedding_id, document_id, chunk_text, embedding vector(384))
-  - pgvector 확장 활성화 (`CREATE EXTENSION IF NOT EXISTS vector`)
-- [x] **[Service]** RAG 서비스 구현 (`backend/app/services/rag_service.py`)
-  - `add_document()` - 문서 추가 (자동 청킹 + 임베딩 생성)
-  - `search()` - 벡터 유사도 검색 (코사인 유사도)
-  - `list_documents()` - 문서 목록 조회
-  - `delete_document()` - 문서 삭제 (CASCADE 임베딩 삭제)
-  - `get_context()` - 에이전트용 컨텍스트 생성
-  - 임베딩 프로바이더: sentence-transformers (로컬) / Voyage AI (API) / Mock (개발용)
-- [x] **[API]** RAG API 엔드포인트 (`backend/app/routers/rag.py`)
-  - `POST /api/v1/rag/documents` - 문서 추가
-  - `POST /api/v1/rag/documents/upload` - 파일 업로드 (txt, md, pdf)
-  - `POST /api/v1/rag/search` - 벡터 검색
-  - `GET /api/v1/rag/documents` - 문서 목록
-  - `DELETE /api/v1/rag/documents/{id}` - 문서 삭제
-  - `GET /api/v1/rag/context` - 컨텍스트 생성
-- [x] **[Fix]** pgvector 검색 SQL 구문 오류 수정 (`backend/app/services/rag_service.py:282-297`)
-  - 문제: SQLAlchemy `:param` 바인딩과 PostgreSQL `::type` 캐스팅 충돌
-  - 해결: `::vector` → `CAST(:query_embedding AS vector)` 변경
-  - 세 곳 수정: similarity 계산, WHERE 조건, ORDER BY
-
-#### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. 서버 시작
-cd c:/dev/triflow-ai/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# 2. 로그인 (토큰 획득)
-curl -s -X POST "http://localhost:8000/api/v1/auth/login" -H "Content-Type: application/json" -d '{"email":"admin@triflow.ai","password":"admin1234"}' | jq -r '.access_token'
-
-# 3. 문서 추가
-curl -s -X POST "http://localhost:8000/api/v1/rag/documents" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"title":"테스트 문서","content":"테스트 내용입니다.","document_type":"MANUAL"}'
-
-# 4. 검색 테스트
-curl -s -X POST "http://localhost:8000/api/v1/rag/search" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"query":"테스트","top_k":5}'
-
-# 5. 문서 목록
-curl -s "http://localhost:8000/api/v1/rag/documents" -H "Authorization: Bearer $TOKEN"
-
-# 6. 컨텍스트 생성
-curl -s "http://localhost:8000/api/v1/rag/context?query=테스트" -H "Authorization: Bearer $TOKEN"
-```
-
-### Claude API 통합 테스트 ✅ (2025-12-04)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[API]** Claude API 직접 호출 테스트 | ✅ 완료 | ██████████ 100% |
-| **[Agent]** MetaRouterAgent Tool Calling 테스트 | ✅ 완료 | ██████████ 100% |
-| **[Agent]** BIPlannerAgent Tool Calling 테스트 | ✅ 완료 | ██████████ 100% |
-| **[Agent]** WorkflowPlannerAgent Tool Calling 테스트 | ✅ 완료 | ██████████ 100% |
-
-### 에이전트 체인 오케스트레이션 ✅ (2025-12-04)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[Service]** AgentOrchestrator 서비스 클래스 구현 | ✅ 완료 | ██████████ 100% |
-| **[Router]** agents.py 라우터 리팩토링 | ✅ 완료 | ██████████ 100% |
-| **[Test]** 오케스트레이션 통합 테스트 | ✅ 완료 | ██████████ 100% |
-
-#### 📋 에이전트 체인 오케스트레이션 완료 작업 내역
-- [x] **[Service]** AgentOrchestrator 서비스 클래스 구현 (`backend/app/services/agent_orchestrator.py`)
-  - `__init__`: MetaRouterAgent + 4개 Sub-Agent 인스턴스 초기화
-  - `get_agent_status()`: 모든 에이전트 상태 조회
-  - `process()`: 전체 파이프라인 (MetaRouter → Sub-Agent 자동 연결)
-    - Step 1: MetaRouter로 Intent 분류 및 라우팅
-    - Step 2: routing_info에서 target_agent 추출
-    - Step 3: Sub-Agent 자동 실행 (judgment, workflow, bi, learning)
-    - Step 4: 응답 포맷팅 (tool_calls, iterations, routing_info 포함)
-  - `_route()`: MetaRouter 라우팅 헬퍼
-  - `_execute_sub_agent()`: Sub-Agent 실행 (컨텍스트 병합)
-  - `_get_tool_choice()`: 에이전트별 tool_choice 결정
-    - workflow → create_workflow 강제
-    - learning + 룰셋 키워드 → create_ruleset 강제
-  - `_format_response()`: 응답 포맷팅
-  - `execute_direct()`: MetaRouter 우회 직접 실행
-  - 전역 싱글톤 인스턴스: `orchestrator`
-- [x] **[Router]** agents.py 라우터 리팩토링 (`backend/app/routers/agents.py`)
-  - 기존 418줄 → 240줄로 축소 (40% 코드 감소)
-  - 중복 에이전트 인스턴스 제거 (orchestrator 사용)
-  - `/chat`: `orchestrator.process()` 사용
-  - `/judgment`: `orchestrator.execute_direct("judgment", ...)` 사용
-  - `/status`: `orchestrator.get_agent_status()` 사용
-  - `/chat/stream`: orchestrator 결과를 SSE로 스트리밍
-- [x] **[Test]** 서버 로그 검증
-  - `AgentOrchestrator initialized with 5 agents` 로그 확인
-  - `/api/v1/agents/status` 엔드포인트 정상 응답 확인
-  - 5개 에이전트 상태 반환 (meta_router, judgment, workflow, bi, learning)
-
-#### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. 서버 시작
-cd c:/dev/triflow-ai/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# 2. 에이전트 상태 확인 (AgentOrchestrator 사용 검증)
-curl -s http://localhost:8000/api/v1/agents/status | python -m json.tool
-
-# 3. 오케스트레이션 테스트 (MetaRouter → Sub-Agent 자동 연결)
-curl -s -X POST http://localhost:8000/api/v1/agents/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "센서 데이터를 분석해줘", "context": {}}'
-
-# 4. 직접 실행 테스트 (MetaRouter 우회)
-curl -s -X POST http://localhost:8000/api/v1/agents/judgment \
-  -H "Content-Type: application/json" \
-  -d '{"message": "온도 분석", "sensor_data": {"temperature": 75.5}}'
-```
-
-#### 📋 Claude API 통합 테스트 완료 작업 내역
-- [x] **[API]** Claude API 직접 호출 테스트
-  - API Key 설정 확인 (`ANTHROPIC_API_KEY`)
-  - Model: `claude-sonnet-4-5-20250929`
-  - 응답 정상 확인 (Input: 18 tokens, Output: 10 tokens)
-- [x] **[Agent]** MetaRouterAgent Tool Calling 테스트
-  - 3가지 Intent 분류 시나리오 테스트
-  - Test 1: "센서 이상 감지" → judgment (confidence: 0.95)
-  - Test 2: "생산량 차트" → bi (confidence: 0.95)
-  - Test 3: "워크플로우 생성" → workflow (confidence: 0.95)
-  - Tool Calls: classify_intent → extract_slots → route_request
-- [x] **[Agent]** BIPlannerAgent Tool Calling 테스트
-  - 3단계 Tool Calling 검증: get_table_schema → execute_safe_sql → generate_chart_config
-  - tenant_id 필터 자동 포함 확인
-  - Chart Type: line (생산량 추이 분석)
-- [x] **[Agent]** WorkflowPlannerAgent Tool Calling 테스트
-  - 자연어 → 워크플로우 DSL 변환 검증
-  - Test: "온도 80도 넘으면 슬랙 알림" →
-    - trigger_type: event
-    - condition_sensor_type: temperature
-    - condition_operator: >
-    - condition_value: 80
-    - action_type: send_slack_notification
-    - action_channel: #alerts
-
-#### 🔍 검증 방법 (How to Test)
-```python
-# Claude API 직접 테스트 (DB 없이)
-cd c:/dev/triflow-ai/backend
-python -c "
-from dotenv import load_dotenv
-load_dotenv()
-import os
-from anthropic import Anthropic
-
-client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-response = client.messages.create(
-    model='claude-sonnet-4-5-20250929',
-    max_tokens=256,
-    messages=[{'role': 'user', 'content': 'Hello'}]
-)
-print(response.content[0].text)
-"
-```
-
----
-
-### 🔧 버그 수정 및 유지보수 (2025-12-05)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[Fix]** 채팅 API 응답 없음 버그 수정 | ✅ 완료 | ██████████ 100% |
-| **[DX]** start.bat 스크립트 개선 | ✅ 완료 | ██████████ 100% |
-
-#### 📋 유지보수 작업 완료 내역 (2025-12-05)
-- [x] **[Fix]** 채팅 API 응답 없음 버그 수정 (`backend/app/middleware/pii_masking.py`)
-  - 문제: PII 마스킹 미들웨어에서 `await request.body()` 호출 시 body 소비
-  - 원인: 마스킹이 필요 없는 경우에도 body가 이미 소비되어 빈 body로 요청 전달
-  - 해결: Body를 읽은 후 마스킹 여부와 관계없이 항상 새 Request 객체 생성하여 body 복원
-  - 영향: `/api/v1/agents/chat`, `/api/v1/agents/chat/stream` 엔드포인트 정상화
-- [x] **[DX]** start.bat 스크립트 개선
-  - PowerShell 스크립트(`start.ps1`)로 전환하여 안정성 향상
-  - docker-compose 파일 경로 명시적 지정 (`-f c:\dev\triflow-ai\docker-compose.yml`)
-  - 백엔드/프론트엔드 실행 로그 상세 표시
-  - Health Check 자동 수행 및 결과 표시
-  - stop.bat에도 동일하게 경로 명시
-
-#### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. 서버 시작
-cd c:/dev/triflow-ai/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# 2. 채팅 API 테스트 (일반)
-python -c "import requests; r=requests.post('http://localhost:8000/api/v1/agents/chat', json={'message':'hello'}); print('Status:', r.status_code, 'Agent:', r.json().get('agent_name'))"
-
-# 3. 스트리밍 API 테스트
-python -c "import requests; r=requests.post('http://localhost:8000/api/v1/agents/chat/stream', json={'message':'hello'}, stream=True); print([l for l in list(r.iter_lines())[:5]])"
-
-# 4. start.bat 테스트
-더블 클릭으로 start.bat 실행 → Docker 컨테이너 + Backend + Frontend 정상 시작 확인
-```
-
-### 🎨 UI/UX 개선 (2025-12-05)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[UI]** Toast 알림 시스템 구현 | ✅ 완료 | ██████████ 100% |
-| **[UI]** ConfirmDialog 컴포넌트 구현 | ✅ 완료 | ██████████ 100% |
-| **[UI]** alert() → Toast 변환 (전체 앱) | ✅ 완료 | ██████████ 100% |
-| **[UI]** confirm() → ConfirmDialog 변환 (전체 앱) | ✅ 완료 | ██████████ 100% |
-
-#### 📋 UI/UX 개선 완료 작업 내역
-- [x] **[UI]** Toast 알림 컴포넌트 구현 (`frontend/src/components/ui/Toast.tsx`)
-  - ToastProvider 컨텍스트 (전역 상태 관리)
-  - useToast 훅 (success, error, warning, info 메서드)
-  - ToastItem 컴포넌트 (애니메이션, 자동 닫힘)
-  - ToastContainer (우측 상단 고정 위치)
-  - 타입별 아이콘/색상 (success=녹색, error=빨강, warning=노랑, info=파랑)
-- [x] **[UI]** ConfirmDialog 컴포넌트 구현 (`frontend/src/components/ui/Toast.tsx`)
-  - toast.confirm() 메서드 (Promise<boolean> 반환)
-  - ConfirmOptions 인터페이스 (title, message, confirmText, cancelText, variant)
-  - 3가지 variant 스타일 (danger=빨강, warning=노랑, info=파랑)
-  - 배경 블러 + 모달 애니메이션
-- [x] **[UI]** alert() → Toast 변환 (8개 파일)
-  - `FlowEditor.tsx` - 저장/실행/삭제 알림
-  - `WorkflowsPage.tsx` - 워크플로우 CRUD 알림
-  - `RulesetsPage.tsx` - 룰셋 CRUD 알림
-  - `ExperimentsPage.tsx` - 실험 상태 변경 알림
-  - `ProposalsPanel.tsx` - 제안 승인/거절 알림
-  - `RagDocumentsTab.tsx` - 문서 삭제 알림
-  - `ErpMesDataTab.tsx` - 데이터 삭제 알림
-- [x] **[UI]** confirm() → ConfirmDialog 변환 (8개 파일)
-  - `FlowEditor.tsx` - 노드 삭제 확인
-  - `WorkflowsPage.tsx` - 워크플로우 삭제, 로그 삭제 확인
-  - `RulesetsPage.tsx` - 룰셋 삭제 확인
-  - `ExperimentsPage.tsx` - 실험 완료/취소/삭제 확인
-  - `ProposalsPanel.tsx` - 제안 삭제 확인
-  - `RagDocumentsTab.tsx` - 문서 삭제 확인
-  - `ErpMesDataTab.tsx` - 데이터 삭제 확인
-
-#### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. Frontend 실행
-cd c:/dev/triflow-ai/frontend && npm run dev
-
-# 2. Toast 테스트
-# - Workflows 페이지에서 워크플로우 저장 → 녹색 성공 토스트
-# - 저장 실패 시 → 빨간 에러 토스트
-
-# 3. ConfirmDialog 테스트
-# - Workflows 페이지에서 워크플로우 삭제 클릭 → 빨간 danger 모달
-# - Experiments 페이지에서 실험 완료 클릭 → 파란 info 모달
-# - Experiments 페이지에서 실험 취소 클릭 → 노란 warning 모달
-```
-
-### 🔧 Settings API 및 알림 설정 (2025-12-10)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[API]** Settings API 구현 (암호화 저장) | ✅ 완료 | ██████████ 100% |
-| **[Service]** SettingsService 구현 (DB + 환경변수 fallback) | ✅ 완료 | ██████████ 100% |
-| **[UI]** Settings 페이지 알림 설정 UI 개선 | ✅ 완료 | ██████████ 100% |
-| **[Integration]** NotificationManager DB 설정 연동 | ✅ 완료 | ██████████ 100% |
-
-#### 📋 Settings API 완료 작업 내역
-- [x] **[Service]** SettingsService 구현 (`backend/app/services/settings_service.py`)
-  - `EncryptionService` - Fernet 대칭키 암호화 (sensitive 설정용)
-  - `SettingsService` - Redis 캐시 + PostgreSQL 저장
-  - DB 우선, 환경변수 fallback 전략
-  - 설정 정의: `SETTING_DEFINITIONS` (slack_webhook_url, smtp_* 등)
-  - 민감 정보 마스킹: `mask_value()` (예: `https://hooks...***...xyz`)
-- [x] **[API]** Settings Router 구현 (`backend/app/routers/settings.py`)
-  - `GET /api/v1/settings` - 설정 목록 조회 (카테고리 필터)
-  - `GET /api/v1/settings/{key}` - 단일 설정 조회
-  - `PUT /api/v1/settings/{key}` - 설정 업데이트
-  - `DELETE /api/v1/settings/{key}` - 설정 삭제 (환경변수 fallback)
-  - `POST /api/v1/settings/bulk` - 일괄 업데이트
-  - `POST /api/v1/settings/test/slack` - Slack 연결 테스트
-  - `POST /api/v1/settings/test/email` - Email 연결 테스트
-- [x] **[Frontend]** settingsService 구현 (`frontend/src/services/settingsService.ts`)
-  - API 클라이언트 (getSettings, updateSetting, testSlack, testEmail)
-- [x] **[UI]** SettingsPage 알림 설정 개선 (`frontend/src/components/pages/SettingsPage.tsx`)
-  - Gmail 프리셋 버튼 (smtp.gmail.com, 587, TLS)
-  - 설정 상태 배지 (✓ 설정됨 / ○ 미설정)
-  - Email 필수 필드 진척도 표시 (○ 3/5)
-  - 민감 정보 마스킹 표시 ("저장된 값이 있습니다")
-  - Slack/Email 테스트 버튼 (실제 메시지 전송)
-- [x] **[Integration]** NotificationManager DB 설정 연동 (`backend/app/services/notifications.py`)
-  - `_get_setting()` 메서드 - DB 우선, 환경변수 fallback
-  - SlackNotificationService: DB에서 webhook_url, default_channel 조회
-  - EmailNotificationService: DB에서 SMTP 설정 조회
-
-#### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. 서버 시작
-cd c:/dev/triflow-ai/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# 2. 관리자 로그인
-TOKEN=$(curl -s -X POST "http://localhost:8000/api/v1/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@triflow.ai","password":"admin1234"}' | jq -r '.access_token')
-
-# 3. 설정 목록 조회
-curl -s "http://localhost:8000/api/v1/settings" -H "Authorization: Bearer $TOKEN"
-
-# 4. Slack Webhook 설정
-curl -s -X PUT "http://localhost:8000/api/v1/settings/slack_webhook_url" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"value":"https://hooks.slack.com/services/xxx"}'
-
-# 5. Frontend UI 확인
-# - Settings 페이지 → 알림 설정 섹션
-# - Gmail 자동 입력 버튼 클릭 → SMTP 설정 자동 채움
-# - 설정 저장 → 상태 배지 "✓ 설정됨" 확인
-```
-
-### 🧪 테스트 안정화 (2025-12-10)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[Test]** SQLite 폴백 지원 | ✅ 완료 | ██████████ 100% |
-| **[Test]** Mock fixture 수정 (orchestrator 패턴) | ✅ 완료 | ██████████ 100% |
-| **[Test]** 전체 테스트 통과 (537 passed) | ✅ 완료 | ██████████ 100% |
-
-#### 📋 테스트 안정화 완료 작업 내역
-- [x] **[Test]** SQLite 폴백 지원 (`backend/tests/conftest.py`)
-  - `check_postgres_available()` - PostgreSQL 연결 가능 여부 확인
-  - `USE_SQLITE` 환경변수 또는 PostgreSQL 불가 시 SQLite 사용
-  - `pytest_collection_modifyitems` - DB 의존 테스트 자동 스킵
-  - SQLite용 audit_logs 테이블 스키마 (UUID → TEXT)
-- [x] **[Test]** Mock fixture 수정
-  - 기존: `app.routers.agents.meta_router` 패치 (존재하지 않음)
-  - 변경: `app.routers.agents.orchestrator` 패치
-  - `create_mock_orchestrator()` 헬퍼 함수 추가
-  - 4개 fixture 수정: mock_agents, mock_meta_router_judgment/workflow/bi
-- [x] **[Config]** pytest.ini 마커 추가
-  - `requires_db` 마커 등록 (PostgreSQL 필수 테스트용)
-
-#### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. SQLite 모드 테스트 (Docker 없이)
-cd c:/dev/triflow-ai/backend
-USE_SQLITE=1 python -m pytest tests/ -v --ignore=tests/integration
-
-# 2. PostgreSQL 모드 테스트 (Docker 필요)
-docker-compose up -d postgres redis
-python -m pytest tests/ -v
-
-# 예상 결과: 537 passed, 1 skipped
-```
-
----
-
-## 🚨 V1 미완료 항목 요약 (우선순위별)
-
-### 높은 우선순위 (V1 완료 필수) - ✅ 모두 완료!
-| # | 항목 | Sprint | 상태 |
-| :--- | :--- | :--- | :--- |
-| 1 | ~~If/Else 분기 로직~~ | Sprint 1 | ✅ 완료 |
-| 2 | ~~Loop/Parallel 실행~~ | Sprint 1 | ✅ 완료 |
-| 3 | ~~실시간 센서 스트리밍~~ | Sprint 3 | ✅ 완료 |
-| 4 | ~~ERP/MES Mock API~~ | Sprint 3 | ✅ 완료 |
-| 5 | ~~CSV/Excel Import~~ | Sprint 3 | ✅ 완료 |
-| 6 | ~~데이터 동기화 스케줄러~~ | Sprint 3 | ✅ 완료 |
-
-### 중간 우선순위 (V1 마무리) - ✅ 모두 완료!
-| # | 항목 | Sprint | 설명 |
-| :--- | :--- | :--- | :--- |
-| 7 | ~~Frontend 학습 대시보드~~ | Sprint 2 | ✅ 완료 |
-| 8 | ~~Rhai 규칙 버전 관리~~ | Sprint 2 | ✅ 완료 |
-| 9 | ~~API Key 관리~~ | Sprint 4 | ✅ 완료 |
-| 10 | ~~OAuth2 Provider 연동~~ | Sprint 4 | ✅ 완료 (Google OAuth2) |
-
-### 낮은 우선순위 (선택적)
-| # | 항목 | Sprint | 설명 |
-| :--- | :--- | :--- | :--- |
-| 11 | **Drag & Drop UI** | Sprint 1 | 마우스 D&D 인터페이스 완성 |
-| 12 | **SMS 알림** | Sprint 3 | SMS 알림 연동 (Twilio 등) |
-
----
-
-## 📋 MVP 완료 작업 (Archive)
-
-### Sprint 6: Production Build & Release ✅ (2025-11-27)
-- [x] Tauri v2 앱 메타데이터 설정
-  - productName: "TriFlow AI"
-  - identifier: "com.triflow.ai"
-  - 윈도우 설정: 1280x800 (min 800x600), 중앙 배치
-  - 번들 정보: Productivity 카테고리, 설명, 저작권
-- [x] Rust 설정 업데이트 (Cargo.toml)
-  - name: "triflow-ai"
-  - lib name: "triflow_ai_lib"
-  - MIT 라이선스, GitHub 저장소 링크
-- [x] tauri-plugin-shell 설치 및 설정
-  - shell:allow-open, shell:allow-execute 권한 추가
-  - Docker 명령 실행을 위한 준비
-- [x] TypeScript 빌드 오류 수정
-  - shadcn/ui Alert, Table 컴포넌트 추가
-  - PieChartComponent 라벨 타입 수정
-  - ChartRenderer JSX namespace 수정
-- [x] Production 빌드 성공
-  - **MSI**: `TriFlow AI_0.1.0_x64_en-US.msi`
-  - **NSIS**: `TriFlow AI_0.1.0_x64-setup.exe`
-  - 빌드 위치: `frontend/src-tauri/target/release/bundle/`
-
-### 샘플 센서 데이터 생성 ✅ (2025-11-27)
-- [x] SQL 스크립트 작성 (`backend/db/init/99_insert_sample_sensor_data.sql`)
-  - 최근 7일간 센서 데이터 (1시간 간격)
-  - 4개 라인 (LINE_A~D) × 5개 센서 타입 × 168시간 = 3,360건
-  - 센서 타입: temperature, pressure, humidity, vibration, flow_rate
-- [x] DB INSERT 완료 및 API 테스트 성공
-  - `/api/v1/sensors/data` - 480건 조회 (최근 24시간)
-  - `/api/v1/sensors/summary` - 라인별 평균값 정상 계산
-
-### Backend DB 실제 연결 ✅ (2025-11-27)
-- [x] Sensors API: Mock 데이터 → PostgreSQL DB 쿼리로 전환
-  - `GET /api/v1/sensors/data` - SensorData 모델 쿼리
-  - `GET /api/v1/sensors/filters` - DISTINCT 값 조회 (DB 데이터 없으면 기본값)
-  - `GET /api/v1/sensors/summary` - 집계 쿼리 (line_code별 평균, 카운트)
-- [x] Workflows API: Mock 데이터 → PostgreSQL DB 쿼리로 전환
-  - CRUD 엔드포인트 전체 DB 연동
-  - WorkflowInstance 실행 이력 DB 저장
-  - Default Tenant 자동 생성 (MVP)
-- [x] ORM 모델 DB 컬럼명 매핑 수정
-  - Workflow.dsl_definition → DB: dsl_json
-  - Ruleset.rhai_script → DB: rhai_code
-- [x] main.py 라우터 등록 에러 핸들링 추가 (try-except)
-- [x] API 테스트 완료 (sensors/filters, workflows 정상 동작)
-
-### Settings 페이지 구현 ✅ (2025-11-27)
-- [x] SettingsPage 컴포넌트 전면 개편 (`frontend/src/components/pages/SettingsPage.tsx`)
-  - 일반 설정: 테마 (시스템/라이트/다크), 언어, 알림 토글
-  - Backend 연결: 연결 상태 표시, API URL 설정, 연결 테스트, 자동 재연결
-  - AI 모델: 모델 선택 (Claude Sonnet 4.5/3.5/Haiku), Max Tokens, Tenant ID
-  - 앱 정보: 버전 (0.1.0), 빌드 (2025.11.27), 라이선스, GitHub 링크
-- [x] 테마 적용 기능 구현 (dark mode 지원)
-- [x] localStorage 설정 저장/불러오기
-- [x] 2x2 그리드 레이아웃 (반응형)
-
-### WBS 로드맵 다이어그램 추가 ✅ (2025-11-27)
-- [x] V1/V2 로드맵 SVG 다이어그램 생성 (`docs/diagrams/`)
-  - `wbs_v1_roadmap.svg` - V1 로드맵 (Builder UI, Learning Pipeline, 외부 연동, 보안 강화)
-    - 예상 기간: 약 16주 (3~4개월)
-    - 탭 구조: MVP와 동일 (5개 탭 유지)
-  - `wbs_v2_roadmap.svg` - V2 로드맵 (Mobile App, Simulation, Multi-Tenant, 고급 AI)
-    - 예상 기간: 약 34주 (6개월+)
-    - 탭 구조: +2개 추가 예정 (Simulation, Admin)
-
-### UI 다이어그램 추가 ✅ (2025-11-27)
-- [x] 탭별 UI SVG 다이어그램 추가 (`docs/diagrams/`)
-  - `ui_05_dashboard.svg` - Dashboard 페이지 (Stats Grid, 고정된 차트, 최근 활동)
-  - `ui_06_data_page.svg` - Data 페이지 (필터, 센서 데이터 테이블, 페이지네이션)
-  - `ui_07_settings_page.svg` - Settings 페이지 (일반 설정, Backend 연결, AI 모델, 앱 정보)
-
-### Workflows 페이지 구현 ✅ (2025-11-27)
-- [x] Backend: 워크플로우 API 라우터 구현 (`backend/app/routers/workflows.py`)
-  - `GET /api/v1/workflows` - 워크플로우 목록 조회 (검색, 활성 상태 필터)
-  - `GET /api/v1/workflows/{id}` - 워크플로우 상세 조회
-  - `POST /api/v1/workflows` - 워크플로우 생성
-  - `PATCH /api/v1/workflows/{id}` - 워크플로우 수정
-  - `DELETE /api/v1/workflows/{id}` - 워크플로우 삭제
-  - `POST /api/v1/workflows/{id}/run` - 워크플로우 실행
-  - `GET /api/v1/workflows/{id}/instances` - 실행 이력 조회
-  - `GET /api/v1/workflows/actions` - 액션 카탈로그 조회
-  - Mock 데이터: 3개 샘플 워크플로우 (불량률 경고, 온도 긴급 대응, 정기 점검)
-- [x] Frontend: 워크플로우 서비스 구현 (`frontend/src/services/workflowService.ts`)
-- [x] Frontend: WorkflowsPage 컴포넌트 구현 (`frontend/src/components/pages/WorkflowsPage.tsx`)
-  - 워크플로우 목록 테이블 (이름, 트리거, 상태, 버전, 수정일)
-  - 검색 및 활성 상태 필터
-  - 워크플로우 실행/활성화/삭제 기능
-  - 워크플로우 상세: DSL 노드 시각화, 실행 이력
-  - 액션 카탈로그 뷰 (12개 액션, 4개 카테고리)
-- [x] App.tsx 라우팅 연결 (PlaceholderPage → WorkflowsPage)
-
-### Data 페이지 구현 ✅ (2025-11-27)
-- [x] Backend: 센서 데이터 API 라우터 구현 (`backend/app/routers/sensors.py`)
-  - `GET /api/v1/sensors/data` - 센서 데이터 조회 (페이지네이션, 필터링)
-  - `GET /api/v1/sensors/filters` - 필터 옵션 (라인, 센서 타입)
-  - `GET /api/v1/sensors/summary` - 요약 통계
-  - Mock 데이터 생성 (LINE_A~D, 5가지 센서 타입)
-- [x] Frontend: 센서 데이터 서비스 구현 (`frontend/src/services/sensorService.ts`)
-- [x] Frontend: DataPage 컴포넌트 구현 (`frontend/src/components/pages/DataPage.tsx`)
-  - 테이블 뷰 (센서 ID, 기록 시간, 라인, 센서 타입, 값)
-  - 필터링 (날짜 범위, 생산 라인, 센서 타입)
-  - 페이지네이션 (20건씩)
-  - CSV 다운로드 기능
-  - 새로고침 버튼
-- [x] App.tsx 라우팅 연결 (PlaceholderPage → DataPage)
-- [x] BaseChartConfig에 title 속성 추가 (기존 타입 오류 수정)
-
-### UI 개선 및 Dashboard 기능 강화 ✅ (2025-11-27)
-- [x] Sidebar Navigation 구현
-  - Chat, Dashboard, Workflows, Data, Settings 탭
-  - TriFlow AI 로고 및 브랜딩
-  - Backend 연결 상태 표시
-- [x] Dashboard 차트 고정 기능 (Option A)
-  - DashboardContext: 차트 상태 관리
-  - ChatMessage: "대시보드에 고정" 버튼
-  - DashboardPage: 고정된 차트 목록 & 삭제 기능
-  - 스크롤 지원
-- [x] Tool 호출 정보 UX 개선
-  - 기본: 간략한 근거 표시 (classify_intent reason)
-  - "상세 정보" 토글로 Tool 호출 JSON 확인
-- [x] BI Agent 차트 생성 개선
-  - 데이터 없을 때 데모 차트 생성 강제
-  - Frontend extractChartConfig: { success, config } 구조 지원
-- [x] Tauri 아이콘 교체
-  - TriFlow 커스텀 아이콘으로 전체 교체
-  - 128x128 고해상도 로고
-
-### Dashboard & Chart Visualization 구현 ✅ (2025-11-27)
-- [x] Recharts 라이브러리 설치 (v2.x, 178 packages)
-- [x] Chart 타입 시스템 구현 (chart.ts)
-  - TypeScript Discriminated Union: ChartType = 'line' | 'bar' | 'pie' | 'area' | 'scatter' | 'table'
-  - 타입별 Config 인터페이스: LineChartConfig, BarChartConfig, PieChartConfig, etc.
-  - CHART_COLORS 팔레트 (8색) 및 DEFAULT_CHART_STYLE 정의
-- [x] Chart 컴포넌트 6종 구현
-  - ✅ LineChartComponent.tsx - 시계열 데이터 시각화
-  - ✅ BarChartComponent.tsx - 카테고리 비교 차트
-  - ✅ PieChartComponent.tsx - 비율 데이터 시각화
-  - ✅ AreaChartComponent.tsx - 누적 추이 분석
-  - ✅ ScatterChartComponent.tsx - 상관관계 분석
-  - ✅ TableComponent.tsx - 데이터 테이블 (shadcn/ui)
-- [x] ChartRenderer 구현
-  - Config 타입 기반 동적 컴포넌트 렌더링
-  - 에러 핸들링 및 유효성 검증
-  - Alert 컴포넌트를 통한 사용자 피드백
-- [x] Chat UI 통합
-  - ChatMessage.tsx에 extractChartConfig 함수 추가
-  - BI Agent의 generate_chart_config tool_call 결과 자동 감지
-  - 차트 포함 메시지는 max-width 95% (일반 메시지는 80%)
-- [x] 테스트 준비 완료
-  - 프론트엔드 서버 실행 중 (HMR 정상 동작)
-  - BI Agent와의 E2E 테스트 준비 완료
-
-### BI Planner Agent 구현 ✅ (2025-11-27)
-- [x] BI Planner Agent 프롬프트 작성 (bi_planner.md)
-- [x] BI Planner Agent 클래스 구현 (bi_planner.py)
-  - 3개 Tools: get_table_schema, execute_safe_sql, generate_chart_config
-  - 보안: tenant_id 필수 필터링, SELECT-only SQL
-  - 차트 타입: line, bar, pie, area, scatter, table
-- [x] API 엔드포인트 통합 (agents.py)
-- [x] 테스트 완료 (3개 시나리오)
-  - ✅ sensor_data 테이블 스키마 조회 (General Agent로 라우팅)
-  - ✅ 최근 센서 데이터 라인 차트 시각화 (BI Agent 정상 동작, tenant_id 보안 확인)
-  - ✅ 라인별 평균 온도 Bar 차트 생성 (BI Agent 정상 동작, tenant_id 보안 확인)
-- [x] 보안 기능 검증: tenant_id 필터 없는 SQL 자동 거부 ✅
-
-### Workflow Planner Agent 구현 ✅ (2025-11-27)
-- [x] Workflow Planner Agent 프롬프트 작성 (workflow_planner.md)
-- [x] Action Catalog 시스템 구현 (12개 액션)
-  - notification: send_slack_notification, send_email, send_sms
-  - data: save_to_database, export_to_csv, log_event
-  - control: stop_production_line, adjust_sensor_threshold, trigger_maintenance
-  - analysis: calculate_defect_rate, analyze_sensor_trend, predict_equipment_failure
-- [x] Workflow DSL 생성 로직 구현 (MVP: Template-based)
-- [x] Schema 검증 기능 구현 (validate_node_schema)
-- [x] API 엔드포인트 통합 (agents.py)
-- [x] 테스트 완료 (3개 시나리오)
-  - ✅ 불량률 5% 초과 시 Slack 알림 워크플로우
-  - ✅ 온도 80°C 초과 시 생산 라인 중지 + 이메일 알림
-  - ✅ 장비 고장 예측 기반 유지보수 자동화
-
-### Chat UI 통합 테스트 ✅ (2025-11-27)
-- [x] Backend 서버 상태 확인 (http://127.0.0.1:8000)
-- [x] Frontend 개발 서버 실행 (http://localhost:1420)
-- [x] agentService.ts import 오류 수정
-  - 문제: `import { api }` → 실제 export는 `apiClient`
-  - 해결: import 구문 수정 및 API 호출 패턴 변경
-- [x] CORS 설정 문제 해결
-  - 문제: `http://localhost:1420`이 CORS origins에 없음
-  - 해결: `backend/.env` 파일 생성 및 CORS_ORIGINS 업데이트
-  - 추가 문제: 환경변수가 .env 파일을 오버라이드
-  - 최종 해결: 환경변수 unset 후 서버 재시작
-- [x] Chat UI 기본 기능 테스트
-  - ✅ 메시지 입력 및 전송
-  - ✅ Agent 응답 수신 (MetaRouterAgent)
-  - ✅ Tool 호출 시각화 (classify_intent, extract_slots, route_request)
-  - ✅ JSON 포맷 렌더링
-  - ✅ 타임스탬프 표시
-  - ✅ 한글 메시지 처리
-
-### CI/CD Optimization ✅
-- [x] AI_GUIDELINES.md에 Rule 2.2 추가 (CI Optimization - Concurrency)
-- [x] 모든 GitHub Actions 워크플로우에 Concurrency 설정 적용
-  - [x] backend-ci.yml
-  - [x] frontend-ci.yml
-  - [x] docker-build.yml
-
-### Sprint 3: Chat UI 구현 ✅
-- [x] TypeScript 타입 정의 (`frontend/src/types/agent.ts`)
-  - [x] ToolCall, AgentResponse, ChatMessage, AgentRequest 인터페이스
-- [x] Agent API 서비스 (`frontend/src/services/agentService.ts`)
-  - [x] chat() 메서드 - `/api/v1/agents/chat` 호출
-  - [x] status() 메서드 - `/api/v1/agents/status` 호출
-- [x] 채팅 메시지 컴포넌트 (`frontend/src/components/ChatMessage.tsx`)
-  - [x] User/Assistant 메시지 구분
-  - [x] Tool 호출 시각화 (JSON 포맷)
-  - [x] 타임스탬프 표시
-- [x] 메시지 입력 컴포넌트 (`frontend/src/components/ChatInput.tsx`)
-  - [x] Textarea + Send 버튼
-  - [x] Enter 키로 전송 (Shift+Enter로 줄바꿈)
-  - [x] Disabled 상태 처리
-- [x] 채팅 컨테이너 (`frontend/src/components/ChatContainer.tsx`)
-  - [x] 메시지 히스토리 관리
-  - [x] Auto-scroll 기능
-  - [x] Loading 애니메이션
-  - [x] 에러 처리
-- [x] App.tsx 통합
-  - [x] Chat/Tenants 뷰 전환 토글 버튼
-  - [x] Full-screen flex 레이아웃
-
-### Sprint 2: 에이전트 시스템 구현 ✅
-- [x] Base Agent 클래스 구현 (Anthropic Tool Calling Pattern)
-- [x] Meta Router Agent 구현 (Intent 분류 및 라우팅)
-- [x] Judgment Agent 구현 (센서 데이터 분석 + Rhai 엔진)
-- [x] Agent API 엔드포인트 구현 (`/api/v1/agents/chat`, `/api/v1/agents/judgment`, `/api/v1/agents/status`)
-- [x] Agent 프롬프트 작성 (meta_router.md, judgment_agent.md)
-- [x] Tools 모듈 구조화 (`backend/app/tools/`)
-- [x] Docker Build CI 수정 (backend/Dockerfile 생성)
-
----
-
-## 🗓️ Sprint 1: 인프라 및 기본 설정
-
-### 🔧 Backend 인프라
-- [x] **[Infra]** Docker Compose 설정 ✅
-  - [x] PostgreSQL 14+ (pgvector 확장 포함) 컨테이너 설정
-  - [x] Redis 7.2 컨테이너 설정
-  - [x] MinIO (오브젝트 스토리지) 컨테이너 설정
-  - [x] 네트워크 및 볼륨 구성
-
-- [x] **[DB]** 데이터베이스 스키마 초기화 ✅
-  - [x] Core 스키마 (rules, workflows, sensors)
-  - [x] BI 스키마 (reports, dashboards)
-  - [x] RAG 스키마 (documents, embeddings)
-  - [x] Audit 스키마 (logs, feedback)
-
-- [x] **[Core]** 핵심 도구 구현 ✅
-  - [x] `tools/rhai.py` - Rhai 룰 엔진 Python 바인딩
-  - [x] `tools/db.py` - 안전한 SQL 쿼리 실행기
-
-- [x] **[CI/CD]** GitHub Actions 워크플로우 ✅
-  - [x] Lint & Test 워크플로우 (Python: ruff, pytest)
-  - [x] Lint & Test 워크플로우 (Frontend: eslint, vitest)
-  - [x] Docker 이미지 빌드 및 푸시
-
-### 🎨 Frontend 초기 설정
-- [x] **[Setup]** Tauri v2 + React + Vite 프로젝트 초기화 ✅
-- [x] **[Setup]** Tailwind CSS 설정 ✅
-- [x] **[Setup]** Shadcn/ui 컴포넌트 라이브러리 설정 ✅
-
----
-
-## 🗓️ Sprint 2: 에이전트 시스템 구현
-
-### 🤖 AI 에이전트
-- [x] **[Agent]** Base Agent 클래스 구현 ✅
-  - [x] Anthropic Tool Calling Pattern 적용
-  - [x] Tool 실행 루프 (최대 5회 반복)
-  - [x] 시스템 프롬프트 로딩 (Markdown 파일)
-
-- [x] **[Agent]** Meta Router Agent 구현 ✅
-  - [x] 의도 분류 (classify_intent)
-  - [x] 슬롯 추출 (extract_slots)
-  - [x] 요청 라우팅 (route_request)
-
-- [x] **[Agent]** Judgment Agent 구현 ✅
-  - [x] Rhai 룰 엔진 실행 (run_rhai_engine)
-  - [x] RAG 지식 조회 (query_rag_knowledge) - MVP Placeholder
-  - [x] 센서 히스토리 조회 (fetch_sensor_history)
-
-- [x] **[Agent]** Workflow Planner Agent 구현 ✅
-  - [x] 워크플로우 DSL 생성 (generate_workflow_dsl)
-  - [x] 노드 스키마 검증 (validate_node_schema)
-  - [x] 액션 카탈로그 검색 (search_action_catalog)
-
-- [x] **[Agent]** BI Planner Agent 구현 ✅
-  - [x] 테이블 스키마 조회 (get_table_schema)
-  - [x] 안전한 SQL 실행 (execute_safe_sql)
-  - [x] 차트 설정 생성 (generate_chart_config)
-
-### 🔌 API 엔드포인트
-- [x] **[API]** Agent 라우터 구현 ✅
-  - [x] `POST /api/v1/agents/chat` - Meta Router를 통한 채팅
-  - [x] `POST /api/v1/agents/judgment` - Judgment Agent 직접 실행
-  - [x] `GET /api/v1/agents/status` - Agent 시스템 상태 확인
-
-### 📝 프롬프트 작성
-- [x] **[Prompts]** Agent 시스템 프롬프트 ✅
-  - [x] `meta_router.md` - Meta Router 역할 정의
-  - [x] `judgment_agent.md` - Judgment Agent 역할 정의
-
-### 🛠️ 도구 모듈
-- [x] **[Tools]** 도구 모듈 재구성 ✅
-  - [x] `backend/tools` → `backend/app/tools` 이동
-  - [x] 모듈 구조 수정 및 import 경로 업데이트
-
----
-
-## 🗓️ Sprint 3: UI 구현
-
-### 💬 Chat-Centric Interface
-- [x] **[UI]** 채팅 인터페이스 레이아웃 ✅
-  - [x] 메시지 입력 컴포넌트 (ChatInput.tsx)
-  - [x] 메시지 목록 컴포넌트 (ChatContainer.tsx)
-  - [x] 에이전트 응답 렌더링 (ChatMessage.tsx)
-  - [x] Agent API 연동 (agentService.ts)
-  - [x] TypeScript 타입 정의 (agent.ts)
-  - [x] Tool 호출 시각화 (JSON 포맷)
-  - [x] Auto-scroll & Loading State
-  - [x] App.tsx 통합 (Chat/Tenants 뷰 전환)
-
-### 📊 Dashboard & Visualization
-- [x] **[UI]** 대시보드 레이아웃 ✅
-- [x] **[UI]** 차트 시각화 컴포넌트 (Recharts/Chart.js) ✅
-- [x] **[UI]** 실시간 데이터 표시 ✅
-
----
-
-## 🗓️ Sprint 4: 학습 파이프라인 ✅
-
-### 🧠 Learning System
-- [x] **[Learning]** Feedback Loop 구현 ✅
-  - [x] 피드백 로그 분석 (analyze_feedback_logs)
-  - [x] 신규 규칙 제안 (propose_new_rule)
-  - [x] 규칙 성능 분석 (get_rule_performance)
-
-- [x] **[Learning]** Zwave 시뮬레이션 도구 ✅
-  - [x] 시뮬레이션 실행 (run_zwave_simulation)
-
-### 📋 Sprint 4 완료 작업 내역 (2025-11-28)
-- [x] **[DB]** Learning System ORM 모델 추가
-  - `FeedbackLog` - 피드백 로그 저장 (feedback_type, original_output, corrected_output)
-  - `ProposedRule` - 제안된 규칙 저장 (rule_name, rhai_script, confidence, status)
-- [x] **[Agent]** Learning Agent 구현 (`backend/app/agents/learning_agent.py`)
-  - 4개 Tools: analyze_feedback_logs, propose_new_rule, run_zwave_simulation, get_rule_performance
-  - 피드백 패턴 분석 및 규칙 자동 생성
-  - Rhai 스크립트 자동 생성 (자연어 → DSL)
-  - Z-Wave 시뮬레이션 (정확도 측정, 재현율, F1 스코어)
-- [x] **[Prompts]** Learning Agent 프롬프트 작성 (`backend/app/prompts/learning_agent.md`)
-- [x] **[API]** Agent 라우터 통합 (target_agent="learning" 라우팅)
-- [x] **[Router]** Meta Router 업데이트 ("학습", "피드백", "시뮬레이션" 키워드 → learning)
-
----
-
-## 🗓️ Sprint 5: 보안 ✅
-
-### 🔐 Security
-- [x] **[Security]** 인증 시스템 구현 ✅
-- [x] **[Security]** PII 마스킹 미들웨어 ✅
-
-### 📋 Sprint 5 완료 작업 내역 (2025-11-28)
-
-#### 🔐 JWT 인증 시스템
-- [x] **[Auth]** Password Hashing (`backend/app/auth/password.py`)
-  - bcrypt 알고리즘 사용 (passlib)
-  - verify_password, get_password_hash 함수
-- [x] **[Auth]** JWT Token 관리 (`backend/app/auth/jwt.py`)
-  - Access Token (30분), Refresh Token (7일)
-  - 환경변수: JWT_SECRET_KEY, ACCESS_TOKEN_EXPIRE_MINUTES
-- [x] **[Auth]** FastAPI Dependencies (`backend/app/auth/dependencies.py`)
-  - get_current_user, get_current_active_user, get_optional_user
-  - Bearer Token 검증 및 사용자 조회
-- [x] **[Auth]** Auth Schemas (`backend/app/schemas/auth.py`)
-  - LoginRequest, RegisterRequest, TokenResponse, UserResponse 등
-- [x] **[Auth]** Auth API Router (`backend/app/routers/auth.py`)
-  - POST /login - 로그인 (이메일/비밀번호)
-  - POST /register - 회원가입
-  - POST /refresh - 토큰 갱신
-  - POST /change-password - 비밀번호 변경
-  - GET /me - 현재 사용자 정보
-  - GET /status - 인증 상태 확인
-- [x] **[DB]** Admin 계정 자동 시딩 (`backend/app/init_db.py`)
-  - 환경변수: ADMIN_EMAIL (기본: admin@triflow.ai), ADMIN_PASSWORD (기본: admin1234)
-  - 서버 시작 시 Default Tenant + Admin User 자동 생성
-
-#### 🛡️ PII 마스킹 미들웨어
-- [x] **[PII]** 한국 PII 패턴 정의 (`backend/app/utils/pii_patterns.py`)
-  - 10개 패턴: 주민등록번호, 외국인등록번호, 여권번호, 운전면허번호
-  - 휴대전화 (010), 일반전화, 이메일, 신용카드, 계좌번호, IP주소
-  - mask_pii(), contains_pii() 함수
-- [x] **[PII]** Request/Response 마스킹 미들웨어 (`backend/app/middleware/pii_masking.py`)
-  - BaseHTTPMiddleware 상속
-  - Request Body 마스킹 (LLM 보호 우선)
-  - Response Body 마스킹
-  - PIIMaskingFilter (로깅 마스킹)
-  - 환경변수: PII_MASKING_ENABLED (기본: true)
-- [x] **[Main]** main.py 통합
-  - lifespan 컨텍스트로 DB 초기화
-  - PIIMaskingMiddleware 등록
-  - Auth Router 등록 (/api/v1/auth)
-
-#### 🔒 인증 적용 범위 (Option B)
-- **Public APIs**: /health, /auth/*, /docs, /redoc, /openapi.json
-- **Protected APIs**: 모든 기타 API (MVP에서는 선택적 적용)
-
----
-
-## 🗓️ Sprint 6: 릴리스 ✅
-
-### 🚀 Release
-- [x] **[Release]** UAT (사용자 수용 테스트) ✅
-- [x] **[Release]** Production 빌드 생성 ✅
-- [x] **[Release]** 설치 패키지 생성 (Windows/Mac/Linux) ✅
-  - MSI: `TriFlow AI_0.1.0_x64_en-US.msi`
-  - NSIS: `TriFlow AI_0.1.0_x64-setup.exe`
-
----
-
-## 🔒 Production 보안 강화 ✅ (2025-12-10)
-
-### 보안 미들웨어 구현
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[Security]** Rate Limiting 미들웨어 | ✅ 완료 | ██████████ 100% |
-| **[Security]** Security Headers 미들웨어 | ✅ 완료 | ██████████ 100% |
-| **[Security]** API Key 스코프 검증 데코레이터 | ✅ 완료 | ██████████ 100% |
-| **[Security]** main.py 미들웨어 등록 | ✅ 완료 | ██████████ 100% |
-| **[Test]** 보안 테스트 작성 (23개) | ✅ 완료 | ██████████ 100% |
-
-#### 📋 Production 보안 강화 완료 작업 내역
-- [x] **[Middleware]** Rate Limiting 미들웨어 (`backend/app/middleware/rate_limit.py`)
-  - Redis 기반 슬라이딩 윈도우 Rate Limiter
-  - 엔드포인트별 제한 설정:
-    - `/api/v1/auth/login`: 10 req/min
-    - `/api/v1/auth/register`: 5 req/min
-    - `/api/v1/agents/chat`: 30 req/min
-    - 기본: 100 req/min
-  - X-RateLimit-* 응답 헤더 (Limit, Remaining, Reset)
-  - 429 Too Many Requests 응답
-- [x] **[Middleware]** Security Headers 미들웨어 (`backend/app/middleware/security_headers.py`)
-  - `X-Content-Type-Options: nosniff`
-  - `X-Frame-Options: DENY`
-  - `X-XSS-Protection: 1; mode=block`
-  - `Referrer-Policy: strict-origin-when-cross-origin`
-  - `Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()`
-  - HSTS (Production 환경만): `max-age=31536000; includeSubDomains`
-- [x] **[Auth]** API Key 스코프 검증 (`backend/app/auth/dependencies.py`)
-  - `require_scope(scopes)`: 모든 스코프 필요 (AND 조건)
-  - `require_any_scope(scopes)`: 하나만 있으면 통과 (OR 조건)
-  - 유효 스코프: read, write, delete, admin, sensors, workflows, rulesets, erp_mes, notifications
-- [x] **[Config]** main.py 미들웨어 등록 순서
-  1. CORS 미들웨어
-  2. Security Headers 미들웨어
-  3. Rate Limiting 미들웨어
-  4. PII 마스킹 미들웨어
-  5. Audit Log 미들웨어
-- [x] **[Test]** 보안 테스트 (`backend/tests/test_security.py`)
-  - 보안 헤더 검증 (3개)
-  - Rate Limiting 검증 (4개)
-  - 스코프 검증 (4개)
-  - 인증 엔드포인트 보안 (4개)
-  - API Key 보안 (2개)
-  - 에러 응답 보안 (2개)
-  - 입력 검증 (3개)
-
-#### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. 보안 헤더 확인
-curl -I http://localhost:8000/api/v1/info
-
-# 2. Rate Limiting 테스트 (11회 이상 요청 시 429)
-for i in {1..15}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/api/v1/auth/login -d '{}' -H "Content-Type: application/json"; done
-
-# 3. 보안 테스트 실행
-cd backend && python -m pytest tests/test_security.py -v
-```
-
----
-
-### 🔧 개발 환경 개선 (2025-12-10)
-| Task | Status | Progress |
-| :--- | :--- | :--- |
-| **[DX]** 백엔드 자동 재시작 설정 | ✅ 완료 | ██████████ 100% |
-| **[DX]** 중복 인스턴스 방지 | ✅ 완료 | ██████████ 100% |
-
-#### 📋 개발 환경 개선 완료 내역 (2025-12-10)
-- [x] **[DX]** `start.ps1` 개선
-  - `--reload` 옵션 추가: 코드 수정 시 서버 자동 재시작
-  - 기존 프로세스 정리 코드 추가: 포트 8000 사용 중인 프로세스 자동 종료
-  - 중복 서버 인스턴스 실행 방지
-- [x] **[DX]** `backend/start_server.bat` 개선
-  - `--reload-dir app` 옵션 추가: app 디렉토리만 감시하여 불필요한 재시작 방지
-
-#### 🔍 검증 방법 (How to Test)
-```powershell
-# 1. 통합 시작 스크립트 실행
-.\start.ps1
-
-# 2. 백엔드 코드 수정 (예: app/main.py에 주석 추가)
-# → 터미널에서 "[WatchFiles] Reloading..." 메시지 확인
-
-# 3. Health Check
-curl http://localhost:8000/health
-```
-
----
-
-## 📋 V2 Phase 2: Advanced RAG & Intent 시스템 강화 (2025-12-16)
-
-### 🎯 Phase 2 진행 현황
-| 우선순위 | Task | Status | Progress |
-| :--- | :--- | :--- | :--- |
-| **1순위** | Hybrid Search + Reranking (E-1 스펙) | ✅ 완료 | ██████████ 100% |
-| **2순위** | V7 Intent 체계 (14개) 구현 (B-6 스펙) | ✅ 완료 | ██████████ 100% |
-| **3순위** | BI Service 완성 (RANK/PREDICT/WHAT_IF) | ✅ 완료 | ██████████ 100% |
-| **4순위** | CRAG (Corrective RAG) | ✅ 완료 | ██████████ 100% |
-| **5순위** | Schema 확장 (B-3 스펙) | ✅ 완료 | ██████████ 100% |
-| **6순위** | MCP ToolHub 기본 (B-2-3 스펙) | ✅ 완료 | ██████████ 100% |
-
-### ✅ 1순위: Hybrid Search + Reranking (E-1 스펙) 완료
-
-#### 📋 구현 내역
-- [x] **[Service]** HybridSearchService 구현 (`backend/app/services/search_service.py`)
-  - 벡터 검색 (pgvector cosine similarity) → TOP 20
-  - 키워드 검색 (PostgreSQL Full-Text Search) → TOP 20
-  - RRF (Reciprocal Rank Fusion) 병합 → TOP 20
-  - Cohere Reranking (rerank-multilingual-v3.0) → TOP 5
-- [x] **[Service]** CohereReranker 구현
-  - Cohere API v2 클라이언트 연동
-  - 다국어 Reranking 지원 (한국어 포함)
-- [x] **[Service]** RAG Service 확장 (`backend/app/services/rag_service.py`)
-  - `advanced_search()` - Hybrid Search + Reranking 통합 검색
-  - `get_context_advanced()` - 고급 RAG 컨텍스트 생성
-- [x] **[Config]** 환경 변수 추가 (`backend/app/config.py`)
-  - `COHERE_API_KEY` - Cohere Reranking API 키
-- [x] **[Deps]** 의존성 추가 (`backend/requirements.txt`)
-  - `cohere==5.11.4`
-
-#### 🔍 검증 방법 (How to Test)
-```bash
-# Hybrid Search 테스트
-cd backend
-USE_SQLITE=1 python -m pytest tests/test_search_service.py -v
-
-# RAG API 테스트 (서버 필요)
-curl -X POST "http://localhost:8000/api/v1/rag/search" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "온도 센서 이상", "top_k": 5, "use_rerank": true}'
-```
-
----
-
-### ✅ 2순위: V7 Intent 체계 (14개) 구현 (B-6 스펙) 완료
-
-#### 📋 V7 Intent 체계 (14개)
-| 카테고리 | Intent | Route Target | Legacy |
-|----------|--------|--------------|--------|
-| **정보 조회** | CHECK | DATA_LAYER | judgment |
-| | TREND | DATA_LAYER | judgment |
-| | COMPARE | JUDGMENT_ENGINE | judgment |
-| | RANK | JUDGMENT_ENGINE | bi |
-| **분석** | FIND_CAUSE | JUDGMENT_ENGINE | judgment |
-| | DETECT_ANOMALY | RULE_ENGINE | learning |
-| | PREDICT | JUDGMENT_ENGINE | judgment |
-| | WHAT_IF | JUDGMENT_ENGINE | judgment |
-| **액션** | REPORT | BI_GUIDE | bi |
-| | NOTIFY | WORKFLOW_GUIDE | workflow |
-| **대화 제어** | CONTINUE | CONTEXT_DEPENDENT | general |
-| | CLARIFY | ASK_BACK | general |
-| | STOP | CONTEXT_DEPENDENT | general |
-| | SYSTEM | DIRECT_RESPONSE | general |
-
-#### 📋 구현 내역
-- [x] **[Agent]** V7 라우팅 규칙 정의 (`backend/app/agents/routing_rules.py`)
-  - V7Intent Enum (14개 Intent)
-  - RouteTarget Enum (8개 라우팅 대상)
-  - V7_ROUTING_RULES (Intent별 패턴, 우선순위, 키워드)
-  - V7_TO_LEGACY_INTENT 매핑
-  - v7_to_route_target() 매핑 함수
-- [x] **[Agent]** V7IntentClassifier 구현 (`backend/app/agents/intent_classifier.py`)
-  - 정규식 패턴 기반 분류 (우선순위 지원)
-  - 키워드 기반 분류 (fallback)
-  - ClassificationResult 데이터클래스 (V7/Legacy 호환)
-  - should_clarify() - 명확화 필요 여부 판단
-  - 디버그 정보 제공 (get_classification_debug)
-- [x] **[Agent]** MetaRouterAgent V7 지원 (`backend/app/agents/meta_router.py`)
-  - classify_v7_intent Tool 추가
-  - route_with_hybrid() - 하이브리드 라우팅 (규칙 기반 우선, LLM fallback)
-  - route_target_to_agent() - Route Target → Agent 매핑
-- [x] **[Test]** V7 Intent 테스트 (`backend/tests/test_v7_intent.py`)
-  - 58개 테스트 케이스 (전체 통과)
-  - V7Intent Enum, RouteTarget, 라우팅 규칙, Legacy 매핑
-  - 패턴 매칭 (14개 Intent 모두)
-  - 하이브리드 라우팅, Edge cases
-
-#### 🔍 검증 방법 (How to Test)
-```bash
-# V7 Intent 테스트 실행
-cd backend
-USE_SQLITE=1 python -m pytest tests/test_v7_intent.py -v
-
-# Intent 분류기 직접 테스트
-python -c "
-from app.agents.intent_classifier import V7IntentClassifier
-classifier = V7IntentClassifier()
-result = classifier.classify('오늘 생산량 얼마야?')
-print(f'V7 Intent: {result.v7_intent}, Route: {result.route_to}, Legacy: {result.legacy_intent}')
-"
-```
-
----
-
-### ✅ 3순위: BI Service 완성 (RANK/PREDICT/WHAT_IF) 완료
-
-#### 📋 구현 내역
-- [x] **[Service]** BIService 신규 구현 (`backend/app/services/bi_service.py`)
-  - `AnalysisType` Enum (RANK, PREDICT, WHAT_IF, TREND, COMPARE)
-  - `ChartType` Enum (LINE, BAR, PIE, SCATTER, AREA, TABLE, GAUGE)
-  - `TimeGranularity` Enum (MINUTE, HOURLY, DAILY, WEEKLY, MONTHLY)
-  - **RANK 분석**: 상위/하위 N개 분석, 백분위 계산
-  - **PREDICT 분석**: 이동평균/선형회귀 기반 시계열 예측
-  - **WHAT_IF 시뮬레이션**: 상관관계 기반 영향 분석
-  - **차트 추천**: 분석 유형별 최적 차트 자동 추천
-
-- [x] **[Agent]** BI Planner Agent 확장 (`backend/app/agents/bi_planner.py`)
-  - `analyze_rank` Tool - 상위/하위 N개 분석
-  - `analyze_predict` Tool - 시계열 예측 분석
-  - `analyze_what_if` Tool - What-If 시뮬레이션
-  - Async-to-Sync 브릿지 (ThreadPoolExecutor)
-
-- [x] **[Test]** 33개 유닛 테스트 (`backend/tests/test_bi_service.py`)
-  - 백분위 계산 (TestBIServicePercentileCalculation)
-  - RANK 요약 생성 (TestBIServiceRankSummary)
-  - 이동평균 예측 (TestBIServicePredictMovingAverage)
-  - 선형회귀 예측 (TestBIServicePredictLinearRegression)
-  - What-If 영향 분석 (TestBIServiceWhatIfImpact)
-  - 차트 추천 (TestBIServiceChartRecommendation)
-
-#### 🔍 검증 방법 (How to Test)
-```bash
-# BI Service 테스트 실행
-cd backend
-USE_SQLITE=1 python -m pytest tests/test_bi_service.py -v
-
-# 전체 테스트 (33개 모두 통과)
-# ============================= 33 passed in 0.16s ==============================
-```
-
----
-
-### ✅ 5순위: Schema 확장 (B-3 스펙) 완료
-
-#### 📋 마이그레이션 파일 목록
-| 파일 | 설명 | 테이블 수 |
-|------|------|----------|
-| `015_critical_schema_additions.sql` | 🔴 Critical 테이블 | 2개 |
-| `016_bi_dim_tables.sql` | 🟡 DIM 테이블 (Star Schema) | 6개 |
-| `017_bi_fact_tables.sql` | 🟡 FACT 테이블 | 5개 |
-| `018_bi_preagg_views.sql` | 🟡 Pre-Agg MV + ETL/DQ | 10개 |
-
-#### 📋 구현 내역
-
-**🔴 Critical 테이블 (Migration 015)**
-- [x] **feedbacks** - 사용자 피드백 수집 (학습 루프)
-  - thumbs_up/down, rating, correction, suggestion 타입 지원
-  - judgment_execution, workflow_instance, chat_message 연관
-  - 처리 상태 관리 (pending → reviewed → applied/rejected)
-- [x] **rule_scripts** - 룰 스크립트 버전 관리
-  - rulesets와 분리하여 버전별 이력 추적
-  - 스크립트 해시 기반 변경 감지
-  - 성능 메트릭 (avg_execution_time, error_count)
-
-**🟡 DIM 테이블 (Migration 016)**
-- [x] **dim_date** - 날짜 차원 (2020-2030 시드 포함)
-- [x] **dim_line** - 생산 라인 마스터
-- [x] **dim_product** - 제품 마스터
-- [x] **dim_equipment** - 설비 마스터 (MTBF/MTTR)
-- [x] **dim_kpi** - KPI 정의 (threshold, aggregation)
-- [x] **dim_shift** - 교대 정의 (주간/오후/야간)
-
-**🟡 FACT 테이블 (Migration 017)**
-- [x] **fact_daily_production** - 일일 생산 실적 (분기별 파티션)
-- [x] **fact_daily_defect** - 일일 불량 실적 (분기별 파티션)
-- [x] **fact_inventory_snapshot** - 재고 스냅샷 (분기별 파티션)
-- [x] **fact_equipment_event** - 설비 이벤트 집계 (분기별 파티션)
-- [x] **fact_hourly_production** - 시간별 생산 실적 (월별 파티션)
-- [x] **v_fact_daily_production_calc** - 계산 필드 뷰 (yield_rate, defect_rate, availability)
-
-**🟡 Pre-Agg MV + ETL/DQ (Migration 018)**
-- [x] **mv_defect_trend** - 불량 추이 (1시간 리프레시)
-- [x] **mv_oee_daily** - 일일 OEE (A×P×Q, 새벽 리프레시)
-- [x] **mv_inventory_coverage** - 재고 커버리지 (일 1회)
-- [x] **mv_line_performance** - 라인별 종합 성과 (새벽 리프레시)
-- [x] **bi_datasets** - BI 데이터셋 정의
-- [x] **bi_metrics** - BI 지표 정의
-- [x] **bi_dashboards** - BI 대시보드 레이아웃
-- [x] **etl_jobs** - ETL 작업 정의
-- [x] **etl_job_executions** - ETL 실행 이력
-- [x] **data_quality_rules** - 데이터 품질 규칙
-- [x] **data_quality_checks** - 데이터 품질 체크 결과
-
-#### 🔧 유틸리티 함수
-- `bi.create_quarterly_partitions()` - 분기별 파티션 자동 생성
-- `bi.create_monthly_partitions()` - 월별 파티션 자동 생성
-- `bi.refresh_all_mv()` - 모든 MV 리프레시
-- `bi.refresh_hourly_mv()` - 시간별 MV 리프레시
-- `bi.refresh_daily_mv()` - 일별 MV 리프레시
-
-#### 🔍 검증 방법 (How to Apply)
-```bash
-# Docker PostgreSQL에 마이그레이션 적용
-docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/015_critical_schema_additions.sql
-docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/016_bi_dim_tables.sql
-docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/017_bi_fact_tables.sql
-docker exec -i triflow-postgres psql -U triflow -d triflow < backend/migrations/018_bi_preagg_views.sql
-
-# 테이블 확인
-docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dt bi.*"
-docker exec -i triflow-postgres psql -U triflow -d triflow -c "\dm bi.*"  # MV 확인
-```
-
----
-
-### ✅ 6순위: MCP ToolHub 기본 (B-2-3 스펙) 완료
-
-#### 📋 마이그레이션 파일
-| 파일 | 설명 | 테이블/함수 수 |
-|------|------|--------------|
-| `019_mcp_toolhub_schema.sql` | MCP ToolHub 스키마 | 7개 테이블 + 3개 함수 |
-
-#### 📋 구현 내역
-
-**🔵 DB 스키마 (Migration 019)**
-- [x] **mcp_servers** - MCP 서버 레지스트리
-  - 인증 방식: none, api_key, oauth2, basic
-  - 타임아웃, 재시도 설정
-  - 상태 관리 (active/inactive/failed)
-- [x] **mcp_tools** - MCP 도구 메타데이터
-  - JSON Schema 기반 파라미터 정의
-  - 권한 레벨 (low/medium/high/critical)
-- [x] **mcp_call_logs** - 도구 호출 로그 (월별 파티션)
-  - 요청/응답 기록
-  - 레이턴시, 재시도 횟수 추적
-- [x] **circuit_breaker_states** - Circuit Breaker 상태
-  - CLOSED → OPEN → HALF_OPEN 상태 전이
-  - 자동 복구 로직
-- [x] **data_connectors** - 외부 DB 커넥터
-  - PostgreSQL, MySQL 지원
-  - 연결 문자열 암호화
-- [x] **schema_snapshots** - 스키마 스냅샷
-  - 외부 DB 스키마 버전 관리
-  - 해시 기반 변경 감지
-- [x] **schema_drift_detections** - 스키마 변경 감지
-  - 변경 유형: ADDED, REMOVED, MODIFIED
-  - 심각도: INFO, WARNING, CRITICAL
-
-**🔵 Stored Functions**
-- [x] `update_circuit_breaker_on_success()` - 성공 시 CB 상태 업데이트
-- [x] `update_circuit_breaker_on_failure()` - 실패 시 CB 상태 업데이트
-- [x] `try_half_open_circuit_breaker()` - HALF_OPEN 전환 시도
-
-**🔵 Pydantic 모델 (`backend/app/models/mcp.py`)**
-- [x] `MCPServer`, `MCPServerCreate`, `MCPServerUpdate` - 서버 CRUD
-- [x] `MCPTool`, `MCPToolCreate`, `MCPToolUpdate` - 도구 CRUD
-- [x] `MCPCallRequest`, `MCPCallResponse` - 도구 호출
-- [x] `CircuitBreakerState`, `CircuitBreakerConfig` - CB 관리
-- [x] `DataConnector`, `DataConnectorCreate` - DB 커넥터
-- [x] `SchemaSnapshot`, `DriftReport`, `DriftChange` - Drift 감지
-
-**🔵 서비스 계층**
-- [x] **CircuitBreaker** (`backend/app/services/circuit_breaker.py`)
-  - DB 기반 상태 저장 + Redis 캐싱
-  - InMemoryCircuitBreaker (테스트용)
-  - 설정: failure_threshold=5, success_threshold=2, timeout=60s
-- [x] **HTTPMCPProxy** (`backend/app/services/mcp_proxy.py`)
-  - JSON-RPC 2.0 프로토콜
-  - API Key / OAuth2 / Basic 인증 지원
-  - 타임아웃 + 재시도 (exponential backoff)
-  - MockMCPProxy (테스트용)
-- [x] **MCPToolHubService** (`backend/app/services/mcp_toolhub.py`)
-  - 서버/도구 CRUD
-  - `call_tool()` - CB 통합 도구 호출
-  - `health_check()` - 서버 헬스체크
-- [x] **SchemaDriftDetector** (`backend/app/services/drift_detector.py`)
-  - PostgreSQL/MySQL 스키마 조회
-  - 스냅샷 저장 및 비교
-  - 변경 감지 및 심각도 계산
-
-**🔵 API 엔드포인트 (`backend/app/routers/mcp.py`)**
-| Method | Endpoint | 설명 |
-|--------|----------|------|
-| POST | `/api/v1/mcp/servers` | MCP 서버 등록 |
-| GET | `/api/v1/mcp/servers` | 서버 목록 조회 |
-| GET | `/api/v1/mcp/servers/{id}` | 서버 상세 조회 |
-| PUT | `/api/v1/mcp/servers/{id}` | 서버 정보 수정 |
-| DELETE | `/api/v1/mcp/servers/{id}` | 서버 삭제 |
-| POST | `/api/v1/mcp/servers/{id}/tools` | 도구 등록 |
-| GET | `/api/v1/mcp/servers/{id}/tools` | 도구 목록 |
-| POST | `/api/v1/mcp/call` | 도구 호출 |
-| GET | `/api/v1/mcp/health` | 전체 헬스체크 |
-| GET | `/api/v1/mcp/servers/{id}/health` | 서버 헬스체크 |
-| GET | `/api/v1/mcp/circuit-breaker/{id}` | CB 상태 조회 |
-| POST | `/api/v1/mcp/circuit-breaker/{id}/reset` | CB 리셋 |
-| POST | `/api/v1/mcp/connectors` | DB 커넥터 등록 |
-| GET | `/api/v1/mcp/connectors` | 커넥터 목록 |
-| POST | `/api/v1/mcp/drift/detect/{id}` | Drift 감지 |
-| GET | `/api/v1/mcp/drift/reports/{id}` | Drift 리포트 목록 |
-
-**🔵 테스트 (`backend/tests/test_mcp_toolhub.py`)**
-- [x] TestInMemoryCircuitBreaker - 상태 전이 테스트
-- [x] TestMockMCPProxy - 도구 호출/헬스체크 테스트
-- [x] TestSchemaDriftDetector - 스키마 비교 로직 테스트
-- [x] TestMCPModels - Pydantic 유효성 검사 테스트
-
-#### 🔧 API 스키마 수정 (2025-12-22)
-Pydantic 모델과 PostgreSQL DB 스키마 불일치 문제 해결
-
-**문제점**
-- 기존 코드가 사용하던 컬럼명 (`server_id`, `base_url`, `auth_type` 등)이
-  실제 DB 스키마 (`id`, `endpoint`, `protocol`, `config` 등)와 불일치
-
-**수정 내역**
-- [x] **[Service]** `mcp_toolhub.py` 완전 재작성
-  - DB 스키마에 맞는 새 Pydantic 모델 정의 (MCPServerResponse, MCPToolResponse 등)
-  - Raw SQL 쿼리로 CRUD 구현 (sqlalchemy.text)
-  - 동기식 HTTP health check 메서드 추가 (`_perform_health_check`)
-- [x] **[Router]** `mcp.py` 재작성
-  - 서비스 파일에서 모델 import
-  - Data Connector/Drift Detection 엔드포인트 제거 (스키마 불일치)
-- [x] **[Lint]** ruff check 통과
-
-**실제 DB 스키마 (core.mcp_servers)**
-| Column | Type |
-|--------|------|
-| id | uuid |
-| tenant_id | uuid |
-| name | varchar |
-| endpoint | varchar |
-| protocol | varchar |
-| config | jsonb |
-| auth_config | jsonb |
-| status | varchar |
-| circuit_breaker_state | varchar |
-| fail_count | integer |
-
----
-
-## 📋 V2 Phase 2: 워크플로우 노드 실행 테스트 (2025-12-23)
-
-### 📊 13개 워크플로우 노드 통합 테스트
-
-| 노드 타입 | 상태 | 소요 시간 | 비고 |
-|----------|------|----------|------|
-| **CONDITION** | ✅ 성공 | < 1초 | 조건 평가 정상 |
-| **IF_ELSE** | ✅ 성공 | < 1초 | 분기 처리 정상 |
-| **LOOP** | ✅ 성공 | < 1초 | 반복 실행 정상 |
-| **PARALLEL** | ✅ 성공 | < 1초 | 병렬 실행 정상 |
-| **SLACK** | ✅ 성공 | < 1초 | 알림 (Mock) |
-| **EMAIL** | ✅ 성공 | < 1초 | 이메일 (Mock) |
-| **DATA** | ✅ 성공 | < 1초 | 센서 데이터 조회 |
-| **CODE** | ✅ 성공 | < 1초 | Python 코드 실행 |
-| **MCP** | ✅ 성공 | < 1초 | MCP 도구 호출 (실제 서버) |
-| **JUDGMENT** | ✅ 성공 | **5.3초** | AI 판정 (Claude API) |
-| **BI** | ✅ 성공 | **22.4초** | AI 분석 (Claude API) |
-| **ROLLBACK** | ⚠️ 예상된 실패 | < 1초 | 이전 버전 없음 |
-| **APPROVAL** | ⏳ 정상 대기 | 120초+ | 인간 승인 대기 (설계된 동작) |
-
-### 📝 AI 노드 테스트 상세
-
-**JUDGMENT 노드 (5.3초)**
-```json
-{
-  "decision": "CRITICAL",
-  "confidence": 0.95,
-  "reasoning": "온도 95°C와 진동 180Hz 모두 임계값 초과"
-}
-```
-
-**BI 노드 (22.4초)**
-```json
-{
-  "analysis_type": "trend",
-  "response": "**7일간 트렌드 분석**\n생산량: 안정적 상승세..."
-}
-```
-
-### 🔧 MCP 노드 버그 수정 (3개)
-
-MCP 노드 테스트 중 발견된 버그 수정:
-1. **`MCPCallRequest` 모델 호환성** - `server_id` vs `mcp_server_id` 필드명 불일치
-2. **`await` on sync function** - `workflow_engine.py`에서 동기 함수를 await 호출
-3. **`MCPCallResponse` 필드명** - `output` vs `result` 필드명 불일치
-
-수정 파일:
-- `backend/app/services/workflow_engine.py` - `_execute_mcp_node()` 메서드
-- `backend/app/services/mcp_proxy.py` - `call_tool_sync()` 동기 메서드 추가
-- `backend/app/services/mcp_toolhub.py` - 응답 모델 필드명 수정
-
-### ✅ 테스트 결론
-
-**13개 노드 타입 모두 정상 동작 확인**:
-- 11개: 즉시 성공
-- 1개 (ROLLBACK): 이전 버전 없어서 실패 (예상된 동작)
-- 1개 (APPROVAL): 인간 승인 대기 (예상된 동작)
-
-#### 🔍 검증 방법 (How to Test)
-```bash
-# 1. Docker 서비스 시작
-docker-compose up -d
-
-# 2. MCP 테스트 서버 시작 (별도 터미널)
-cd backend
-python mcp_test_server.py  # http://localhost:3002/mcp
-
-# 3. 백엔드 서버 시작 (별도 터미널)
-cd backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# 4. 테스트 사용자 생성 및 워크플로우 실행 테스트
-curl -s -X POST "http://localhost:8000/api/v1/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"wf_test@triflow.ai","password":"test1234!","name":"WF Test"}'
-
-# 로그인하여 토큰 획득
-TOKEN=$(curl -s -X POST "http://localhost:8000/api/v1/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"wf_test@triflow.ai","password":"test1234!"}' | jq -r '.tokens.access_token')
-
-# CONDITION 노드 워크플로우 테스트
-curl -s -X POST "http://localhost:8000/api/v1/workflows" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Condition Test",
-    "dsl_definition": {
-      "name": "condition_test",
-      "trigger": {"type": "manual"},
-      "nodes": [{"id": "cond_1", "type": "condition", "config": {"expression": "temperature > 80"}}]
-    }
-  }'
-
-# 워크플로우 실행
-curl -s -X POST "http://localhost:8000/api/v1/workflows/{workflow_id}/execute" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"context": {"temperature": 85}}'
-```
-
----
-
-#### 🔍 MCP API 검증 방법 (How to Test)
-```bash
-# 백엔드 서버 실행
-cd backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# API 엔드포인트 테스트 (Python)
-python -c "
-import requests
-resp = requests.post('http://localhost:8000/api/v1/auth/login',
-    json={'email':'mcp_test@triflow.ai','password':'test1234!'})
-token = resp.json()['tokens']['access_token']
-headers = {'Authorization': f'Bearer {token}'}
-
-# MCP 서버 CRUD
-resp = requests.post('http://localhost:8000/api/v1/mcp/servers',
-    headers=headers,
-    json={'name':'test','endpoint':'http://test.com','protocol':'stdio','config':{}})
-print('Create:', resp.status_code)  # 201
-
-server_id = resp.json()['id']
-resp = requests.get(f'http://localhost:8000/api/v1/mcp/servers/{server_id}', headers=headers)
-print('Get:', resp.status_code)  # 200
-
-resp = requests.delete(f'http://localhost:8000/api/v1/mcp/servers/{server_id}', headers=headers)
-print('Delete:', resp.status_code)  # 204
-"
-```
-
----
-
-## 📋 V2 Phase 2: StatCard 집계 기간 표시 & KPI 계산 수정 (2025-12-24)
-
-### 🎯 구현 목표
-StatCard에 표시되는 KPI 데이터의 집계 기간을 사용자에게 명확히 표시하여 데이터의 컨텍스트 제공
-
-### ✅ 구현 내역
-
-#### 1. StatCard 집계 기간 표시 기능
-| 파일 | 변경 내용 |
-|------|----------|
-| `backend/app/schemas/statcard.py` | `StatCardValue`에 기간 필드 추가 (`period_start`, `period_end`, `period_label`, `comparison_label`) |
-| `backend/app/services/stat_card_service.py` | KPI 조회 시 기간 정보 반환 (최근 7일, vs 전주) |
-| `frontend/src/types/statcard.ts` | TypeScript 인터페이스에 기간 필드 추가 |
-| `frontend/src/components/bi/StatCardGrid.tsx` | 헤더에 "(최근 7일 기준)" 표시 |
-| `frontend/src/components/bi/DynamicStatCard.tsx` | 동적 `comparison_label` 사용 ("vs 전주") |
-
-#### 2. 다운타임 KPI 계산 버그 수정
-**문제**: 다운타임 KPI가 **6586분**으로 비현실적으로 높게 표시됨
-
-**원인 분석**:
-- 샘플 데이터: 각 레코드당 0~60분 다운타임
-- 데이터 구조: 7일 × 3라인 × 3제품 × 3교대 = **189개 레코드**
-- 기존 계산: `SUM(downtime_minutes)` = 전체 합계 (~6000분)
-
-**해결**:
-```sql
--- 변경 전
-WHEN 'downtime' THEN COALESCE(SUM(downtime_minutes), 0)
-
--- 변경 후
-WHEN 'downtime' THEN COALESCE(AVG(downtime_minutes), 0)
-```
-
-**수정 파일**: `backend/app/services/stat_card_service.py` (2곳: 현재 기간 쿼리, 비교 기간 쿼리)
-
-### 🖼️ UI 결과물
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ 핵심 지표 (최근 7일 기준)  (4/6)        [⚙️ 편집]       │
-├─────────────────────────────────────────────────────────┤
-│ ┌────────────┐ ┌────────────┐ ┌────────────┐           │
-│ │ 불량률      │ │ OEE        │ │ 다운타임    │    →      │
-│ │   2.3%     │ │   87.5%    │ │   30분     │           │
-│ │ ▼ 0.2%     │ │ ▲ 1.5%     │ │ ▲ 5.2%     │           │
-│ │ vs 전주    │ │ vs 전주    │ │ vs 전주    │           │
-│ └────────────┘ └────────────┘ └────────────┘           │
-└─────────────────────────────────────────────────────────┘
-```
-
-### 🔍 검증 방법 (How to Test)
-
-**UI 검증**:
-1. `npm run dev` (프론트엔드 실행)
-2. 대시보드 접속
-3. StatCard 그리드에서 다음 확인:
-   - 헤더에 "(최근 7일 기준)" 표시 여부
-   - 각 카드에 "vs 전주" 표시 여부
-   - 다운타임 값이 ~30분대로 합리적인지 확인 (기존 6000분+ → 수정 후 ~30분)
-
-**API 검증**:
-```bash
-# 로그인 후 StatCard 값 조회
-TOKEN=$(curl -s -X POST "http://localhost:8000/api/v1/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"test1234!"}' | jq -r '.tokens.access_token')
-
-# StatCard 목록 조회 (period_label, comparison_label 필드 확인)
-curl -s "http://localhost:8000/api/v1/statcards" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {title: .value.title, period_label: .value.period_label, comparison_label: .value.comparison_label}'
-```
-
----
-
-## 📋 V2 Phase 2: AWS 배포 준비 - MinIO → S3 전환 (2025-12-24)
-
-### 🎯 구현 목표
-AWS (EC2 + RDS + S3) 배포를 위해 MinIO를 S3로 교체하고, 전체 코드베이스의 AWS 호환성 검토
-
-### ✅ 구현 내역
-
-#### 1. MinIO → S3 전환
-| 파일 | 변경 내용 |
-|------|----------|
-| `backend/requirements.txt` | `minio==7.2.0` 삭제, `boto3>=1.34.0` 추가 |
-| `backend/app/config.py` | MinIO 설정 5개 삭제 → S3 설정 4개 추가 (`aws_region`, `aws_access_key_id`, `aws_secret_access_key`, `s3_bucket_name`) |
-| `backend/app/services/workflow_engine.py` | MinIO 클라이언트 → boto3 S3 클라이언트 전환 (로컬 fallback 유지) |
-| `backend/app/services/settings_service.py` | MinIO 키 정의 → S3 키 정의 변경 |
-| `backend/.env` | MinIO 환경변수 → S3 환경변수 변경 |
-
-#### 2. AWS 호환성 검토 결과
-| 기능 | 상태 | 비고 |
-|------|------|------|
-| Redis Fallback | ✅ | ElastiCache 불필요 - 모든 Redis 코드에 graceful degradation 있음 |
-| pgvector | ✅ | RDS PostgreSQL 14+ 호환 |
-| Health Check | ✅ | `/health` 엔드포인트 있음 |
-| Security Headers | ✅ | HSTS 등 프로덕션 자동 적용 |
-| SSE Streaming | ✅ | WebSocket 불필요, SSE로 충분 |
-| JSON Logging | ✅ | CloudWatch 호환 |
-| 환경변수 기반 설정 | ✅ | 코드 수정 없이 배포 가능 |
-
-#### 3. S3 로컬 개발 지원
-- `AWS_ACCESS_KEY_ID`가 비어있으면 자동으로 로컬 파일시스템(`./exports/`) 사용
-- AWS 배포 시 S3 키 설정만 추가하면 자동으로 S3에 파일 저장
-
-### 🔍 검증 방법 (How to Test)
-
-**코드 검증**:
-```bash
-# boto3 설치 확인
-cd backend && pip install boto3
-
-# 서버 시작 (S3 키 없이 로컬 모드)
-python -m uvicorn app.main:app --reload
-
-# CSV 내보내기 테스트 (로컬 저장소 사용)
-# 워크플로우에서 export_to_csv 액션 실행 → ./exports/ 폴더에 파일 생성 확인
-```
-
-**AWS 배포 시**:
-```env
-# .env.production 설정
-AWS_REGION=ap-northeast-2
-AWS_ACCESS_KEY_ID=<your-key>
-AWS_SECRET_ACCESS_KEY=<your-secret>
-S3_BUCKET_NAME=triflow-ai
-```
-
-### 📋 AWS 인프라 체크리스트
-- [ ] RDS PostgreSQL 14+ 생성
-- [ ] pgvector 확장 설치
-- [ ] S3 버킷 생성
-- [ ] IAM 사용자/역할 생성
-- [ ] EC2 인스턴스 생성
-- [ ] Security Group 설정
-- [ ] .env.production 작성
-
----
-
-## 📋 V2 Phase 2: MCP 래퍼 서버 구현 (2025-12-26)
-
-### 🎯 구현 목표
-MES/ERP 등 외부 시스템 연동을 위한 MCP 래퍼 서버 템플릿 구현
-
-### ✅ 구현 내역
-
-#### 1. MCP 래퍼 패키지 생성
-| 파일 | 설명 |
-|------|------|
-| `backend/app/mcp_wrappers/__init__.py` | 패키지 초기화 및 export |
-| `backend/app/mcp_wrappers/base_wrapper.py` | MCP 래퍼 베이스 클래스 |
-| `backend/app/mcp_wrappers/mes_wrapper.py` | MES 시스템 래퍼 (5개 도구) |
-| `backend/app/mcp_wrappers/erp_wrapper.py` | ERP 시스템 래퍼 (6개 도구) |
-| `backend/app/mcp_wrappers/run_wrapper.py` | CLI 실행 스크립트 |
-
-#### 2. 베이스 클래스 (`base_wrapper.py`)
-- `MCPWrapperBase`: 추상 베이스 클래스
-  - `get_tools()`: 도구 목록 반환
-  - `call_tool()`: 도구 실행
-  - `health_check()`: 헬스체크
-- `MCPToolDefinition`: 도구 정의 Pydantic 모델
-- `create_mcp_app()`: MCP 표준 FastAPI 앱 생성
-
-#### 3. MES 래퍼 (`mes_wrapper.py`)
-| 도구 | 설명 |
-|------|------|
-| `get_production_status` | 생산 현황 조회 |
-| `get_defect_data` | 불량 데이터 조회 |
-| `get_equipment_status` | 설비 상태 조회 |
-| `get_work_orders` | 작업 지시 조회 |
-| `update_production_count` | 생산 수량 업데이트 |
-
-#### 4. ERP 래퍼 (`erp_wrapper.py`)
-| 도구 | 설명 |
-|------|------|
-| `get_inventory` | 재고 현황 조회 |
-| `get_purchase_orders` | 구매 발주 조회 |
-| `create_purchase_order` | 구매 발주 생성 |
-| `get_sales_orders` | 판매 주문 조회 |
-| `get_bom` | BOM(자재 명세서) 조회 |
-| `check_material_availability` | 자재 가용성 확인 |
-
-#### 5. 아키텍처
-```
-TriFlow Workflow ─→ MCP 노드 ─→ MCPToolHub ─→ HTTPMCPProxy
-                                                    │
-                                                    ▼
-                                        ┌───────────────────┐
-                                        │  MCP 래퍼 서버    │
-                                        │  (localhost:8100) │
-                                        └─────────┬─────────┘
-                                                  │
-                                                  ▼
-                                        ┌───────────────────┐
-                                        │  외부 API         │
-                                        │  (MES/ERP/SCADA)  │
-                                        └───────────────────┘
-```
-
-### 🔍 검증 방법 (How to Test)
-
-**1. MES 래퍼 서버 실행**:
-```bash
-cd backend
-python -m app.mcp_wrappers.run_wrapper \
-  --type mes \
-  --port 8100 \
-  --target-url http://mes-server.example.com
-```
-
-**2. 도구 목록 확인**:
-```bash
-curl -X POST http://localhost:8100/tools/list
-# 응답: {"tools": [{"name": "get_production_status", ...}, ...]}
-```
-
-**3. 도구 호출 테스트**:
-```bash
-curl -X POST http://localhost:8100/tools/call \
-  -H "Content-Type: application/json" \
-  -d '{"name": "get_production_status", "arguments": {"line_id": "A1"}}'
-```
-
-**4. 헬스체크**:
-```bash
-curl http://localhost:8100/health
-# 응답: {"status": "healthy", "timestamp": "...", "version": "1.0.0"}
-```
-
-**5. TriFlow에 MCP 서버 등록**:
-```bash
-curl -X POST http://localhost:8000/api/v1/mcp/servers \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "MES Server",
-    "base_url": "http://localhost:8100",
-    "auth_type": "NONE",
-    "timeout_ms": 30000,
-    "retry_count": 3
-  }'
-```
-
-### 📋 확장 가이드
-새 외부 시스템 래퍼 추가 시:
-1. `MCPWrapperBase` 상속
-2. `get_tools()` 구현 (도구 정의)
-3. `call_tool()` 구현 (API 호출 로직)
-4. `run_wrapper.py`에 타입 추가
-
----
-
-## 📋 V2 Phase 2: P2 고급 노드 UI 개선 (2025-12-26)
-
-### 🎯 구현 목표
-SIMULATE, DEPLOY, ROLLBACK, COMPENSATION 노드의 프론트엔드 UI를 백엔드 스펙에 맞게 개선
-
-### ✅ 구현 내역
-
-#### 1. SIMULATE 노드 UI
-| 필드 | 설명 |
-|------|------|
-| `simulation_type` | 드롭다운: scenario / parameter_sweep / monte_carlo |
-| `metrics` | 체크박스: success_rate, execution_time, resource_usage |
-| `scenarios` | JSON textarea (scenario 모드) |
-| `sweep_config` | parameter, start, end, step 입력 (parameter_sweep 모드) |
-| `iterations`, `distributions` | 반복횟수, 분포 JSON (monte_carlo 모드) |
-
-#### 2. DEPLOY 노드 UI
-| 필드 | 설명 |
-|------|------|
-| `deploy_type` | 드롭다운: ruleset / model / workflow |
-| `target_id` | 배포 대상 ID 입력 |
-| `version` | 버전 번호 (비워두면 최신) |
-| `environment` | 드롭다운: development / staging / production |
-| `rollback_on_failure` | 체크박스 |
-| `validation.enabled` | 체크박스 |
-| `validation.rules` | 체크박스: no_syntax_errors, test_coverage_above_80, no_breaking_changes |
-
-#### 3. ROLLBACK 노드 UI
-| 필드 | 설명 |
-|------|------|
-| `target_type` | 드롭다운: workflow / ruleset / model |
-| `target_id` | 롤백 대상 ID |
-| `version` | 롤백할 버전 (비워두면 직전 버전) |
-| `reason` | textarea - 롤백 사유 (감사 로그용) |
-
-#### 4. COMPENSATION 노드 UI
-| 필드 | 설명 |
-|------|------|
-| `compensation_type` | 드롭다운: auto / manual |
-| `on_failure` | 드롭다운: continue / abort |
-| `target_nodes` | JSON textarea (manual 모드) |
-| `compensation_actions` | JSON textarea (manual 모드) |
+</details>
+
+<details>
+<summary><b>🔧 V1 Sprint 1: Builder UI & Workflow Execution (2025-11-28)</b></summary>
+
+### 구현 내역
+- **Workflow Visual Editor**: React Flow 기반 드래그앤드롭 에디터
+- **Ruleset Editor**: Monaco Editor + Rhai 구문 하이라이팅
+- **Workflow Engine**: 조건/액션/분기/반복/병렬 실행
+- **Sensor Simulator**: normal, alert, random, preset 시나리오
+- **Execution Log Panel**: 실시간 로그 표시
 
 ### 수정 파일
-| 파일 | 변경 내용 |
-|------|----------|
-| `frontend/src/components/workflow/FlowEditor.tsx` | P2 노드 설정 패널 UI 개선 (라인 1132-1360) |
-| `frontend/src/services/workflowService.ts` | P2 노드 TypeScript 타입 정의 추가 |
+- `frontend/src/components/workflow/FlowEditor.tsx`
+- `frontend/src/components/workflow/WorkflowEditor.tsx`
+- `frontend/src/components/ruleset/RulesetEditorModal.tsx`
+- `backend/app/services/workflow_engine.py`
+- `backend/app/routers/workflows.py`
 
-### 🔍 검증 방법 (How to Test)
-```bash
-# 프론트엔드 실행
-cd frontend && npm run dev
+</details>
 
-# UI 검증 시나리오
-1. 워크플로우 페이지 → 새 워크플로우 → 플로우 에디터 열기
-2. 왼쪽 팔레트에서 "simulate" 노드 드래그
-3. 노드 클릭 → 오른쪽 설정 패널에서 simulation_type 변경
-4. 각 타입별로 다른 입력 필드가 표시되는지 확인
-5. deploy, rollback, compensation 노드도 동일하게 테스트
-```
+<details>
+<summary><b>🧠 V1 Sprint 2: Learning Pipeline (2025-12-01~02)</b></summary>
 
----
+### 구현 내역
+- **피드백 수집 UI**: 👍/👎 + 상세 모달
+- **AI 규칙 제안**: 피드백 패턴 분석 → 규칙 자동 제안
+- **A/B 테스트 프레임워크**: 실험 CRUD, 통계적 유의성 검정
+- **Rhai 버전 관리**: 스냅샷 저장/롤백
+- **학습 대시보드**: 통합 뷰
+- **RBAC**: 역할 기반 메뉴 필터링
 
-## 📋 V2 Phase 2: Analytics 페이지 제거 (2025-12-26)
+### 수정 파일
+- `backend/app/services/feedback_analyzer.py`
+- `backend/app/services/experiment_service.py`
+- `backend/app/routers/feedback.py`
+- `backend/app/routers/experiments.py`
+- `frontend/src/components/pages/LearningPage.tsx`
+- `frontend/src/components/ruleset/ProposalsPanel.tsx`
 
-### 🎯 변경 이유
-대시보드와 기능이 중복되어 사용자 경험 단순화를 위해 제거
+</details>
 
-### ✅ 변경 내역
+<details>
+<summary><b>🔌 V1 Sprint 3: 외부 시스템 연동 (2025-12-03~05)</b></summary>
 
-| 파일 | 변경 내용 |
-|------|----------|
-| `frontend/src/components/pages/AnalyticsPage.tsx` | 파일 삭제 |
-| `frontend/src/App.tsx` | AnalyticsPage import 제거, PAGE_INFO에서 analytics 제거, validTabs에서 제거 |
-| `frontend/src/components/layout/Sidebar.tsx` | ViewType에서 'analytics' 제거, 사이드바 메뉴에서 제거 |
+### 구현 내역
+- **Slack/Email 알림**: Webhook, SMTP 연동
+- **CSV/Excel Import**: 드래그앤드롭 업로드
+- **센서 스트리밍**: WebSocket 실시간 데이터
+- **데이터 동기화**: APScheduler 스케줄러
 
-### 🔍 검증 방법 (How to Test)
-```bash
-# 프론트엔드 실행
-cd frontend && npm run dev
+### 수정 파일
+- `backend/app/services/notifications.py`
+- `backend/app/services/data_sync.py`
+- `backend/app/routers/notifications.py`
+- `frontend/src/components/pages/DataPage.tsx`
 
-# 검증
-1. 사이드바에 Analytics 메뉴가 없는지 확인
-2. URL로 /analytics 접근 시 대시보드로 리다이렉트되는지 확인
-```
+</details>
 
----
+<details>
+<summary><b>🔐 V1 Sprint 4: 보안 & 안정화 (2025-12-06~08)</b></summary>
 
-## 📋 V2 Phase 2: 워크플로우 노드 구현 현황 종합 (2025-12-26)
+### 구현 내역
+- **JWT 인증 강화**: Refresh Token 로직
+- **PII 마스킹 미들웨어**: 개인정보 자동 마스킹
+- **Rate Limiting**: 요청 제한
+- **Audit Logging**: 감사 로그
 
-### 📊 전체 노드 구현 현황 (18개 노드)
+### 수정 파일
+- `backend/app/core/security.py`
+- `backend/app/middleware/pii_masking.py`
+- `backend/app/middleware/rate_limit.py`
 
-#### P0 노드 (기본, 7개) - ✅ 100% 완성
-| 노드 | Frontend UI | Backend 실행 | 상태 |
-|------|------------|--------------|------|
-| `condition` | ✅ 조건식 입력 | ✅ 조건 평가 | 완성 |
-| `action` | ✅ 액션 선택/파라미터 | ✅ 액션 실행 | 완성 |
-| `if_else` | ✅ then/else 분기 설정 | ✅ 조건 분기 | 완성 |
-| `loop` | ✅ 횟수/조건 설정 | ✅ 반복 실행 | 완성 |
-| `parallel` | ✅ 병렬 브랜치 설정 | ✅ 병렬 실행 | 완성 |
-| `switch` | ✅ case 분기 설정 | ✅ 다중 분기 | 완성 |
-| `code` | ✅ Python 코드 에디터 | ✅ 샌드박스 실행 | 완성 |
+</details>
 
-#### P1 노드 (비즈니스, 7개) - ✅ 100% 완성
-| 노드 | Frontend UI | Backend 실행 | 상태 |
-|------|------------|--------------|------|
-| `data` | ✅ 데이터소스 선택 | ✅ SQL/API 조회 | 완성 |
-| `judgment` | ✅ AI 프롬프트 입력 | ✅ Claude API 호출 | 완성 |
-| `bi` | ✅ 분석 쿼리 입력 | ✅ BI Agent 호출 | 완성 |
-| `mcp` | ✅ 서버/도구 선택 | ✅ MCP 프록시 호출 | 완성 |
-| `trigger` | ✅ 트리거 조건 설정 | ✅ 이벤트/스케줄 | 완성 |
-| `wait` | ✅ 대기 시간/조건 | ✅ sleep/이벤트 대기 | 완성 |
-| `approval` | ✅ 승인자 지정 | ✅ 인간 승인 대기 | 완성 |
+<details>
+<summary><b>🚀 V2 Phase 1: Advanced RAG & Intent (2025-12-10~15)</b></summary>
 
-#### P2 노드 (고급, 4개) - ✅ 100% 완성
-| 노드 | Frontend UI | Backend 실행 | 상태 |
-|------|------------|--------------|------|
-| `compensation` | ✅ 보상 액션 설정 | ✅ Saga 패턴 | 완성 |
-| `deploy` | ✅ 배포 환경/검증 | ✅ 버전 배포 | 완성 |
-| `rollback` | ✅ 버전/사유 입력 | ✅ 버전 복구 | 완성 |
-| `simulate` | ✅ 시뮬레이션 타입 | ✅ What-if 분석 | 완성 |
+### 구현 내역
+- **RAG 시스템 강화**: pgvector 기반 벡터 검색
+- **Intent 분류 개선**: 다중 인텐트 지원
+- **컨텍스트 관리**: 대화 히스토리 압축
 
-### 📁 핵심 파일
-| 파일 | 줄 수 | 설명 |
+### 수정 파일
+- `backend/app/services/rag_service.py`
+- `backend/app/agents/meta_router.py`
+
+</details>
+
+<details>
+<summary><b>🔧 V2 Phase 2: MCP ToolHub (2025-12-16~20)</b></summary>
+
+### 구현 내역
+- **MCP 서버 레지스트리**: CRUD API
+- **HTTP 프록시**: JSON-RPC 2.0 통신
+- **Circuit Breaker**: 장애 차단/복구 (5회 실패 → OPEN → 60초 후 HALF_OPEN)
+- **인증 지원**: API Key, OAuth2, Basic Auth
+- **도구 통계**: 호출 횟수, 평균 지연시간
+
+### 수정 파일
+- `backend/app/services/mcp_proxy.py`
+- `backend/app/services/mcp_toolhub.py`
+- `backend/app/services/circuit_breaker.py`
+- `backend/app/routers/mcp.py`
+- `backend/app/models/mcp.py`
+
+</details>
+
+<details>
+<summary><b>✅ V2 Phase 2: 워크플로우 노드 테스트 (2025-12-23)</b></summary>
+
+### 테스트 결과 (13개 노드)
+| 노드 | 결과 | 비고 |
 |------|------|------|
-| `backend/app/services/workflow_engine.py` | 6,552 | 18개 노드 실행 엔진 |
-| `frontend/src/components/workflow/FlowEditor.tsx` | 3,203 | 18개 노드 비주얼 에디터 |
+| CONDITION | ✅ 성공 | < 1초 |
+| IF_ELSE | ✅ 성공 | < 1초 |
+| LOOP | ✅ 성공 | < 1초 |
+| PARALLEL | ✅ 성공 | < 1초 |
+| DATA | ✅ 성공 | < 1초 |
+| CODE | ✅ 성공 | < 1초 |
+| MCP | ✅ 성공 | < 1초 |
+| JUDGMENT | ✅ 성공 | 5.3초 (Claude API) |
+| BI | ✅ 성공 | 22.4초 (Claude API) |
+| ROLLBACK | ⚠️ 예상된 실패 | 이전 버전 없음 |
+| APPROVAL | ⏳ 대기 | 인간 승인 대기 |
 
----
+### 버그 수정 (3개)
+1. `MCPCallRequest` 모델 호환성 - 필드명 불일치
+2. `await` on sync function - 동기 함수 await 호출
+3. `MCPCallResponse` 필드명 - output vs result
 
-## 📁 프로젝트 구조 (예정)
+</details>
 
+<details>
+<summary><b>📊 V2 Phase 2: StatCard & KPI (2025-12-24)</b></summary>
+
+### 구현 내역
+- **집계 기간 표시**: period_start, period_end, period_label
+- **KPI 계산 수정**: 실제 데이터 기반 계산
+
+### 수정 파일
+- `backend/app/schemas/statcard.py`
+- `backend/app/services/stat_card_service.py`
+- `frontend/src/components/dashboard/StatCard.tsx`
+
+</details>
+
+<details>
+<summary><b>☁️ V2 Phase 2: AWS 배포 준비 (2025-12-24)</b></summary>
+
+### 구현 내역
+- **MinIO → S3 전환**: boto3 클라이언트
+- **로컬 Fallback**: S3 키 없으면 ./exports/ 사용
+- **AWS 호환성 검토**: Redis fallback, pgvector, Health Check
+
+### 수정 파일
+- `backend/requirements.txt`
+- `backend/app/config.py`
+- `backend/app/services/workflow_engine.py`
+
+</details>
+
+<details>
+<summary><b>🔌 V2 Phase 2: MCP 래퍼 서버 (2025-12-26)</b></summary>
+
+### 구현 내역
+- **base_wrapper.py**: MCP 표준 인터페이스
+- **mes_wrapper.py**: MES 시스템 래퍼 (5개 도구)
+- **erp_wrapper.py**: ERP 시스템 래퍼 (6개 도구)
+- **run_wrapper.py**: CLI 실행 스크립트
+
+### 사용법
+```bash
+# MES 래퍼 서버 실행
+python -m app.mcp_wrappers.run_wrapper \
+  --type mes --port 8100 \
+  --target-url http://mes-server.example.com
+
+# TriFlow에 등록
+curl -X POST http://localhost:8000/api/v1/mcp/servers \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"name": "MES Server", "base_url": "http://localhost:8100"}'
 ```
-triflow-ai/
-├── AI_GUIDELINES.md          # AI 개발 가이드라인
-├── TASKS.md                  # 작업 목록
-├── docker-compose.yml        # Docker 개발 환경
-├── .env.example              # 환경 변수 템플릿
-│
-├── backend/                  # Python FastAPI 백엔드
-│   ├── agents/               # AI 에이전트 로직
-│   ├── tools/                # 에이전트 도구 (rhai, db 등)
-│   ├── prompts/              # 프롬프트 템플릿
-│   ├── api/                  # API 엔드포인트
-│   └── models/               # Pydantic 모델
-│
-├── frontend/                 # Tauri + React 프론트엔드
-│   ├── src/                  # React 소스
-│   ├── src-tauri/            # Tauri (Rust) 소스
-│   └── public/               # 정적 파일
-│
-└── docs/                     # 문서
-    ├── specs/                # 기술 명세서
-    └── archive/              # 아카이브된 문서
-```
+
+</details>
+
+<details>
+<summary><b>🎨 V2 Phase 2: P2 노드 UI 개선 (2025-12-26)</b></summary>
+
+### 구현 내역
+| 노드 | UI 개선 내용 |
+|------|-------------|
+| **SIMULATE** | simulation_type 선택, scenario/parameter_sweep/monte_carlo 모드별 UI |
+| **DEPLOY** | 배포 타입, 환경, 검증 규칙 설정 |
+| **ROLLBACK** | 버전 선택, 롤백 사유 입력 |
+| **COMPENSATION** | auto/manual 모드, 보상 액션 설정 |
+
+### 수정 파일
+- `frontend/src/components/workflow/FlowEditor.tsx`
+- `frontend/src/services/workflowService.ts`
+
+</details>
+
+<details>
+<summary><b>🗑️ V2 Phase 2: Analytics 페이지 제거 (2025-12-26)</b></summary>
+
+### 변경 이유
+대시보드와 기능 중복으로 사용자 경험 단순화
+
+### 수정 파일
+- `frontend/src/components/pages/AnalyticsPage.tsx` (삭제)
+- `frontend/src/App.tsx`
+- `frontend/src/components/layout/Sidebar.tsx`
+
+</details>
 
 ---
 
@@ -2411,4 +466,4 @@ triflow-ai/
 - **기술 스택**: Tauri v2 + React + FastAPI + PostgreSQL + Redis
 - **AI 모델**: Anthropic Claude API (claude-sonnet-4-5-20250929)
 - **룰 엔진**: Rhai (Rust 기반)
-- **목표**: 3개월 내 MVP 출시
+- **워크플로우**: Custom JSON DSL Executor
