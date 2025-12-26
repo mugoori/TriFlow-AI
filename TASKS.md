@@ -2134,6 +2134,119 @@ S3_BUCKET_NAME=triflow-ai
 
 ---
 
+## 📋 V2 Phase 2: MCP 래퍼 서버 구현 (2025-12-26)
+
+### 🎯 구현 목표
+MES/ERP 등 외부 시스템 연동을 위한 MCP 래퍼 서버 템플릿 구현
+
+### ✅ 구현 내역
+
+#### 1. MCP 래퍼 패키지 생성
+| 파일 | 설명 |
+|------|------|
+| `backend/app/mcp_wrappers/__init__.py` | 패키지 초기화 및 export |
+| `backend/app/mcp_wrappers/base_wrapper.py` | MCP 래퍼 베이스 클래스 |
+| `backend/app/mcp_wrappers/mes_wrapper.py` | MES 시스템 래퍼 (5개 도구) |
+| `backend/app/mcp_wrappers/erp_wrapper.py` | ERP 시스템 래퍼 (6개 도구) |
+| `backend/app/mcp_wrappers/run_wrapper.py` | CLI 실행 스크립트 |
+
+#### 2. 베이스 클래스 (`base_wrapper.py`)
+- `MCPWrapperBase`: 추상 베이스 클래스
+  - `get_tools()`: 도구 목록 반환
+  - `call_tool()`: 도구 실행
+  - `health_check()`: 헬스체크
+- `MCPToolDefinition`: 도구 정의 Pydantic 모델
+- `create_mcp_app()`: MCP 표준 FastAPI 앱 생성
+
+#### 3. MES 래퍼 (`mes_wrapper.py`)
+| 도구 | 설명 |
+|------|------|
+| `get_production_status` | 생산 현황 조회 |
+| `get_defect_data` | 불량 데이터 조회 |
+| `get_equipment_status` | 설비 상태 조회 |
+| `get_work_orders` | 작업 지시 조회 |
+| `update_production_count` | 생산 수량 업데이트 |
+
+#### 4. ERP 래퍼 (`erp_wrapper.py`)
+| 도구 | 설명 |
+|------|------|
+| `get_inventory` | 재고 현황 조회 |
+| `get_purchase_orders` | 구매 발주 조회 |
+| `create_purchase_order` | 구매 발주 생성 |
+| `get_sales_orders` | 판매 주문 조회 |
+| `get_bom` | BOM(자재 명세서) 조회 |
+| `check_material_availability` | 자재 가용성 확인 |
+
+#### 5. 아키텍처
+```
+TriFlow Workflow ─→ MCP 노드 ─→ MCPToolHub ─→ HTTPMCPProxy
+                                                    │
+                                                    ▼
+                                        ┌───────────────────┐
+                                        │  MCP 래퍼 서버    │
+                                        │  (localhost:8100) │
+                                        └─────────┬─────────┘
+                                                  │
+                                                  ▼
+                                        ┌───────────────────┐
+                                        │  외부 API         │
+                                        │  (MES/ERP/SCADA)  │
+                                        └───────────────────┘
+```
+
+### 🔍 검증 방법 (How to Test)
+
+**1. MES 래퍼 서버 실행**:
+```bash
+cd backend
+python -m app.mcp_wrappers.run_wrapper \
+  --type mes \
+  --port 8100 \
+  --target-url http://mes-server.example.com
+```
+
+**2. 도구 목록 확인**:
+```bash
+curl -X POST http://localhost:8100/tools/list
+# 응답: {"tools": [{"name": "get_production_status", ...}, ...]}
+```
+
+**3. 도구 호출 테스트**:
+```bash
+curl -X POST http://localhost:8100/tools/call \
+  -H "Content-Type: application/json" \
+  -d '{"name": "get_production_status", "arguments": {"line_id": "A1"}}'
+```
+
+**4. 헬스체크**:
+```bash
+curl http://localhost:8100/health
+# 응답: {"status": "healthy", "timestamp": "...", "version": "1.0.0"}
+```
+
+**5. TriFlow에 MCP 서버 등록**:
+```bash
+curl -X POST http://localhost:8000/api/v1/mcp/servers \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "MES Server",
+    "base_url": "http://localhost:8100",
+    "auth_type": "NONE",
+    "timeout_ms": 30000,
+    "retry_count": 3
+  }'
+```
+
+### 📋 확장 가이드
+새 외부 시스템 래퍼 추가 시:
+1. `MCPWrapperBase` 상속
+2. `get_tools()` 구현 (도구 정의)
+3. `call_tool()` 구현 (API 호출 로직)
+4. `run_wrapper.py`에 타입 추가
+
+---
+
 ## 📁 프로젝트 구조 (예정)
 
 ```
