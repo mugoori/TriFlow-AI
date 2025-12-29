@@ -482,19 +482,24 @@ class BIDataCollector:
             total_yesterday += row.yesterday_qty or 0
             total_lastweek += row.lastweek_qty or 0
 
+        # Decimal to float 변환
+        total_today_f = float(total_today)
+        total_yesterday_f = float(total_yesterday)
+        total_lastweek_f = float(total_lastweek)
+
         return {
             "by_line": comparison_by_line,
             "total": {
-                "today_qty": float(total_today),
-                "yesterday_qty": float(total_yesterday),
-                "lastweek_qty": float(total_lastweek),
+                "today_qty": total_today_f,
+                "yesterday_qty": total_yesterday_f,
+                "lastweek_qty": total_lastweek_f,
                 "vs_yesterday_pct": (
-                    round(100.0 * (total_today - total_yesterday) / total_yesterday, 1)
-                    if total_yesterday > 0 else 0
+                    round(100.0 * (total_today_f - total_yesterday_f) / total_yesterday_f, 1)
+                    if total_yesterday_f > 0 else 0
                 ),
                 "vs_lastweek_pct": (
-                    round(100.0 * (total_today - total_lastweek) / total_lastweek, 1)
-                    if total_lastweek > 0 else 0
+                    round(100.0 * (total_today_f - total_lastweek_f) / total_lastweek_f, 1)
+                    if total_lastweek_f > 0 else 0
                 ),
             },
         }

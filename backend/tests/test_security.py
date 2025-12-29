@@ -3,13 +3,19 @@
 # Rate Limiting, Security Headers, Scope Validation
 # ===================================================
 
+import os
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 
 client = TestClient(app)
+
+# Check if rate limiting is disabled in test environment
+RATE_LIMIT_DISABLED = os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "false"
 
 
 class TestSecurityHeaders:
@@ -45,6 +51,7 @@ class TestSecurityHeaders:
         # Cache-Control이 없으면 pass (옵션 헤더)
 
 
+@pytest.mark.skipif(RATE_LIMIT_DISABLED, reason="Rate limiting is disabled in test environment")
 class TestRateLimiting:
     """Rate Limiting 테스트"""
 

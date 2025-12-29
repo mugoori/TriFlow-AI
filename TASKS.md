@@ -1,6 +1,6 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-26
+> **최종 업데이트**: 2025-12-29
 > **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → V2 Phase 2 진행 중
 > **현재 브랜치**: `develop`
 
@@ -502,6 +502,58 @@ GET  /api/v1/mcp/datasource-tools/{id}/health # 헬스체크
 - `ChatResponseType`에 'card_action' 추가
 - 미사용 import 제거 (STATUS_COLORS, ChevronDown 등)
 - 타입 불일치 수정 (onPin/onUnpin, toast.success)
+
+</details>
+
+<details>
+<summary><b>🧪 V2 Phase 2: 테스트 커버리지 개선 (2025-12-29)</b></summary>
+
+### 목표
+백엔드 테스트 커버리지 80% 달성을 위한 대규모 테스트 추가
+
+### 결과
+- **전체 커버리지**: ~75% → ~80% (목표 달성)
+- **신규 테스트 파일**: 45개
+- **총 테스트 케이스**: 800+ 패스
+
+### 주요 개선 서비스
+
+| 서비스 | 이전 | 이후 | 추가 테스트 |
+|--------|------|------|-------------|
+| `audit_service.py` | 41% | 100% | Mock 기반 전체 커버리지 |
+| `bi_chat_service.py` | 56% | 94% | 61개 테스트 (LLM 통합) |
+| `rag_service.py` | 44% | 73% | 토큰 제한, 벡터 검색 |
+| `stat_card_service.py` | 65% | 85% | 집계 로직 테스트 |
+| `workflow_engine.py` | 57% | 57% | 외부 의존성으로 유지 |
+
+### 신규 테스트 파일
+```
+test_agent_orchestrator.py    test_api_key_service.py
+test_api_keys_router.py       test_auth_dependencies.py
+test_base_wrapper.py          test_bi_chat_service.py
+test_bi_correlation_analyzer.py   test_bi_data_collector.py
+test_bi_planner.py            test_bi_router.py
+test_chart_builder.py         test_circuit_breaker_service.py
+test_database.py              test_drift_detector.py
+test_erp_mes_router.py        test_erp_wrapper.py
+test_insight_service.py       test_judgment_agent.py
+test_judgment_cache.py        test_jwt.py
+test_learning_agent.py        test_main.py
+test_mcp_proxy.py             test_mcp_wrappers.py
+test_meta_router.py           test_notifications_service.py
+test_password.py              test_pii_masking_middleware.py
+test_rag_service.py           test_rate_limit_middleware.py
+test_routing_rules.py         test_run_wrapper.py
+test_scheduler_router.py      test_scheduler_service.py
+test_settings_service.py      test_stat_card_service.py
+test_statcard_models.py       test_story_service.py
+test_tenants_router.py        test_workflow_engine_extra.py
+test_workflow_planner.py      test_workflows_mock.py
+```
+
+### 참고
+- `workflow_engine.py` (57%)는 외부 의존성(MCP, Scheduler, LLM, S3)이 많아 단위 테스트 한계 존재
+- 통합 테스트로 추가 커버리지 확보 권장
 
 </details>
 

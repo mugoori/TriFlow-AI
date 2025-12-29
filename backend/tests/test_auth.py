@@ -309,6 +309,38 @@ class TestGoogleOAuth:
     """Google OAuth 테스트"""
 
     @pytest.mark.asyncio
+    async def test_google_login_configured(self, client: AsyncClient):
+        """Test Google login when configured."""
+        from unittest.mock import patch, MagicMock
+
+        mock_oauth = MagicMock()
+        mock_oauth.get_google_auth_url.return_value = {
+            "url": "https://accounts.google.com/o/oauth2/v2/auth?...",
+            "state": "random_state_token"
+        }
+
+        with patch("app.config.settings.google_client_id", "test-client-id"):
+            with patch("app.routers.auth.oauth_service", mock_oauth):
+                response = await client.get("/api/v1/auth/google/login")
+                assert response.status_code == 200
+                data = response.json()
+                assert "url" in data
+                assert "state" in data
+
+    @pytest.mark.asyncio
+    async def test_google_login_error(self, client: AsyncClient):
+        """Test Google login when error occurs."""
+        from unittest.mock import patch, MagicMock
+
+        mock_oauth = MagicMock()
+        mock_oauth.get_google_auth_url.side_effect = Exception("OAuth error")
+
+        with patch("app.config.settings.google_client_id", "test-client-id"):
+            with patch("app.routers.auth.oauth_service", mock_oauth):
+                response = await client.get("/api/v1/auth/google/login")
+                assert response.status_code == 500
+
+    @pytest.mark.asyncio
     async def test_google_login_not_configured(self, client: AsyncClient):
         """Test Google login when not configured."""
         from unittest.mock import patch
@@ -361,6 +393,179 @@ class TestGoogleOAuth:
                 mock_user.return_value = {"id": "123"}  # No email
                 response = await client.get("/api/v1/auth/google/callback?code=test_code")
                 assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(120)
+    async def test_google_callback_new_user(self, client: AsyncClient, db_session):
+        """Test Google callback creates new user."""
+        from unittest.mock import patch, AsyncMock
+
+        with patch("app.services.oauth_service.exchange_google_code", new_callable=AsyncMock) as mock_exchange:
+            mock_exchange.return_value = {"access_token": "valid_token"}
+            with patch("app.services.oauth_service.get_google_user_info", new_callable=AsyncMock) as mock_user:
+                mock_user.return_value = {
+                    "id": "google_new_user_123",
+                    "email": "googleuser_new@example.com",
+                    "name": "Google New User",
+                    "picture": "https://example.com/pic.jpg"
+                }
+                response = await client.get("/api/v1/auth/google/callback?code=valid_code")
+                assert response.status_code == 200
+                data = response.json()
+                assert "user" in data
+                assert "tokens" in data
+                assert data["is_new_user"] is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(120)
+    async def test_google_callback_existing_google_user(self, client: AsyncClient, db_session):
+        """Test Google callback with existing Google OAuth user."""
+        from app.models import User, Tenant
+        from uuid import uuid4
+
+        # Create tenant and user with google oauth
+        tenant = Tenant(
+            tenant_id=uuid4(),
+            name="Google Test Tenant",
+            slug="google-test",
+        )
+        db_session.add(tenant)
+        db_session.commit()
+
+        user = User(
+            user_id=uuid4(),
+            tenant_id=tenant.tenant_id,
+            username="existinggoogle",
+            email="existinggoogle@example.com",
+            password_hash=None,
+            display_name="Existing Google User",
+            role="user",
+            is_active=True,
+            oauth_provider="google",
+            oauth_provider_id="google_existing_123",
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        from unittest.mock import patch, AsyncMock
+
+        with patch("app.services.oauth_service.exchange_google_code", new_callable=AsyncMock) as mock_exchange:
+            mock_exchange.return_value = {"access_token": "valid_token"}
+            with patch("app.services.oauth_service.get_google_user_info", new_callable=AsyncMock) as mock_user:
+                mock_user.return_value = {
+                    "id": "google_existing_123",
+                    "email": "existinggoogle@example.com",
+                    "name": "Existing Google User",
+                }
+                response = await client.get("/api/v1/auth/google/callback?code=valid_code")
+                assert response.status_code == 200
+                data = response.json()
+                assert data["is_new_user"] is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(120)
+    async def test_google_callback_link_existing_email(self, client: AsyncClient, db_session):
+        """Test Google callback links to existing email account."""
+        from app.models import User, Tenant
+        from app.auth.password import get_password_hash
+        from uuid import uuid4
+
+        # Create tenant and user without oauth
+        tenant = Tenant(
+            tenant_id=uuid4(),
+            name="Link Test Tenant",
+            slug="link-test",
+        )
+        db_session.add(tenant)
+        db_session.commit()
+
+        user = User(
+            user_id=uuid4(),
+            tenant_id=tenant.tenant_id,
+            username="linktest",
+            email="linktest@example.com",
+            password_hash=get_password_hash("password123"),
+            display_name="Link Test User",
+            role="user",
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        from unittest.mock import patch, AsyncMock
+
+        with patch("app.services.oauth_service.exchange_google_code", new_callable=AsyncMock) as mock_exchange:
+            mock_exchange.return_value = {"access_token": "valid_token"}
+            with patch("app.services.oauth_service.get_google_user_info", new_callable=AsyncMock) as mock_user:
+                mock_user.return_value = {
+                    "id": "google_link_123",
+                    "email": "linktest@example.com",  # Same email
+                    "name": "Link Test User",
+                    "picture": "https://example.com/pic.jpg"
+                }
+                response = await client.get("/api/v1/auth/google/callback?code=valid_code")
+                assert response.status_code == 200
+                data = response.json()
+                assert data["is_new_user"] is False  # Linked, not new
+
+
+class TestRefreshTokenEdgeCases:
+    """Refresh Token Edge Cases"""
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_user_not_found(self, client: AsyncClient):
+        """Test refresh with valid token but user deleted."""
+        from app.auth.jwt import create_refresh_token
+        from uuid import uuid4
+
+        # Create refresh token for non-existent user
+        refresh_token = create_refresh_token({"sub": str(uuid4())})
+
+        response = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token}
+        )
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(120)
+    async def test_refresh_token_inactive_user(self, client: AsyncClient, db_session):
+        """Test refresh with inactive user."""
+        from app.models import User, Tenant
+        from app.auth.password import get_password_hash
+        from app.auth.jwt import create_refresh_token
+        from uuid import uuid4
+
+        # Create tenant and inactive user
+        tenant = Tenant(
+            tenant_id=uuid4(),
+            name="Refresh Test Tenant",
+            slug="refresh-test",
+        )
+        db_session.add(tenant)
+        db_session.commit()
+
+        user = User(
+            user_id=uuid4(),
+            tenant_id=tenant.tenant_id,
+            username="refreshinactive",
+            email="refreshinactive@example.com",
+            password_hash=get_password_hash("password123"),
+            display_name="Refresh Inactive",
+            role="user",
+            is_active=False,  # Inactive
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        # Create valid refresh token for inactive user
+        refresh_token = create_refresh_token({"sub": str(user.user_id)})
+
+        response = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token}
+        )
+        assert response.status_code == 403
 
 
 class TestTokenFunctions:

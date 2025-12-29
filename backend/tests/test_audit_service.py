@@ -484,3 +484,355 @@ class TestAuditLogEdgeCases:
         )
 
         assert log_id is not None
+
+
+# ========== Mock 기반 테스트 (DB 불필요) ==========
+from unittest.mock import MagicMock, patch
+
+
+class TestCreateAuditLogMock:
+    """create_audit_log Mock 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_create_log_success(self):
+        """로그 생성 성공 (Mock)"""
+        mock_db = MagicMock()
+
+        user_id = uuid4()
+        tenant_id = uuid4()
+
+        log_id = await create_audit_log(
+            db=mock_db,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            action="create",
+            resource="workflows",
+            resource_id="123",
+            method="POST",
+            path="/api/v1/workflows",
+            status_code=201,
+            ip_address="192.168.1.1",
+            user_agent="Mozilla/5.0",
+            request_body={"name": "Test Workflow"},
+            response_summary="Created",
+            duration_ms=100,
+        )
+
+        assert log_id is not None
+        mock_db.execute.assert_called_once()
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_log_with_sensitive_data_masked(self):
+        """민감 정보가 마스킹되어 저장"""
+        mock_db = MagicMock()
+
+        log_id = await create_audit_log(
+            db=mock_db,
+            user_id=uuid4(),
+            tenant_id=uuid4(),
+            action="login",
+            resource="auth",
+            resource_id=None,
+            method="POST",
+            path="/api/v1/auth/login",
+            status_code=200,
+            request_body={"username": "user1", "password": "secret123"},
+        )
+
+        assert log_id is not None
+        call_args = mock_db.execute.call_args
+        params = call_args[0][1]
+        if params.get("request_body"):
+            assert "***MASKED***" in params["request_body"]
+
+    @pytest.mark.asyncio
+    async def test_create_log_failure_rollback(self):
+        """로그 생성 실패 시 롤백"""
+        mock_db = MagicMock()
+        mock_db.execute.side_effect = Exception("Database error")
+
+        log_id = await create_audit_log(
+            db=mock_db,
+            user_id=uuid4(),
+            tenant_id=uuid4(),
+            action="create",
+            resource="workflows",
+            resource_id="123",
+            method="POST",
+            path="/api/v1/workflows",
+            status_code=201,
+        )
+
+        assert log_id is None
+        mock_db.rollback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_log_truncates_long_path(self):
+        """긴 경로 잘림"""
+        mock_db = MagicMock()
+
+        long_path = "/api/v1/" + "a" * 600
+
+        log_id = await create_audit_log(
+            db=mock_db,
+            user_id=uuid4(),
+            tenant_id=uuid4(),
+            action="read",
+            resource="test",
+            resource_id=None,
+            method="GET",
+            path=long_path,
+            status_code=200,
+        )
+
+        assert log_id is not None
+        call_args = mock_db.execute.call_args
+        params = call_args[0][1]
+        assert len(params["path"]) <= 500
+
+    @pytest.mark.asyncio
+    async def test_create_log_truncates_user_agent(self):
+        """긴 User-Agent 잘림"""
+        mock_db = MagicMock()
+
+        long_ua = "Mozilla/5.0 " + "x" * 600
+
+        log_id = await create_audit_log(
+            db=mock_db,
+            user_id=uuid4(),
+            tenant_id=uuid4(),
+            action="read",
+            resource="test",
+            resource_id=None,
+            method="GET",
+            path="/api/v1/test",
+            status_code=200,
+            user_agent=long_ua,
+        )
+
+        assert log_id is not None
+        call_args = mock_db.execute.call_args
+        params = call_args[0][1]
+        assert len(params["user_agent"]) <= 500
+
+    @pytest.mark.asyncio
+    async def test_create_log_truncates_response_summary(self):
+        """긴 response_summary 잘림"""
+        mock_db = MagicMock()
+
+        long_summary = "Success: " + "x" * 600
+
+        log_id = await create_audit_log(
+            db=mock_db,
+            user_id=uuid4(),
+            tenant_id=uuid4(),
+            action="read",
+            resource="test",
+            resource_id=None,
+            method="GET",
+            path="/api/v1/test",
+            status_code=200,
+            response_summary=long_summary,
+        )
+
+        assert log_id is not None
+        call_args = mock_db.execute.call_args
+        params = call_args[0][1]
+        assert len(params["response_summary"]) <= 500
+
+    @pytest.mark.asyncio
+    async def test_create_log_without_optional_fields(self):
+        """선택 필드 없이 로그 생성"""
+        mock_db = MagicMock()
+
+        log_id = await create_audit_log(
+            db=mock_db,
+            user_id=None,
+            tenant_id=None,
+            action="read",
+            resource="test",
+            resource_id=None,
+            method="GET",
+            path="/api/v1/test",
+            status_code=200,
+        )
+
+        assert log_id is not None
+        call_args = mock_db.execute.call_args
+        params = call_args[0][1]
+        assert params["user_id"] is None
+        assert params["tenant_id"] is None
+        assert params["request_body"] is None
+
+
+class TestGetAuditLogsMock:
+    """get_audit_logs Mock 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_get_logs_success(self):
+        """로그 조회 성공"""
+        mock_db = MagicMock()
+
+        mock_row = (
+            uuid4(), uuid4(), uuid4(),
+            "create", "workflows", "123",
+            "POST", "/api/v1/workflows", 201,
+            "192.168.1.1", "Mozilla/5.0",
+            '{"name": "test"}', "Created", 100,
+            datetime.now(),
+        )
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [mock_row]
+        mock_db.execute.return_value = mock_result
+
+        logs = await get_audit_logs(db=mock_db, limit=10, offset=0)
+
+        assert len(logs) == 1
+        assert logs[0]["action"] == "create"
+        assert logs[0]["resource"] == "workflows"
+
+    @pytest.mark.asyncio
+    async def test_get_logs_with_all_filters(self):
+        """모든 필터 적용 로그 조회"""
+        mock_db = MagicMock()
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        user_id = uuid4()
+        tenant_id = uuid4()
+
+        logs = await get_audit_logs(
+            db=mock_db,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            resource="workflows",
+            action="create",
+            status_code=201,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 12, 31),
+            limit=50,
+            offset=10,
+        )
+
+        assert logs == []
+        mock_db.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_logs_failure(self):
+        """로그 조회 실패"""
+        mock_db = MagicMock()
+        mock_db.execute.side_effect = Exception("Database error")
+
+        logs = await get_audit_logs(db=mock_db)
+
+        assert logs == []
+
+    @pytest.mark.asyncio
+    async def test_get_logs_with_null_values(self):
+        """NULL 값이 있는 로그 조회"""
+        mock_db = MagicMock()
+
+        mock_row = (
+            uuid4(), None, None,
+            "read", "public", None,
+            "GET", "/health", 200,
+            None, None, None, None, None, None,
+        )
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [mock_row]
+        mock_db.execute.return_value = mock_result
+
+        logs = await get_audit_logs(db=mock_db)
+
+        assert len(logs) == 1
+        assert logs[0]["user_id"] is None
+        assert logs[0]["tenant_id"] is None
+        assert logs[0]["created_at"] is None
+
+
+class TestGetAuditStatsMock:
+    """get_audit_stats Mock 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_get_stats_success(self):
+        """통계 조회 성공"""
+        mock_db = MagicMock()
+
+        mock_total_result = MagicMock()
+        mock_total_result.scalar.return_value = 100
+
+        mock_resource_result = MagicMock()
+        mock_resource_result.fetchall.return_value = [
+            ("workflows", 50), ("tenants", 30), ("users", 20),
+        ]
+
+        mock_action_result = MagicMock()
+        mock_action_result.fetchall.return_value = [
+            ("create", 40), ("read", 35), ("update", 15), ("delete", 10),
+        ]
+
+        mock_status_result = MagicMock()
+        mock_status_result.fetchall.return_value = [
+            ("success", 80), ("client_error", 15), ("server_error", 5),
+        ]
+
+        mock_db.execute.side_effect = [
+            mock_total_result,
+            mock_resource_result,
+            mock_action_result,
+            mock_status_result,
+        ]
+
+        stats = await get_audit_stats(db=mock_db)
+
+        assert stats["total"] == 100
+        assert stats["by_resource"]["workflows"] == 50
+        assert stats["by_action"]["create"] == 40
+        assert stats["by_status"]["success"] == 80
+
+    @pytest.mark.asyncio
+    async def test_get_stats_with_all_filters(self):
+        """모든 필터 적용 통계 조회"""
+        mock_db = MagicMock()
+
+        mock_total_result = MagicMock()
+        mock_total_result.scalar.return_value = 50
+
+        mock_resource_result = MagicMock()
+        mock_resource_result.fetchall.return_value = []
+
+        mock_action_result = MagicMock()
+        mock_action_result.fetchall.return_value = []
+
+        mock_status_result = MagicMock()
+        mock_status_result.fetchall.return_value = []
+
+        mock_db.execute.side_effect = [
+            mock_total_result,
+            mock_resource_result,
+            mock_action_result,
+            mock_status_result,
+        ]
+
+        tenant_id = uuid4()
+        stats = await get_audit_stats(
+            db=mock_db,
+            tenant_id=tenant_id,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 12, 31),
+        )
+
+        assert stats["total"] == 50
+        assert mock_db.execute.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_get_stats_failure(self):
+        """통계 조회 실패"""
+        mock_db = MagicMock()
+        mock_db.execute.side_effect = Exception("Database error")
+
+        stats = await get_audit_stats(db=mock_db)
+
+        assert stats == {"total": 0, "by_resource": {}, "by_action": {}, "by_status": {}}

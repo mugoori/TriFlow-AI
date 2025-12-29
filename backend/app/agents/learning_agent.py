@@ -842,7 +842,7 @@ result.actions.push(#{
 
                 # 실행 로그 조회
                 query = db.query(JudgmentExecution).filter(
-                    JudgmentExecution.executed_at >= cutoff_time
+                    JudgmentExecution.created_at >= cutoff_time
                 )
 
                 if ruleset_id:

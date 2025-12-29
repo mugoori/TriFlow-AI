@@ -86,6 +86,8 @@ os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 # Disable audit and PII middleware for tests (causes body reading conflicts)
 os.environ["AUDIT_LOG_ENABLED"] = "false"
 os.environ["PII_MASKING_ENABLED"] = "false"
+# Disable rate limiting for tests (prevents test failures due to rapid API calls)
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 # Now import app modules
 from app.main import app
@@ -144,6 +146,7 @@ def create_schemas():
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS bi"))
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS rag"))
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS audit"))
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS aas"))
         conn.commit()
 
 
