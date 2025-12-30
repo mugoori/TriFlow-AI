@@ -64,6 +64,25 @@ export interface SearchParams {
   similarityThreshold?: number;
 }
 
+export interface DocumentDetail {
+  document_id: string;
+  title: string;
+  source_type: string;
+  source_id?: string;
+  section?: string;
+  content: string;
+  chunk_count: number;
+  chunk_total: number;
+  char_count: number;
+  created_at?: string;
+  tags: string[];
+}
+
+export interface DocumentDetailResponse {
+  success: boolean;
+  document: DocumentDetail;
+}
+
 // ===========================================
 // API Functions
 // ===========================================
@@ -226,6 +245,31 @@ export async function searchDocuments(
   return response.json();
 }
 
+/**
+ * 문서 상세 조회
+ */
+export async function getDocument(
+  documentId: string,
+  token: string
+): Promise<DocumentDetailResponse> {
+  const response = await fetch(
+    `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/rag/documents/${documentId}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || 'Failed to get document');
+  }
+
+  return response.json();
+}
+
 // ===========================================
 // Convenience Object Export
 // ===========================================
@@ -236,6 +280,7 @@ export const ragService = {
   listDocuments,
   deleteDocument,
   searchDocuments,
+  getDocument,
 };
 
 export default ragService;

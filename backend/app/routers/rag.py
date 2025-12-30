@@ -231,6 +231,28 @@ async def list_documents(
     return result
 
 
+@router.get("/documents/{document_id}", response_model=dict, summary="문서 상세 조회")
+async def get_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    RAG 시스템에서 문서의 상세 내용을 조회합니다.
+    - document_id는 parent_document_id (source_id)입니다.
+    - 모든 청크의 내용을 병합하여 반환합니다.
+    """
+    rag_service = get_rag_service()
+    result = await rag_service.get_document(
+        tenant_id=current_user.tenant_id,
+        document_id=document_id,
+    )
+
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result.get("error", "Document not found"))
+
+    return result
+
+
 @router.delete("/documents/{document_id}", response_model=dict, summary="문서 삭제")
 async def delete_document(
     document_id: UUID,

@@ -15,12 +15,18 @@ import {
   BarChart3,
   Users,
   Beaker,
+  Plus,
+  X,
+  Loader2,
 } from 'lucide-react';
 import {
   Experiment,
   ExperimentStats,
+  ExperimentCreate,
+  VariantCreate,
   listExperiments,
   getExperimentStats,
+  createExperiment,
   startExperiment,
   pauseExperiment,
   resumeExperiment,
@@ -28,6 +34,7 @@ import {
   cancelExperiment,
   deleteExperiment,
 } from '../../services/experimentService';
+import { rulesetService, Ruleset } from '../../services/rulesetService';
 import { useToast } from '@/components/ui/Toast';
 
 // Status badge colors
@@ -57,6 +64,7 @@ export default function ExperimentsPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Load experiments
   const loadExperiments = useCallback(async () => {
@@ -203,6 +211,19 @@ export default function ExperimentsPage() {
     }
   };
 
+  const handleCreateExperiment = async (data: ExperimentCreate) => {
+    try {
+      const newExperiment = await createExperiment(data);
+      setExperiments(prev => [newExperiment, ...prev]);
+      setSelectedExperiment(newExperiment);
+      setShowCreateModal(false);
+      toast.success(`"${newExperiment.name}" 실험이 생성되었습니다.`);
+    } catch (err: any) {
+      toast.error(err.message || '실험 생성 실패');
+      throw err;
+    }
+  };
+
   return (
     <div className="flex-1 flex overflow-hidden bg-slate-50 dark:bg-slate-950">
       {/* Left Panel - Experiment List */}
@@ -214,13 +235,22 @@ export default function ExperimentsPage() {
               <FlaskConical className="w-5 h-5" />
               A/B 테스트
             </h1>
-            <button
-              onClick={loadExperiments}
-              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="새로고침"
-            >
-              <RefreshCw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+              >
+                <Plus className="w-4 h-4" />
+                새 실험
+              </button>
+              <button
+                onClick={loadExperiments}
+                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="새로고침"
+              >
+                <RefreshCw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
           {/* Status Filter */}
@@ -507,6 +537,315 @@ export default function ExperimentsPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Create Experiment Modal */}
+      {showCreateModal && (
+        <CreateExperimentModal
+          onClose={() => setShowCreateModal(false)}
+          onCreate={handleCreateExperiment}
+        />
+      )}
+    </div>
+  );
+}
+
+// =====================================================
+// CreateExperimentModal 컴포넌트
+// =====================================================
+
+interface CreateExperimentModalProps {
+  onClose: () => void;
+  onCreate: (data: ExperimentCreate) => Promise<void>;
+}
+
+function CreateExperimentModal({ onClose, onCreate }: CreateExperimentModalProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [hypothesis, setHypothesis] = useState('');
+  const [trafficPercentage, setTrafficPercentage] = useState(100);
+  const [minSampleSize, setMinSampleSize] = useState(100);
+  const [confidenceLevel, setConfidenceLevel] = useState(0.95);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Variants
+  const [rulesets, setRulesets] = useState<Ruleset[]>([]);
+  const [controlRulesetId, setControlRulesetId] = useState<string>('');
+  const [treatmentRulesetId, setTreatmentRulesetId] = useState<string>('');
+  const [controlWeight, setControlWeight] = useState(50);
+
+  // Load rulesets for variant selection
+  useEffect(() => {
+    const loadRulesets = async () => {
+      try {
+        const response = await rulesetService.list();
+        setRulesets(response.rulesets);
+      } catch (err) {
+        console.error('Failed to load rulesets:', err);
+      }
+    };
+    loadRulesets();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const variants: VariantCreate[] = [];
+
+      // Control variant
+      variants.push({
+        name: 'Control',
+        description: '기존 규칙 (대조군)',
+        is_control: true,
+        ruleset_id: controlRulesetId || undefined,
+        traffic_weight: controlWeight,
+      });
+
+      // Treatment variant
+      variants.push({
+        name: 'Treatment',
+        description: '새 규칙 (실험군)',
+        is_control: false,
+        ruleset_id: treatmentRulesetId || undefined,
+        traffic_weight: 100 - controlWeight,
+      });
+
+      const data: ExperimentCreate = {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        hypothesis: hypothesis.trim() || undefined,
+        traffic_percentage: trafficPercentage,
+        min_sample_size: minSampleSize,
+        confidence_level: confidenceLevel,
+        variants,
+      };
+
+      await onCreate(data);
+    } catch (err: any) {
+      setError(err.message || '실험 생성에 실패했습니다');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50 flex items-center gap-2">
+              <FlaskConical className="w-5 h-5 text-purple-500" />
+              새 실험 만들기
+            </h3>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <X className="w-5 h-5 text-slate-500" />
+            </button>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Name */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                실험 이름 *
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="예: 온도 규칙 A/B 테스트"
+                className="w-full px-3 py-2 border dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                required
+              />
+            </div>
+
+            {/* Hypothesis */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                가설
+              </label>
+              <input
+                type="text"
+                value={hypothesis}
+                onChange={(e) => setHypothesis(e.target.value)}
+                placeholder="예: 버전 B가 더 정확한 경고를 생성할 것이다"
+                className="w-full px-3 py-2 border dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                설명
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="실험에 대한 상세 설명"
+                rows={2}
+                className="w-full px-3 py-2 border dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+              />
+            </div>
+
+            {/* Settings Row */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  트래픽 비율 (%)
+                </label>
+                <input
+                  type="number"
+                  value={trafficPercentage}
+                  onChange={(e) => setTrafficPercentage(Number(e.target.value))}
+                  min={1}
+                  max={100}
+                  className="w-full px-3 py-2 border dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  최소 샘플
+                </label>
+                <input
+                  type="number"
+                  value={minSampleSize}
+                  onChange={(e) => setMinSampleSize(Number(e.target.value))}
+                  min={10}
+                  className="w-full px-3 py-2 border dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  신뢰도 (%)
+                </label>
+                <input
+                  type="number"
+                  value={Math.round(confidenceLevel * 100)}
+                  onChange={(e) => setConfidenceLevel(Number(e.target.value) / 100)}
+                  min={80}
+                  max={99}
+                  className="w-full px-3 py-2 border dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+
+            {/* Variants Section */}
+            <div className="border-t dark:border-slate-700 pt-4">
+              <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                <Beaker className="w-4 h-4" />
+                변형 설정
+              </h4>
+
+              <div className="space-y-3">
+                {/* Control Variant */}
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                      Control (대조군)
+                    </span>
+                    <span className="text-xs text-blue-600 dark:text-blue-400">
+                      {controlWeight}%
+                    </span>
+                  </div>
+                  <select
+                    value={controlRulesetId}
+                    onChange={(e) => setControlRulesetId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50"
+                  >
+                    <option value="">룰셋 선택 (선택사항)</option>
+                    {rulesets.map((rs) => (
+                      <option key={rs.ruleset_id} value={rs.ruleset_id}>
+                        {rs.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Treatment Variant */}
+                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                      Treatment (실험군)
+                    </span>
+                    <span className="text-xs text-purple-600 dark:text-purple-400">
+                      {100 - controlWeight}%
+                    </span>
+                  </div>
+                  <select
+                    value={treatmentRulesetId}
+                    onChange={(e) => setTreatmentRulesetId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50"
+                  >
+                    <option value="">룰셋 선택 (선택사항)</option>
+                    {rulesets.map((rs) => (
+                      <option key={rs.ruleset_id} value={rs.ruleset_id}>
+                        {rs.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Weight Slider */}
+                <div>
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                    트래픽 분배: Control {controlWeight}% / Treatment {100 - controlWeight}%
+                  </label>
+                  <input
+                    type="range"
+                    value={controlWeight}
+                    onChange={(e) => setControlWeight(Number(e.target.value))}
+                    min={10}
+                    max={90}
+                    step={5}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-4 border-t dark:border-slate-700">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading || !name.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    생성 중...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    만들기
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

@@ -38,18 +38,19 @@ export function StoryViewer({
   className = '',
 }: StoryViewerProps) {
   const [story, setStory] = useState<DataStory | null>(initialStory || null);
-  const [isLoading, setIsLoading] = useState(!initialStory && !!storyId);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<StoryViewMode>(initialMode);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // 스토리 로드
+  // 스토리 로드 - 항상 상세 API 호출하여 sections 포함된 데이터 가져오기
   useEffect(() => {
-    if (storyId && !initialStory) {
-      loadStory(storyId);
+    const storyIdToLoad = storyId || initialStory?.story_id;
+    if (storyIdToLoad) {
+      loadStory(storyIdToLoad);
     }
-  }, [storyId, initialStory]);
+  }, [storyId, initialStory?.story_id]);
 
   const loadStory = async (id: string) => {
     setIsLoading(true);
@@ -152,7 +153,7 @@ export function StoryViewer({
   return (
     <div className={`h-full flex flex-col ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b dark:border-slate-700">
+      <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
         <div className="flex items-center gap-3">
           <BookOpen className="w-5 h-5 text-indigo-500" />
           <h2 className="font-semibold text-slate-900 dark:text-slate-50">
@@ -171,8 +172,8 @@ export function StoryViewer({
               onClick={() => setViewMode('slide')}
               className={`p-1.5 rounded ${
                 viewMode === 'slide'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm'
-                  : 'text-slate-500'
+                  ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-slate-100'
+                  : 'text-slate-500 dark:text-slate-400'
               }`}
               title="슬라이드 모드"
             >
@@ -182,8 +183,8 @@ export function StoryViewer({
               onClick={() => setViewMode('scroll')}
               className={`p-1.5 rounded ${
                 viewMode === 'scroll'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm'
-                  : 'text-slate-500'
+                  ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-slate-100'
+                  : 'text-slate-500 dark:text-slate-400'
               }`}
               title="스크롤 모드"
             >
@@ -192,7 +193,7 @@ export function StoryViewer({
           </div>
           <button
             onClick={toggleFullscreen}
-            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
             title={isFullscreen ? '전체화면 종료' : '전체화면'}
           >
             {isFullscreen ? (
@@ -204,7 +205,7 @@ export function StoryViewer({
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
               title="닫기"
             >
               <X className="w-4 h-4" />
@@ -255,18 +256,18 @@ function SlideView({ sections, currentSlide, onPrev, onNext, onGoTo }: SlideView
   if (!section) return null;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-white dark:bg-slate-900">
       {/* Slide Content */}
       <div className="flex-1 overflow-y-auto p-8">
         <SectionContent section={section} isSlideMode />
       </div>
 
       {/* Navigation */}
-      <div className="flex items-center justify-between p-4 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+      <div className="flex items-center justify-between p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
         <button
           onClick={onPrev}
           disabled={currentSlide === 0}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
           이전
@@ -291,7 +292,7 @@ function SlideView({ sections, currentSlide, onPrev, onNext, onGoTo }: SlideView
         <button
           onClick={onNext}
           disabled={currentSlide === sections.length - 1}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           다음
           <ChevronRight className="w-5 h-5" />
@@ -311,7 +312,7 @@ interface ScrollViewProps {
 
 function ScrollView({ sections }: ScrollViewProps) {
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-8">
+    <div className="h-full overflow-y-auto p-6 space-y-8 bg-white dark:bg-slate-900">
       {sections.map((section, index) => (
         <div key={section.section_id} className="scroll-mt-4">
           <SectionContent section={section} isSlideMode={false} />
@@ -402,19 +403,19 @@ function NarrativeRenderer({ content }: { content: string }) {
   const lines = content.split('\n');
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 text-slate-800 dark:text-slate-200">
       {lines.map((line, index) => {
         // 헤더
         if (line.startsWith('### ')) {
           return (
-            <h4 key={index} className="text-lg font-semibold mt-4">
+            <h4 key={index} className="text-lg font-semibold mt-4 text-slate-900 dark:text-slate-100">
               {line.slice(4)}
             </h4>
           );
         }
         if (line.startsWith('## ')) {
           return (
-            <h3 key={index} className="text-xl font-bold mt-4">
+            <h3 key={index} className="text-xl font-bold mt-4 text-slate-900 dark:text-slate-100">
               {line.slice(3)}
             </h3>
           );
@@ -422,7 +423,7 @@ function NarrativeRenderer({ content }: { content: string }) {
         // 불릿
         if (line.startsWith('- ') || line.startsWith('* ')) {
           return (
-            <li key={index} className="ml-4">
+            <li key={index} className="ml-4 text-slate-700 dark:text-slate-300">
               {line.slice(2)}
             </li>
           );
@@ -430,7 +431,7 @@ function NarrativeRenderer({ content }: { content: string }) {
         // 굵은 텍스트
         const boldProcessed = line.replace(
           /\*\*(.*?)\*\*/g,
-          '<strong>$1</strong>'
+          '<strong class="text-slate-900 dark:text-slate-100">$1</strong>'
         );
         // 빈 줄
         if (!line.trim()) {

@@ -929,6 +929,79 @@ class RAGService:
             "crag_info": crag_info,
         }
 
+    async def get_document(
+        self,
+        tenant_id: UUID,
+        document_id: str,
+    ) -> Dict[str, Any]:
+        """문서 상세 조회 - 모든 청크 병합하여 반환
+
+        document_id는 metadata->>'parent_document_id' 값입니다.
+        list_documents에서 반환되는 document_id와 일치합니다.
+        """
+        try:
+            with get_db_context() as db:
+                result = db.execute(
+                    text("""
+                        SELECT
+                            id,
+                            title,
+                            source_type,
+                            source_id,
+                            section,
+                            chunk_index,
+                            chunk_total,
+                            text,
+                            char_count,
+                            created_at,
+                            metadata,
+                            tags
+                        FROM rag.rag_documents
+                        WHERE tenant_id = :tenant_id
+                        AND metadata->>'parent_document_id' = :doc_id
+                        AND is_active = true
+                        ORDER BY chunk_index ASC
+                    """),
+                    {"tenant_id": tenant_id, "doc_id": document_id}
+                )
+                rows = result.fetchall()
+
+            if not rows:
+                return {"success": False, "error": "Document not found"}
+
+            # 첫 번째 청크에서 메타데이터 추출
+            first = rows[0]
+
+            # 모든 청크 텍스트 병합
+            full_content = "\n".join([row.text for row in rows])
+
+            # 모든 태그 수집 (중복 제거)
+            all_tags = set()
+            for row in rows:
+                if row.tags:
+                    all_tags.update(row.tags)
+
+            return {
+                "success": True,
+                "document": {
+                    "document_id": document_id,
+                    "title": first.title or "Untitled",
+                    "source_type": first.source_type,
+                    "source_id": first.source_id,
+                    "section": first.section,
+                    "content": full_content,
+                    "chunk_count": len(rows),
+                    "chunk_total": first.chunk_total,
+                    "char_count": sum(row.char_count for row in rows),
+                    "created_at": first.created_at.isoformat() if first.created_at else None,
+                    "tags": list(all_tags),
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting document: {e}")
+            return {"success": False, "error": str(e)}
+
     async def delete_document(
         self,
         tenant_id: UUID,

@@ -1050,7 +1050,9 @@ async def execute_workflow(
         use_simulated_data=False,
     )
 
-    status = engine_result.get("status", "completed")
+    raw_status = engine_result.get("status", "completed")
+    # DB check constraint requires uppercase status values
+    status = raw_status.upper() if raw_status else "COMPLETED"
     error_message = engine_result.get("error_message")
 
     # 실행 인스턴스 저장
@@ -1196,7 +1198,9 @@ async def run_workflow(
                     logger.error(f"알림 액션 실행 오류: {action_name} - {e}")
 
     # 최종 상태 결정
-    status = engine_result.get("status", "completed")
+    raw_status = engine_result.get("status", "completed")
+    # DB check constraint requires lowercase status values
+    status = raw_status.lower() if raw_status else "completed"
     error_message = engine_result.get("error_message")
 
     # 새 실행 인스턴스 생성

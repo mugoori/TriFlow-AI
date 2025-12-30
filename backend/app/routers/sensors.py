@@ -12,13 +12,88 @@ from typing import List, Optional, Set
 import pandas as pd
 from fastapi import APIRouter, Query, Depends, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, distinct
+from sqlalchemy import func, distinct, text
 from sqlalchemy.orm import Session
+from uuid import uuid4
 
 from app.database import get_db
-from app.models import SensorData
+from app.models import SensorData, Tenant
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_or_create_tenant(db: Session) -> Tenant:
+    """MVP용 기본 tenant 조회 또는 생성"""
+    tenant = db.query(Tenant).first()
+    if not tenant:
+        tenant = Tenant(
+            name="Default Tenant",
+            slug="default",
+            settings={},
+        )
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
+    return tenant
+
+
+# 이미 생성된 파티션을 추적하여 중복 확인 방지
+_created_partitions: set = set()
+
+
+def _ensure_partition_exists(db: Session, recorded_at: datetime) -> None:
+    """해당 월의 파티션이 없으면 자동 생성"""
+    year = recorded_at.year
+    month = recorded_at.month
+
+    partition_name = f"sensor_data_{year}_{month:02d}"
+
+    # 이미 이 세션에서 생성한 파티션이면 스킵
+    if partition_name in _created_partitions:
+        return
+
+    # 다음 달 계산
+    if month == 12:
+        next_year, next_month = year + 1, 1
+    else:
+        next_year, next_month = year, month + 1
+
+    start_date = f"{year}-{month:02d}-01"
+    end_date = f"{next_year}-{next_month:02d}-01"
+
+    try:
+        # 파티션 존재 여부 확인
+        check_sql = text("""
+            SELECT EXISTS (
+                SELECT 1 FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'core' AND c.relname = :partition_name
+            )
+        """)
+        result = db.execute(check_sql, {"partition_name": partition_name})
+        exists = result.scalar()
+
+        if not exists:
+            # 파티션 생성
+            create_sql = text(f"""
+                CREATE TABLE IF NOT EXISTS core.{partition_name}
+                PARTITION OF core.sensor_data
+                FOR VALUES FROM ('{start_date}') TO ('{end_date}')
+            """)
+            db.execute(create_sql)
+            db.commit()
+
+        # 생성된 파티션 기록
+        _created_partitions.add(partition_name)
+    except Exception as e:
+        # 이미 존재하는 경우 무시 (동시 생성 시 발생할 수 있음)
+        if "already exists" in str(e).lower():
+            _created_partitions.add(partition_name)
+        else:
+            raise
 
 # 연결된 WebSocket 클라이언트 관리
 class ConnectionManager:
@@ -462,6 +537,7 @@ async def import_sensor_data(
     LINE_B,pressure,1.2,bar,
     ```
     """
+    logger.info(f"CSV import started: filename={file.filename}")
     errors = []
     imported_rows = 0
     failed_rows = 0
@@ -475,8 +551,10 @@ async def import_sensor_data(
         )
 
     try:
+        logger.info("Reading file content...")
         # 파일 읽기
         content = await file.read()
+        logger.info(f"File read: {len(content)} bytes")
 
         # 파일 형식에 따라 DataFrame 로드
         if filename.lower().endswith('.csv'):
@@ -494,6 +572,9 @@ async def import_sensor_data(
                 status_code=400,
                 detail=f"필수 컬럼이 누락되었습니다: {', '.join(missing_columns)}"
             )
+
+        # tenant_id 가져오기
+        tenant = _get_or_create_tenant(db)
 
         # 데이터 정제 및 삽입
         for idx, row in df.iterrows():
@@ -518,15 +599,26 @@ async def import_sensor_data(
                 if not line_code or not sensor_type:
                     raise ValueError("line_code와 sensor_type은 필수입니다")
 
-                # DB 삽입
-                sensor_data = SensorData(
-                    line_code=line_code,
-                    sensor_type=sensor_type,
-                    value=value,
-                    unit=unit,
-                    recorded_at=recorded_at,
+                # 파티션 자동 생성 (해당 월 파티션이 없으면 생성)
+                _ensure_partition_exists(db, recorded_at)
+
+                # DB 삽입 - 파티션 테이블이므로 raw SQL 사용
+                db.execute(
+                    text("""
+                        INSERT INTO core.sensor_data
+                        (sensor_id, tenant_id, line_code, sensor_type, value, unit, recorded_at)
+                        VALUES (:sensor_id, :tenant_id, :line_code, :sensor_type, :value, :unit, :recorded_at)
+                    """),
+                    {
+                        "sensor_id": str(uuid4()),
+                        "tenant_id": str(tenant.tenant_id),
+                        "line_code": line_code,
+                        "sensor_type": sensor_type,
+                        "value": value,
+                        "unit": unit,
+                        "recorded_at": recorded_at,
+                    }
                 )
-                db.add(sensor_data)
                 imported_rows += 1
 
             except Exception as e:
@@ -550,6 +642,7 @@ async def import_sensor_data(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"CSV import error: {type(e).__name__}: {str(e)}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=500,

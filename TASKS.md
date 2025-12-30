@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-29
-> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → V2 Phase 2 진행 중
+> **최종 업데이트**: 2025-12-30
+> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → V2 Phase 2 완료 (QA 통과)
 > **현재 브랜치**: `develop`
 
 ---
@@ -13,7 +13,7 @@
 |-----------|------|--------|----------|
 | **MVP** | PC 설치형 데스크톱 앱 (Core + Chat UI) | ✅ v0.1.0 | ██████████ 100% |
 | **V1** | Builder UI & Learning & 외부연동 & 보안 | ✅ 완료 | ██████████ 100% |
-| **V2** | Advanced Workflow & MCP 연동 | 🔄 진행중 | ████████░░ 80% |
+| **V2** | Advanced Workflow & MCP 연동 | ✅ 완료 | ██████████ 100% |
 
 ---
 
@@ -554,6 +554,59 @@ test_workflow_planner.py      test_workflows_mock.py
 ### 참고
 - `workflow_engine.py` (57%)는 외부 의존성(MCP, Scheduler, LLM, S3)이 많아 단위 테스트 한계 존재
 - 통합 테스트로 추가 커버리지 확보 권장
+
+</details>
+
+<details>
+<summary><b>✅ V2 Phase 2: QA 테스트 완료 (2025-12-30)</b></summary>
+
+### 테스트 결과 요약
+전체 145개 테스트 항목 **100% 통과**
+
+| 카테고리 | 항목 수 | 통과 | 상태 |
+|----------|---------|------|------|
+| 인증 및 로그인 | 6 | 6 | ✅ |
+| AI 채팅 | 14 | 14 | ✅ |
+| 대시보드 | 13 | 13 | ✅ |
+| 워크플로우 | 22 | 22 | ✅ |
+| 룰셋 | 18 | 18 | ✅ |
+| A/B 테스트 | 14 | 14 | ✅ |
+| 학습 (Learning) | 6 | 6 | ✅ |
+| 데이터 관리 | 14 | 14 | ✅ |
+| 설정 | 14 | 14 | ✅ |
+| 통합 시나리오 | 18 | 18 | ✅ |
+| 에러 케이스 | 6 | 6 | ✅ |
+
+### 통합 테스트 시나리오
+1. **10.1 전체 자동화 플로우**: AI 채팅 → 규칙 생성 → 워크플로우 생성 → 시뮬레이션 ✅
+2. **10.2 BI 분석 플로우**: 대시보드 → AI 차트 생성 → 인사이트 → 데이터 스토리 ✅
+3. **10.3 A/B 테스트 플로우**: 룰셋 생성 → 실험 생성 → 라이프사이클 (Draft→Running→Completed) ✅
+
+### 검증된 API 엔드포인트 (14개)
+- `/api/v1/auth/login` - 로그인
+- `/api/v1/agents/chat` - AI 채팅 (규칙/워크플로우 생성)
+- `/api/v1/bi/chat` - BI 채팅 (인사이트/스토리)
+- `/api/v1/bi/stat-cards` - 통계 카드
+- `/api/v1/bi/insights` - 인사이트 목록
+- `/api/v1/bi/stories` - 스토리 목록
+- `/api/v1/rulesets` - 룰셋 CRUD
+- `/api/v1/rulesets/{id}/execute` - 룰셋 실행
+- `/api/v1/workflows` - 워크플로우 CRUD
+- `/api/v1/experiments` - 실험 CRUD
+- `/api/v1/experiments/{id}/start` - 실험 시작
+- `/api/v1/experiments/{id}/stats` - 실험 통계
+- `/api/v1/sensors/data` - 센서 데이터 (962개 레코드)
+- `/api/v1/rag/documents/{id}` - RAG 문서 상세 조회
+
+### 수정된 이슈 (4개)
+1. **Admin 비밀번호 불일치** - DB 해시 재설정 (`admin123`)
+2. **RAG 문서 상세 API 누락** - GET 엔드포인트 추가
+3. **CSV Import 파티션 오류** - 파티션 자동 생성 로직 추가
+4. **A/B 실험 Control 그룹** - is_control 플래그 설정
+
+### 문서화
+- [TEST_SCENARIOS.md](docs/TEST_SCENARIOS.md) - 상세 체크리스트
+- [QA_TEST_REPORT_20251230.md](docs/PROJECT/QA_TEST_REPORT_20251230.md) - 공식 보고서
 
 </details>
 

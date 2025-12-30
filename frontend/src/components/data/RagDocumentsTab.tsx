@@ -23,12 +23,14 @@ import {
   Upload,
   Plus,
   X,
+  Eye,
 } from 'lucide-react';
 import { FileUploadZone } from '@/components/ui/FileUploadZone';
 import {
   ragService,
   type RagDocument,
   type SearchResult,
+  type DocumentDetail,
 } from '@/services/ragService';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -62,6 +64,10 @@ export function RagDocumentsTab() {
   const [newDocContent, setNewDocContent] = useState('');
   const [newDocType, setNewDocType] = useState('MANUAL');
   const [adding, setAdding] = useState(false);
+
+  // 문서 상세 보기
+  const [selectedDocument, setSelectedDocument] = useState<DocumentDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   // 문서 목록 로드
   const loadDocuments = useCallback(async () => {
@@ -161,8 +167,86 @@ export function RagDocumentsTab() {
     setSearchResults(null);
   };
 
+  // 문서 상세 보기
+  const handleViewDocument = async (documentId: string) => {
+    if (!token) return;
+
+    setLoadingDetail(true);
+    try {
+      const response = await ragService.getDocument(documentId, token);
+      setSelectedDocument(response.document);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '문서 조회 실패');
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  // 문서 상세 모달 닫기
+  const closeDocumentDetail = () => {
+    setSelectedDocument(null);
+  };
+
   return (
     <div className="space-y-6">
+      {/* 문서 상세 모달 */}
+      {selectedDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  {selectedDocument.title}
+                </h2>
+                <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                  <span>청크: {selectedDocument.chunk_count}개</span>
+                  <span>문자: {selectedDocument.char_count.toLocaleString()}자</span>
+                  {selectedDocument.created_at && (
+                    <span>
+                      등록일: {new Date(selectedDocument.created_at).toLocaleDateString('ko-KR')}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={closeDocumentDetail}
+                className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 모달 본문 */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                {selectedDocument.content}
+              </pre>
+            </div>
+
+            {/* 모달 푸터 */}
+            <div className="flex justify-end px-6 py-4 border-t border-slate-200 dark:border-slate-700">
+              <button
+                onClick={closeDocumentDetail}
+                className="px-4 py-2 text-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 로딩 오버레이 */}
+      {loadingDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl p-6">
+            <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">문서 로딩 중...</p>
+          </div>
+        </div>
+      )}
+
       {/* 액션 버튼 */}
       <div className="flex justify-end gap-2">
         <button
@@ -408,12 +492,15 @@ export function RagDocumentsTab() {
                   {documents.map((doc) => (
                     <TableRow
                       key={doc.document_id}
-                      className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                      onClick={() => handleViewDocument(doc.document_id)}
                     >
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <FileText className="w-4 h-4 text-slate-400" />
-                          <span className="font-medium">{doc.title}</span>
+                          <span className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                            {doc.title}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -428,13 +515,28 @@ export function RagDocumentsTab() {
                           : '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        <button
-                          onClick={() => handleDelete(doc.document_id)}
-                          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                          title="삭제"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewDocument(doc.document_id);
+                            }}
+                            className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                            title="보기"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(doc.document_id);
+                            }}
+                            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

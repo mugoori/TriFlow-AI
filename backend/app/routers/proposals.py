@@ -186,34 +186,40 @@ async def review_proposal(
 
     analyzer = FeedbackAnalyzer(db)
 
-    if review.action == "approve":
-        ruleset = analyzer.approve_proposal(
-            proposal_id=p_uuid,
-            comment=review.comment,
-        )
-        if ruleset:
-            return {
-                "status": "approved",
-                "message": "제안이 승인되어 새 룰셋으로 배포되었습니다",
-                "proposal_id": proposal_id,
-                "ruleset_id": str(ruleset.ruleset_id),
-                "ruleset_name": ruleset.name,
-            }
+    try:
+        if review.action == "approve":
+            ruleset = analyzer.approve_proposal(
+                proposal_id=p_uuid,
+                comment=review.comment,
+            )
+            if ruleset:
+                return {
+                    "status": "approved",
+                    "message": "제안이 승인되어 새 룰셋으로 배포되었습니다",
+                    "proposal_id": proposal_id,
+                    "ruleset_id": str(ruleset.ruleset_id),
+                    "ruleset_name": ruleset.name,
+                }
+            else:
+                raise HTTPException(status_code=400, detail="승인 처리 실패: 제안을 찾을 수 없거나 이미 처리됨")
         else:
-            raise HTTPException(status_code=400, detail="승인 처리 실패")
-    else:
-        success = analyzer.reject_proposal(
-            proposal_id=p_uuid,
-            comment=review.comment,
-        )
-        if success:
-            return {
-                "status": "rejected",
-                "message": "제안이 거절되었습니다",
-                "proposal_id": proposal_id,
-            }
-        else:
-            raise HTTPException(status_code=400, detail="거절 처리 실패")
+            success = analyzer.reject_proposal(
+                proposal_id=p_uuid,
+                comment=review.comment,
+            )
+            if success:
+                return {
+                    "status": "rejected",
+                    "message": "제안이 거절되었습니다",
+                    "proposal_id": proposal_id,
+                }
+            else:
+                raise HTTPException(status_code=400, detail="거절 처리 실패")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Review proposal failed: {e}")
+        raise HTTPException(status_code=500, detail=f"처리 중 오류 발생: {str(e)}")
 
 
 @router.delete("/{proposal_id}")

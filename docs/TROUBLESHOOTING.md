@@ -134,6 +134,90 @@
 - **해결책**: tauri.conf.json에서 deprecated된 `dangerousRemoteDomainIpcAccess` 속성 제거
 - **RCA**: Tauri v2에서 해당 속성이 더 이상 지원되지 않음
 
+#### 📊 Database/Data
+
+**[2025-12-30] Admin 비밀번호 불일치 (로그인 실패)**
+- **에러**: `401 Unauthorized` - 로그인 시 비밀번호 검증 실패
+- **발생 위치**: `POST /api/v1/auth/login`
+- **증상**:
+  - `admin@triflow.ai` 계정으로 로그인 불가
+  - 비밀번호 `admin123` 입력 시 401 에러
+- **근본 원인 (RCA)**:
+  - DB의 `password_hash` 값이 예상과 불일치
+  - 이전 마이그레이션 또는 초기화 과정에서 해시값 변경
+- **최종 해결책**:
+  - bcrypt로 새 해시 생성 후 DB 업데이트
+  ```python
+  from passlib.context import CryptContext
+  pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+  new_hash = pwd_context.hash('admin123')
+  # DB 업데이트
+  cur.execute("UPDATE core.users SET password_hash = %s WHERE email = 'admin@triflow.ai'", (new_hash,))
+  ```
+- **디버깅 팁**:
+  > 로그인 실패 시 먼저 DB에서 해당 사용자의 password_hash 존재 여부 확인
+  > `SELECT email, password_hash FROM core.users WHERE email = '...'`
+
+**[2025-12-30] CSV Import 파티션 오류 (과거 날짜 데이터)**
+- **에러**: `no partition of relation "sensor_data" found for row`
+- **발생 위치**: `POST /api/v1/sensors/import-csv`
+- **증상**:
+  - 2024년 날짜가 포함된 CSV 파일 업로드 시 500 에러
+  - 현재 파티션 (2025_11, 2025_12)만 존재
+- **근본 원인 (RCA)**:
+  - `sensor_data` 테이블이 `recorded_at` 기준 월별 파티션 테이블
+  - 해당 월의 파티션이 없으면 INSERT 실패
+- **최종 해결책**:
+  - `_ensure_partition_exists()` 함수 추가 (파티션 자동 생성)
+  ```python
+  def _ensure_partition_exists(db: Session, recorded_at: datetime) -> None:
+      year, month = recorded_at.year, recorded_at.month
+      partition_name = f"sensor_data_{year}_{month:02d}"
+      # 파티션 존재 여부 확인 후 없으면 CREATE TABLE PARTITION
+  ```
+- **수정 파일**: `backend/app/routers/sensors.py`
+
+**[2025-12-30] RAG 문서 상세 조회 API 누락**
+- **에러**: 지식 베이스에서 문서 클릭 시 내용 표시 안됨
+- **발생 위치**: 프론트엔드 Data 탭 → 지식 베이스
+- **증상**:
+  - 문서 목록은 표시됨
+  - 문서 클릭 시 상세 내용 조회 불가 (API 없음)
+- **근본 원인 (RCA)**:
+  - `GET /api/v1/rag/documents/{id}` 엔드포인트 미구현
+  - 프론트엔드에서 호출할 API 부재
+- **최종 해결책**:
+  - Backend: `rag_service.get_document()` 메서드 추가
+    - 모든 청크를 조회하여 텍스트 병합
+    - 메타데이터 (title, source_type, chunk_count, char_count) 반환
+  - Backend: `GET /api/v1/rag/documents/{document_id}` 엔드포인트 추가
+  - Frontend: `ragService.getDocument()` 함수 추가
+  - Frontend: 문서 상세 보기 모달 UI 추가
+- **수정 파일**:
+  - `backend/app/services/rag_service.py` - `get_document()` 메서드
+  - `backend/app/routers/rag.py` - GET 엔드포인트
+  - `frontend/src/services/ragService.ts` - API 클라이언트
+  - `frontend/src/components/data/RagDocumentsTab.tsx` - 모달 UI
+
+**[2025-12-30] A/B 실험 시작 실패 (Control 그룹 누락)**
+- **에러**: `400 Bad Request` - "control 그룹이 필요합니다"
+- **발생 위치**: `POST /api/v1/experiments/{id}/start`
+- **증상**:
+  - 실험 생성 후 시작 버튼 클릭 시 에러
+  - Variants는 존재하지만 시작 불가
+- **근본 원인 (RCA)**:
+  - 실험 시작 시 Control variant (is_control=True) 필수
+  - 생성 시 is_control 플래그 미설정
+- **최종 해결책**:
+  - Control variant에 `is_control: true` 설정
+  ```bash
+  PUT /api/v1/experiments/{id}/variants/{variant_id}
+  {"is_control": true}
+  ```
+- **디버깅 팁**:
+  > 실험 생성 후 variants 목록에서 is_control 플래그 확인
+  > `GET /api/v1/experiments/{id}` 응답의 variants 필드 검사
+
 #### 🐳 Docker/Infrastructure
 - 아직 기록된 이슈 없음
 

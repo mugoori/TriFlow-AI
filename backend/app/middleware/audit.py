@@ -31,6 +31,7 @@ EXCLUDED_PATHS = [
     "/api/v1/audit",  # 무한 루프 방지
     "/api/v1/auth/",  # 인증 경로는 별도 로깅 (본문 읽기 충돌 방지)
     "/api/v1/agents/",  # 에이전트 API는 처리 시간이 길어서 제외
+    "/api/v1/sensors/import",  # 파일 업로드 경로 제외 (body 스트림 문제 방지)
 ]
 
 # 로그 기록할 경로 패턴

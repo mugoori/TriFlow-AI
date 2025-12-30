@@ -238,13 +238,13 @@ class WorkflowInstance(Base):
     """워크플로 실행 인스턴스
 
     B-3-1 스펙 섹션 3.3: 워크플로우 실행 이력 및 상태 추적
-    상태: PENDING, RUNNING, WAITING, PAUSED, COMPLETED, FAILED, CANCELLED, TIMEOUT
+    상태: pending, running, waiting, paused, completed, failed, cancelled, timeout
     """
 
     __tablename__ = "workflow_instances"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('PENDING', 'RUNNING', 'WAITING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT')",
+            "status IN ('pending', 'running', 'waiting', 'paused', 'completed', 'failed', 'cancelled', 'timeout')",
             name="ck_workflow_instances_status"
         ),
         CheckConstraint(
@@ -257,7 +257,7 @@ class WorkflowInstance(Base):
     instance_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     workflow_id = Column(PGUUID(as_uuid=True), ForeignKey("core.workflows.workflow_id", ondelete="CASCADE"), nullable=False)
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    status = Column(String(20), default="PENDING", nullable=False)
+    status = Column(String(20), default="pending", nullable=False)
 
     # B-3-1 스펙 추가 컬럼
     trigger_type = Column(String(20), default="manual", nullable=False)
