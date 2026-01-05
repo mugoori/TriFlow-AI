@@ -177,6 +177,42 @@
   ```
 - **수정 파일**: `backend/app/routers/sensors.py`
 
+**[2025-12-30] ERP/MES 및 RAG 탭 401 Unauthorized 오류**
+- **에러**: `GET http://localhost:8000/api/v1/erp-mes/stats 401 (Unauthorized)`
+- **발생 위치**: Data 탭 → ERP/MES, 지식 베이스 탭
+- **증상**:
+  - 다른 탭(Chat, Dashboard, Rulesets)은 정상 작동
+  - ERP/MES, RAG 탭만 401 에러 발생
+  - 백엔드 로그에 `user_id: None` 기록됨
+- **근본 원인 (RCA)**:
+  - `sensorService`는 `apiClient` 사용 → `getAccessToken()`으로 localStorage에서 직접 토큰 가져옴 (정상)
+  - `erpMesService`, `ragService`는 직접 `fetch()` 사용 → 컴포넌트에서 React Context 통해 토큰 전달 (문제)
+  - React Context의 비동기 초기화 타이밍 문제로 토큰이 전달되지 않음
+- **최종 해결책**:
+  - `erpMesService.ts`, `ragService.ts`를 `apiClient` 사용하도록 리팩토링
+  - 컴포넌트에서 token 파라미터 제거
+  ```typescript
+  // Before (문제)
+  export async function listErpMesData(params, token: string) {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  // After (해결)
+  export async function listErpMesData(params) {
+    return apiClient.get<ErpMesData[]>(endpoint);
+  }
+  ```
+- **수정 파일**:
+  - `frontend/src/services/erpMesService.ts` - apiClient 사용으로 변경
+  - `frontend/src/services/ragService.ts` - apiClient 사용으로 변경
+  - `frontend/src/components/data/ErpMesDataTab.tsx` - token 파라미터 제거
+  - `frontend/src/components/data/RagDocumentsTab.tsx` - token 파라미터 제거
+- **디버깅 팁**:
+  > 401 에러 시 백엔드 로그에서 `user_id: None`이면 토큰이 전달되지 않은 것
+  > 서비스에서 `apiClient` 대신 직접 `fetch()`를 사용하면 React Context 타이밍 문제 발생 가능
+
 **[2025-12-30] RAG 문서 상세 조회 API 누락**
 - **에러**: 지식 베이스에서 문서 클릭 시 내용 표시 안됨
 - **발생 위치**: 프론트엔드 Data 탭 → 지식 베이스

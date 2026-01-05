@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-01-05T06:41:26.567990Z",
+  "modules": [
+    {
+      "$schema": "../module-schema.json",
+      "module_code": "quality_analytics",
+      "version": "1.0.0",
+      "name": "품질 분석",
+      "description": "제품 품질 분석 및 리포팅 모듈",
+      "category": "feature",
+      "icon": "BarChart",
+      "default_enabled": false,
+      "requires_subscription": null,
+      "depends_on": [],
+      "display_order": 100,
+      "backend": {
+        "router_path": "modules.quality_analytics.backend.router",
+        "api_prefix": "/api/v1/quality-analytics",
+        "tags": [
+          "quality-analytics"
+        ]
+      },
+      "frontend": {
+        "page_component": "QualityAnalyticsPage",
+        "admin_only": false
+      },
+      "author": "TriFlow AI Team",
+      "license": "proprietary"
+    }
+  ]
+}

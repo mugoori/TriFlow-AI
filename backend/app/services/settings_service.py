@@ -161,6 +161,209 @@ class SystemSettingsService:
 
         return default
 
+    def get_setting_with_scope(
+        self,
+        key: str,
+        tenant_id: Optional[str] = None,
+        default: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        계층적 설정 조회: Tenant → Global (DB) → Environment → Default
+
+        Multi-Tenant 환경에서 테넌트별 설정을 우선 적용하고,
+        없으면 글로벌 설정, 환경변수, 기본값 순으로 fallback.
+
+        Args:
+            key: 설정 키
+            tenant_id: 테넌트 ID (UUID 문자열)
+            default: 기본값
+
+        Returns:
+            설정 값 또는 None
+        """
+        from app.database import get_db_context
+        from sqlalchemy import text
+        from uuid import UUID
+
+        # 1. Tenant 설정 확인 (tenant_id가 있는 경우)
+        if tenant_id:
+            try:
+                with get_db_context() as db:
+                    result = db.execute(
+                        text("""
+                            SELECT settings FROM core.tenants
+                            WHERE tenant_id = :tenant_id
+                        """),
+                        {"tenant_id": tenant_id}
+                    ).fetchone()
+
+                    if result and result[0]:
+                        tenant_settings = result[0]
+                        if isinstance(tenant_settings, dict) and key in tenant_settings:
+                            logger.debug(f"설정 '{key}' tenant 스코프에서 조회됨")
+                            return tenant_settings[key]
+            except Exception as e:
+                logger.warning(f"Tenant 설정 조회 실패 ({key}, tenant={tenant_id}): {e}")
+
+        # 2. Global DB 설정 확인
+        try:
+            with get_db_context() as db:
+                self._ensure_table(db)
+
+                result = db.execute(
+                    text("SELECT value, is_encrypted FROM core.system_settings WHERE key = :key"),
+                    {"key": key}
+                ).fetchone()
+
+                if result:
+                    value, is_encrypted = result
+                    if is_encrypted and value:
+                        logger.debug(f"설정 '{key}' global DB 스코프에서 조회됨 (암호화)")
+                        return encryption_service.decrypt(value)
+                    if value:
+                        logger.debug(f"설정 '{key}' global DB 스코프에서 조회됨")
+                        return value
+        except Exception as e:
+            logger.warning(f"Global DB 설정 조회 실패 ({key}): {e}")
+
+        # 3. Environment 확인
+        env_key = key.upper()
+        env_value = os.getenv(env_key)
+        if env_value:
+            logger.debug(f"설정 '{key}' 환경변수에서 조회됨")
+            return env_value
+
+        # 4. 정의된 기본값 확인
+        definition = SETTING_DEFINITIONS.get(key, {})
+        defined_default = definition.get("default")
+        if defined_default is not None:
+            logger.debug(f"설정 '{key}' 정의된 기본값 사용")
+            return defined_default
+
+        # 5. 파라미터 기본값 반환
+        return default
+
+    def set_tenant_setting(
+        self,
+        tenant_id: str,
+        key: str,
+        value: Any,
+        updated_by: str = "system"
+    ) -> bool:
+        """
+        테넌트별 설정 저장 (tenants.settings JSONB 필드에 저장)
+
+        Args:
+            tenant_id: 테넌트 ID (UUID 문자열)
+            key: 설정 키
+            value: 설정 값
+            updated_by: 업데이트한 사용자
+
+        Returns:
+            성공 여부
+        """
+        from app.database import get_db_context
+        from sqlalchemy import text
+
+        try:
+            with get_db_context() as db:
+                # JSONB 필드 업데이트 (기존 설정에 병합)
+                update_sql = text("""
+                    UPDATE core.tenants
+                    SET settings = COALESCE(settings, '{}'::jsonb) || :new_setting::jsonb,
+                        updated_at = NOW()
+                    WHERE tenant_id = :tenant_id
+                """)
+                import json
+                result = db.execute(update_sql, {
+                    "tenant_id": tenant_id,
+                    "new_setting": json.dumps({key: value}),
+                })
+                db.commit()
+
+                if result.rowcount > 0:
+                    logger.info(f"Tenant 설정 저장: {key} (tenant={tenant_id}, by {updated_by})")
+                    return True
+                else:
+                    logger.warning(f"Tenant를 찾을 수 없음: {tenant_id}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Tenant 설정 저장 실패 ({key}, tenant={tenant_id}): {e}")
+            return False
+
+    def delete_tenant_setting(
+        self,
+        tenant_id: str,
+        key: str
+    ) -> bool:
+        """
+        테넌트별 설정 삭제 (글로벌 설정으로 fallback)
+
+        Args:
+            tenant_id: 테넌트 ID (UUID 문자열)
+            key: 삭제할 설정 키
+
+        Returns:
+            성공 여부
+        """
+        from app.database import get_db_context
+        from sqlalchemy import text
+
+        try:
+            with get_db_context() as db:
+                # JSONB에서 특정 키 삭제
+                update_sql = text("""
+                    UPDATE core.tenants
+                    SET settings = settings - :key,
+                        updated_at = NOW()
+                    WHERE tenant_id = :tenant_id
+                """)
+                result = db.execute(update_sql, {
+                    "tenant_id": tenant_id,
+                    "key": key,
+                })
+                db.commit()
+
+                if result.rowcount > 0:
+                    logger.info(f"Tenant 설정 삭제: {key} (tenant={tenant_id})")
+                    return True
+                else:
+                    logger.warning(f"Tenant를 찾을 수 없음: {tenant_id}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Tenant 설정 삭제 실패 ({key}, tenant={tenant_id}): {e}")
+            return False
+
+    def get_tenant_settings(self, tenant_id: str) -> Dict[str, Any]:
+        """
+        테넌트의 모든 커스텀 설정 조회
+
+        Args:
+            tenant_id: 테넌트 ID (UUID 문자열)
+
+        Returns:
+            테넌트 설정 딕셔너리
+        """
+        from app.database import get_db_context
+        from sqlalchemy import text
+
+        try:
+            with get_db_context() as db:
+                result = db.execute(
+                    text("SELECT settings FROM core.tenants WHERE tenant_id = :tenant_id"),
+                    {"tenant_id": tenant_id}
+                ).fetchone()
+
+                if result and result[0]:
+                    return result[0]
+                return {}
+
+        except Exception as e:
+            logger.warning(f"Tenant 설정 조회 실패 (tenant={tenant_id}): {e}")
+            return {}
+
     def set_setting(
         self,
         key: str,

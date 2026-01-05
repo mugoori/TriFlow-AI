@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:modules": "cd .. && python scripts/build_module_registry.py && python scripts/build_frontend_imports.py"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
