@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2025-12-30
-> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → V2 Phase 2 완료 (QA 통과)
+> **최종 업데이트**: 2026-01-05
+> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → V2 Phase 2 완료 (QA 통과) → V2 Phase 3 진행 중
 > **현재 브랜치**: `develop`
 
 ---
@@ -607,6 +607,111 @@ test_workflow_planner.py      test_workflows_mock.py
 ### 문서화
 - [TEST_SCENARIOS.md](docs/TEST_SCENARIOS.md) - 상세 체크리스트
 - [QA_TEST_REPORT_20251230.md](docs/PROJECT/QA_TEST_REPORT_20251230.md) - 공식 보고서
+
+</details>
+
+<details>
+<summary><b>🏢 V2 Phase 3: Multi-Tenant Module Configuration (2026-01-05)</b></summary>
+
+### 구현 배경
+B2B SaaS로 제조업 고객사별 커스터마이징 필요 (제약회사 vs 김치공장)
+고객사마다 소스코드 분리 시 100개 고객사 = 100번 배포 지옥
+
+### 목표
+**One Codebase, Multi-Tenant Configuration**: 하나의 코드로 설정만 다르게
+
+### 구현 내역
+
+#### 1. DB 스키마 확장
+| 테이블 | 설명 | 컬럼 |
+|--------|------|------|
+| `core.industry_profiles` | 산업별 프로필 마스터 | industry_code, name, default_modules, default_kpis |
+| `core.module_definitions` | 모듈 정의 마스터 | module_code, name, category, requires_subscription |
+| `core.tenant_modules` | 테넌트별 모듈 설정 | tenant_id, module_code, is_enabled, config |
+| `core.tenants` (확장) | industry_code FK 추가 | - |
+
+#### 2. 산업 프로필 (4개)
+| 코드 | 명칭 | 기본 모듈 |
+|------|------|----------|
+| `general` | 일반 제조 | dashboard, chat, workflows, data, settings |
+| `pharma` | 제약/화학 | + rulesets, quality_pharma, learning |
+| `food` | 식품/발효 | + rulesets, quality_food |
+| `electronics` | 전자/반도체 | + quality_elec, experiments |
+
+#### 3. 모듈 정의 (11개)
+| 카테고리 | 모듈 | 기본 활성화 |
+|----------|------|:-----------:|
+| **Core** | dashboard, chat, data, settings | ✅ |
+| **Feature** | workflows, rulesets, experiments, learning | ⚙️ 설정 가능 |
+| **Industry** | quality_pharma, quality_food, quality_elec | ⚙️ 산업별 |
+
+#### 4. Backend
+| 컴포넌트 | 설명 | 파일 |
+|----------|------|------|
+| **SQLAlchemy 모델** | IndustryProfile, ModuleDefinition, TenantModule | `models/tenant_config.py` |
+| **TenantConfigService** | 모듈 CRUD, 초기화, 프로필 변경 | `services/tenant_config_service.py` |
+| **API Router** | /tenant/* 엔드포인트 (9개) | `routers/tenant_config.py` |
+
+#### 5. Frontend
+| 컴포넌트 | 설명 | 파일 |
+|----------|------|------|
+| **TenantConfigContext** | isModuleEnabled, hasFeature 훅 | `contexts/TenantConfigContext.tsx` |
+| **tenantService** | API 클라이언트 | `services/tenantService.ts` |
+| **Sidebar** | 동적 모듈 필터링 | `components/layout/Sidebar.tsx` |
+
+#### 6. API 엔드포인트
+```
+GET  /api/v1/tenant/config              # 테넌트 설정 조회
+GET  /api/v1/tenant/modules             # 모듈 목록
+POST /api/v1/tenant/modules/enable      # 모듈 활성화 (Admin)
+POST /api/v1/tenant/modules/disable     # 모듈 비활성화 (Admin)
+PATCH /api/v1/tenant/modules/config     # 모듈 설정 변경 (Admin)
+GET  /api/v1/tenant/features            # 기능 플래그
+GET  /api/v1/tenant/industries          # 산업 프로필 목록
+POST /api/v1/tenant/industry            # 산업 프로필 변경 (Admin)
+GET  /api/v1/tenant/modules/{code}/enabled  # 모듈 활성화 여부
+```
+
+### 수정/생성 파일
+**Backend (신규)**:
+- `backend/alembic/versions/005_tenant_modules.py`
+- `backend/app/models/tenant_config.py`
+- `backend/app/services/tenant_config_service.py`
+- `backend/app/routers/tenant_config.py`
+
+**Backend (수정)**:
+- `backend/app/models/core.py` - Tenant에 industry_code 추가
+- `backend/app/models/__init__.py` - 모델 export
+- `backend/app/main.py` - 라우터 등록
+
+**Frontend (신규)**:
+- `frontend/src/contexts/TenantConfigContext.tsx`
+- `frontend/src/services/tenantService.ts` (확장)
+
+**Frontend (수정)**:
+- `frontend/src/components/layout/Sidebar.tsx` - 동적 필터링
+
+### 검증 방법 (How to Test)
+```bash
+# 1. DB 마이그레이션 실행
+cd backend && python -m alembic upgrade head
+
+# 2. 서버 시작
+cd backend && uvicorn app.main:app --reload
+
+# 3. 로그인 후 테넌트 설정 조회
+curl -X GET http://localhost:8000/api/v1/tenant/config \
+  -H "Authorization: Bearer $TOKEN"
+
+# 4. 프론트엔드에서 Sidebar 메뉴 확인
+# - Admin: 모든 모듈 표시
+# - Member: 활성화된 모듈만 표시
+
+# 5. 모듈 활성화/비활성화 (Admin)
+curl -X POST http://localhost:8000/api/v1/tenant/modules/enable \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"module_code": "quality_pharma"}'
+```
 
 </details>
 

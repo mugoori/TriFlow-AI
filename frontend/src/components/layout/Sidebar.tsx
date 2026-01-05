@@ -1,6 +1,7 @@
 import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTenantConfig } from '../../contexts/TenantConfigContext';
 
 export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings';
 
@@ -14,7 +15,8 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   description: string;
-  adminOnly?: boolean;  // admin 전용 메뉴 여부
+  moduleCode: string;      // 모듈 코드 (tenant config와 매칭)
+  adminOnly?: boolean;     // admin 전용 메뉴 여부
 }
 
 const navItems: NavItem[] = [
@@ -23,24 +25,28 @@ const navItems: NavItem[] = [
     label: 'AI Chat',
     icon: MessageSquare,
     description: 'AI 에이전트와 대화',
+    moduleCode: 'chat',
   },
   {
     id: 'dashboard',
     label: 'Dashboard',
     icon: BarChart3,
     description: '데이터 시각화',
+    moduleCode: 'dashboard',
   },
   {
     id: 'workflows',
     label: 'Workflows',
     icon: Workflow,
     description: '자동화 워크플로우',
+    moduleCode: 'workflows',
   },
   {
     id: 'rulesets',
     label: 'Rulesets',
     icon: FileCode,
     description: 'Rhai 규칙 관리',
+    moduleCode: 'rulesets',
     adminOnly: true,
   },
   {
@@ -48,6 +54,7 @@ const navItems: NavItem[] = [
     label: 'A/B Tests',
     icon: FlaskConical,
     description: '규칙 변형 실험',
+    moduleCode: 'experiments',
     adminOnly: true,
   },
   {
@@ -55,6 +62,7 @@ const navItems: NavItem[] = [
     label: 'Learning',
     icon: GraduationCap,
     description: '학습 대시보드',
+    moduleCode: 'learning',
     adminOnly: true,
   },
   {
@@ -62,21 +70,50 @@ const navItems: NavItem[] = [
     label: 'Data',
     icon: Database,
     description: '데이터 관리',
+    moduleCode: 'data',
   },
   {
     id: 'settings',
     label: 'Settings',
     icon: Settings,
     description: '설정',
+    moduleCode: 'settings',
   },
 ];
 
 export function Sidebar({ currentView, onViewChange }: SidebarProps) {
   const { user, logout } = useAuth();
+  const { isModuleEnabled, loading: configLoading } = useTenantConfig();
 
   const handleLogout = () => {
     logout();
   };
+
+  // 동적 모듈 필터링
+  // 1. Admin은 모든 모듈 접근 가능
+  // 2. 일반 사용자는 테넌트 설정에서 활성화된 모듈만 표시
+  // 3. adminOnly 모듈은 admin 역할만 표시
+  const visibleItems = navItems.filter((item) => {
+    const isAdmin = user?.role === 'admin';
+
+    // 설정 로딩 중이면 역할 기반으로만 필터링 (깜빡임 방지)
+    if (configLoading) {
+      return !item.adminOnly || isAdmin;
+    }
+
+    // Admin 전용 메뉴는 admin만 볼 수 있음
+    if (item.adminOnly && !isAdmin) {
+      return false;
+    }
+
+    // Admin은 모든 모듈에 접근 가능 (테넌트 설정 무시)
+    if (isAdmin) {
+      return true;
+    }
+
+    // 일반 사용자는 활성화된 모듈만 표시
+    return isModuleEnabled(item.moduleCode);
+  });
 
   return (
     <aside className="w-64 bg-slate-900 text-white flex flex-col h-full">
@@ -91,9 +128,7 @@ export function Sidebar({ currentView, onViewChange }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1">
-        {navItems
-          .filter((item) => !item.adminOnly || user?.role === 'admin')
-          .map((item) => {
+        {visibleItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
 

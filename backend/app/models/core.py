@@ -31,6 +31,7 @@ class Tenant(Base):
     """테넌트 (멀티테넌트 지원)
 
     B-3-1 스펙 섹션 2.1: 멀티테넌트 격리 기준 테이블
+    Multi-Tenant Module Configuration: 산업별 프로필 및 모듈 활성화 지원
     """
 
     __tablename__ = "tenants"
@@ -58,6 +59,13 @@ class Tenant(Base):
     max_judgments_per_day = Column(Integer, default=10000, nullable=False)
     status = Column(String(20), default="active", nullable=False)
 
+    # Multi-Tenant Module Configuration: 산업 프로필 연결
+    industry_code = Column(
+        String(50),
+        ForeignKey("core.industry_profiles.industry_code", ondelete="SET NULL"),
+        nullable=True
+    )
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at = Column(DateTime, nullable=True)
@@ -66,6 +74,10 @@ class Tenant(Base):
     users = relationship("User", back_populates="tenant", cascade="all, delete-orphan")
     rulesets = relationship("Ruleset", back_populates="tenant", cascade="all, delete-orphan")
     workflows = relationship("Workflow", back_populates="tenant", cascade="all, delete-orphan")
+
+    # Multi-Tenant Module Configuration relationships
+    industry_profile = relationship("IndustryProfile", back_populates="tenants")
+    modules = relationship("TenantModule", back_populates="tenant", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Tenant(id={self.tenant_id}, name='{self.name}')>"

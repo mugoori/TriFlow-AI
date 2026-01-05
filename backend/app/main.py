@@ -504,6 +504,34 @@ try:
 except Exception as e:
     logger.error(f"Failed to register mcp router: {e}")
 
+# Tenant Config 라우터 (Multi-Tenant Module Configuration)
+try:
+    from app.routers import tenant_config
+    app.include_router(tenant_config.router, prefix="/api/v1", tags=["tenant-config"])
+    logger.info("Tenant Config router registered")
+except Exception as e:
+    logger.error(f"Failed to register tenant-config router: {e}")
+
+# ========== 플러그인 모듈 로딩 ==========
+# modules/ 디렉토리의 매니페스트 기반 동적 라우터 로딩
+try:
+    from app.module_loader import load_module_routers, sync_modules_to_db
+
+    module_result = load_module_routers(app)
+    logger.info(
+        f"Plugin modules loaded: {len(module_result['loaded'])} success, "
+        f"{len(module_result['failed'])} failed"
+    )
+
+    # 개발 환경에서만 모듈 → DB 동기화 (프로덕션은 마이그레이션 사용)
+    if settings.environment == "development":
+        try:
+            sync_modules_to_db()
+        except Exception as sync_error:
+            logger.warning(f"Module DB sync skipped: {sync_error}")
+except Exception as e:
+    logger.warning(f"Plugin module loading skipped: {e}")
+
 # ============================================
 # V2.0 API Endpoints
 # ============================================

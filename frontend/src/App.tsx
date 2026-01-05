@@ -13,6 +13,7 @@ import { LoginPage } from "./components/pages/LoginPage";
 import { DashboardProvider } from "./contexts/DashboardContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { AuthProvider } from "./contexts/AuthContext";
+import { TenantConfigProvider } from "./contexts/TenantConfigContext";
 import { StatCardProvider } from "./contexts/StatCardContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ToastProvider } from "./components/ui/Toast";
@@ -136,7 +137,9 @@ function App() {
               path="/*"
               element={
                 <ProtectedRoute>
-                  <MainLayout />
+                  <TenantConfigProvider>
+                    <MainLayout />
+                  </TenantConfigProvider>
                 </ProtectedRoute>
               }
             />

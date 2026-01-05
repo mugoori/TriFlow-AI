@@ -59,6 +59,15 @@ from app.models.core import (
     McpCallLog,
     # Audit
     AuditLog,
+    # V2.0 Trust Model
+    TrustLevelHistory,
+)
+
+from app.models.tenant_config import (
+    # Multi-Tenant Module Configuration
+    IndustryProfile,
+    ModuleDefinition,
+    TenantModule,
 )
 
 from app.models.rag import (
@@ -159,6 +168,12 @@ __all__ = [
     "McpCallLog",
     # Audit
     "AuditLog",
+    # V2.0 Trust Model
+    "TrustLevelHistory",
+    # Multi-Tenant Module Configuration
+    "IndustryProfile",
+    "ModuleDefinition",
+    "TenantModule",
     # RAG
     "RAGDocument",
     "RAGDocumentVersion",
