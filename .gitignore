@@ -87,3 +87,20 @@ extract_code.py
 
 # Specs documents (internal design docs, not for git)
 docs/specs/
+
+# Local development files
+.claude/settings.local.json
+backend/scripts/check_constraints.py
+backend/scripts/generate_recent_sensor_data.py
+
+# Coverage reports
+backend/cov.txt
+backend/coverage.json
+backend/coverage_report.txt
+
+# Test data files
+test_*.csv
+test_*.txt
+
+# Export temp folder
+exports/
