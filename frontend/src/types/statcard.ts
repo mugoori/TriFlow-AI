@@ -16,6 +16,7 @@ export type SourceType = 'kpi' | 'db_query' | 'mcp_tool';
 export type AggregationType = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last';
 export type StatusType = 'green' | 'yellow' | 'red' | 'gray';
 export type TrendType = 'up' | 'down' | 'stable';
+export type StatCardPeriod = 'auto' | '7days' | '30days' | '90days' | 'ytd';
 
 // =====================================================
 // StatCard 설정 스키마
@@ -138,6 +139,8 @@ export interface StatCardWithValue {
 export interface StatCardListResponse {
   cards: StatCardWithValue[];
   total: number;
+  latest_data_date?: string;
+  period_used?: StatCardPeriod;
 }
 
 export interface StatCardReorderRequest {
@@ -267,3 +270,12 @@ export const TREND_ICONS: Record<TrendType, { icon: string; color: string }> = {
   down: { icon: 'TrendingDown', color: 'text-red-500' },
   stable: { icon: 'Minus', color: 'text-gray-500' },
 };
+
+/** 기간 옵션 */
+export const PERIOD_OPTIONS: { value: StatCardPeriod; label: string }[] = [
+  { value: 'auto', label: '자동 (최신 데이터 기준)' },
+  { value: '7days', label: '최근 7일' },
+  { value: '30days', label: '최근 30일' },
+  { value: '90days', label: '최근 90일' },
+  { value: 'ytd', label: '연초부터 (YTD)' },
+];

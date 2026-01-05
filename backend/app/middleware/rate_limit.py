@@ -34,6 +34,11 @@ RATE_LIMIT_RULES = {
 
     # 센서 데이터 (대시보드 자동 갱신용)
     "/api/v1/sensors": (200, 60),  # 200 req/min
+
+    # BI 엔드포인트 (대시보드 자동 갱신용)
+    "/api/v1/bi/stat-cards": (300, 60),  # 300 req/min
+    "/api/v1/bi/charts": (200, 60),  # 200 req/min
+    "/api/v1/bi": (200, 60),  # 200 req/min
 }
 
 # 기본 Rate Limit (위 규칙에 없는 경로)
@@ -61,6 +66,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        # Rate Limit 비활성화 설정 확인
+        if not settings.rate_limit_enabled:
+            return await call_next(request)
+
         path = request.url.path
 
         # CORS 프리플라이트 요청(OPTIONS)은 Rate Limit 제외

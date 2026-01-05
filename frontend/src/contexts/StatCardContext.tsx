@@ -23,6 +23,7 @@ import type {
   KpiInfo,
   TableInfo,
   McpToolInfo,
+  StatCardPeriod,
 } from '../types/statcard';
 
 interface StatCardContextType {
@@ -30,6 +31,11 @@ interface StatCardContextType {
   cards: StatCardWithValue[];
   loading: boolean;
   error: string | null;
+
+  // 기간 관련 상태
+  selectedPeriod: StatCardPeriod;
+  latestDataDate: string | null;
+  setSelectedPeriod: (period: StatCardPeriod) => void;
 
   // KPI, 테이블, MCP 도구 목록 (설정 모달용)
   availableKpis: KpiInfo[];
@@ -59,6 +65,10 @@ export function StatCardProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 기간 관련 상태
+  const [selectedPeriod, setSelectedPeriod] = useState<StatCardPeriod>('auto');
+  const [latestDataDate, setLatestDataDate] = useState<string | null>(null);
+
   // 설정 옵션 상태
   const [availableKpis, setAvailableKpis] = useState<KpiInfo[]>([]);
   const [kpiCategories, setKpiCategories] = useState<string[]>([]);
@@ -71,8 +81,9 @@ export function StatCardProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await statCardService.getStatCards();
+      const response = await statCardService.getStatCards(selectedPeriod);
       setCards(response.cards);
+      setLatestDataDate(response.latest_data_date || null);
     } catch (err) {
       const message = err instanceof Error ? err.message : '카드 조회 실패';
       setError(message);
@@ -80,7 +91,7 @@ export function StatCardProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedPeriod]);
 
   // StatCard 생성
   const createCard = useCallback(async (config: StatCardConfigCreate) => {
@@ -149,12 +160,13 @@ export function StatCardProvider({ children }: { children: ReactNode }) {
   // 값만 새로고침
   const refreshValues = useCallback(async () => {
     try {
-      const response = await statCardService.getStatCards();
+      const response = await statCardService.getStatCards(selectedPeriod);
       setCards(response.cards);
+      setLatestDataDate(response.latest_data_date || null);
     } catch (err) {
       console.error('Failed to refresh stat card values:', err);
     }
-  }, []);
+  }, [selectedPeriod]);
 
   // 설정 옵션 조회 (KPI, 테이블, MCP 도구)
   const fetchOptions = useCallback(async () => {
@@ -196,6 +208,9 @@ export function StatCardProvider({ children }: { children: ReactNode }) {
       cards,
       loading,
       error,
+      selectedPeriod,
+      latestDataDate,
+      setSelectedPeriod,
       availableKpis,
       kpiCategories,
       availableTables,
@@ -213,6 +228,8 @@ export function StatCardProvider({ children }: { children: ReactNode }) {
       cards,
       loading,
       error,
+      selectedPeriod,
+      latestDataDate,
       availableKpis,
       kpiCategories,
       availableTables,

@@ -84,7 +84,7 @@ export interface DocumentDetailResponse {
 }
 
 // ===========================================
-// API Functions
+// API Functions (using apiClient for automatic token handling)
 // ===========================================
 
 /**
@@ -92,8 +92,7 @@ export interface DocumentDetailResponse {
  */
 export async function uploadDocument(
   file: File,
-  options: DocumentUploadOptions = {},
-  token: string
+  options: DocumentUploadOptions = {}
 ): Promise<DocumentUploadResult> {
   const formData = new FormData();
   formData.append('file', file);
@@ -107,12 +106,7 @@ export async function uploadDocument(
 
   return apiClient.postFormData<DocumentUploadResult>(
     '/api/v1/rag/documents/upload',
-    formData,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+    formData
   );
 }
 
@@ -122,39 +116,20 @@ export async function uploadDocument(
 export async function addDocument(
   title: string,
   content: string,
-  documentType: string = 'MANUAL',
-  token: string
+  documentType: string = 'MANUAL'
 ): Promise<DocumentUploadResult> {
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/rag/documents`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        title,
-        content,
-        document_type: documentType,
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to add document');
-  }
-
-  return response.json();
+  return apiClient.post<DocumentUploadResult>('/api/v1/rag/documents', {
+    title,
+    content,
+    document_type: documentType,
+  });
 }
 
 /**
  * 문서 목록 조회
  */
 export async function listDocuments(
-  params: ListDocumentsParams = {},
-  token: string
+  params: ListDocumentsParams = {}
 ): Promise<DocumentListResponse> {
   const searchParams = new URLSearchParams();
 
@@ -171,103 +146,42 @@ export async function listDocuments(
   const query = searchParams.toString();
   const endpoint = `/api/v1/rag/documents${query ? `?${query}` : ''}`;
 
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${endpoint}`,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to list documents');
-  }
-
-  return response.json();
+  return apiClient.get<DocumentListResponse>(endpoint);
 }
 
 /**
  * 문서 삭제
  */
 export async function deleteDocument(
-  documentId: string,
-  token: string
+  documentId: string
 ): Promise<{ success: boolean; message: string }> {
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/rag/documents/${documentId}`,
-    {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  return apiClient.delete<{ success: boolean; message: string }>(
+    `/api/v1/rag/documents/${documentId}`
   );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to delete document');
-  }
-
-  return response.json();
 }
 
 /**
  * 문서 검색
  */
 export async function searchDocuments(
-  params: SearchParams,
-  token: string
+  params: SearchParams
 ): Promise<SearchResponse> {
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/rag/search`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        query: params.query,
-        top_k: params.topK || 5,
-        similarity_threshold: params.similarityThreshold || 0.5,
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to search documents');
-  }
-
-  return response.json();
+  return apiClient.post<SearchResponse>('/api/v1/rag/search', {
+    query: params.query,
+    top_k: params.topK || 5,
+    similarity_threshold: params.similarityThreshold || 0.5,
+  });
 }
 
 /**
  * 문서 상세 조회
  */
 export async function getDocument(
-  documentId: string,
-  token: string
+  documentId: string
 ): Promise<DocumentDetailResponse> {
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/rag/documents/${documentId}`,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  return apiClient.get<DocumentDetailResponse>(
+    `/api/v1/rag/documents/${documentId}`
   );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to get document');
-  }
-
-  return response.json();
 }
 
 // ===========================================

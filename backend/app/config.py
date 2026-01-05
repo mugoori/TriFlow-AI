@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
+    # Rate Limiting
+    rate_limit_enabled: bool = True  # 개발 환경에서 False로 설정 가능
+
     # Monitoring
     prometheus_port: int = 9090
 

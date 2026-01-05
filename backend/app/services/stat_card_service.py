@@ -10,9 +10,9 @@ StatCard Service
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import text
@@ -39,6 +39,9 @@ from app.schemas.statcard import (
 from app.services.mcp_toolhub import MCPToolHubService
 
 logger = logging.getLogger(__name__)
+
+# 기간 타입 정의
+PeriodType = Literal["auto", "7days", "30days", "90days", "ytd"]
 
 
 class StatCardService:
@@ -325,6 +328,71 @@ class StatCardService:
         return self.list_configs(tenant_id, user_id, visible_only=False)
 
     # =====================================================
+    # 기간 관련 메서드
+    # =====================================================
+
+    def get_latest_data_date(self, tenant_id: UUID) -> Optional[date]:
+        """가장 최신 데이터 날짜 조회"""
+        query = text("""
+            SELECT MAX(date) FROM bi.fact_daily_production
+            WHERE tenant_id = :tenant_id
+        """)
+        result = self.db.execute(query, {"tenant_id": str(tenant_id)}).fetchone()
+        return result[0] if result and result[0] else None
+
+    def _get_period_dates(
+        self,
+        period: PeriodType,
+        latest_date: date,
+    ) -> Tuple[date, date, date, date, str, str]:
+        """
+        기간 파라미터에 따른 날짜 범위 계산
+
+        Returns:
+            (current_start, current_end, prev_start, prev_end, period_label, comparison_label)
+        """
+        if period == "auto" or period == "7days":
+            # 최신 데이터 기준 7일
+            end = latest_date
+            start = end - timedelta(days=6)
+            prev_end = start - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=6)
+            period_label = "최근 7일" if period == "7days" else f"최근 7일 ({latest_date.strftime('%m/%d')} 기준)"
+            comparison_label = "vs 전주"
+        elif period == "30days":
+            end = latest_date
+            start = end - timedelta(days=29)
+            prev_end = start - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=29)
+            period_label = "최근 30일"
+            comparison_label = "vs 이전 30일"
+        elif period == "90days":
+            end = latest_date
+            start = end - timedelta(days=89)
+            prev_end = start - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=89)
+            period_label = "최근 90일"
+            comparison_label = "vs 이전 90일"
+        elif period == "ytd":
+            end = latest_date
+            start = date(end.year, 1, 1)
+            # 전년 동기
+            prev_end = date(end.year - 1, end.month, end.day)
+            prev_start = date(end.year - 1, 1, 1)
+            period_label = f"{end.year}년 누적 (YTD)"
+            comparison_label = "vs 전년 동기"
+        else:
+            # 기본값: 7일
+            end = latest_date
+            start = end - timedelta(days=6)
+            prev_end = start - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=6)
+            period_label = "최근 7일"
+            comparison_label = "vs 전주"
+
+        return start, end, prev_start, prev_end, period_label, comparison_label
+
+    # =====================================================
     # 값 조회
     # =====================================================
 
@@ -332,25 +400,42 @@ class StatCardService:
         self,
         tenant_id: UUID,
         user_id: UUID,
+        period: PeriodType = "auto",
     ) -> StatCardListResponse:
         """사용자의 모든 StatCard 설정 + 현재 값 조회"""
         configs = self.list_configs(tenant_id, user_id, visible_only=True)
 
+        # 최신 데이터 날짜 조회
+        latest_date = self.get_latest_data_date(tenant_id)
+        if not latest_date:
+            # 데이터가 없으면 오늘 날짜 사용
+            latest_date = date.today()
+
+        # 기간 날짜 계산
+        period_dates = self._get_period_dates(period, latest_date)
+
         cards = []
         for config in configs:
-            value = await self.get_card_value(config, tenant_id)
+            value = await self.get_card_value(config, tenant_id, period_dates)
             cards.append(StatCardWithValue(config=config, value=value))
 
-        return StatCardListResponse(cards=cards, total=len(cards))
+        return StatCardListResponse(
+            cards=cards,
+            total=len(cards),
+            latest_data_date=latest_date.isoformat(),
+            period_used=period,
+        )
 
     async def get_card_value(
         self,
         config: StatCardConfig,
         tenant_id: UUID,
+        period_dates: Optional[Tuple[date, date, date, date, str, str]] = None,
     ) -> StatCardValue:
         """개별 StatCard 값 조회"""
-        # 캐시 확인
-        cache_key = f"statcard:{config.config_id}"
+        # 캐시 확인 - 기간 정보를 캐시 키에 포함
+        period_key = f"{period_dates[0]}_{period_dates[1]}" if period_dates else "default"
+        cache_key = f"statcard:{config.config_id}:{period_key}"
         cached = self._get_from_cache(cache_key, config.cache_ttl_seconds)
         if cached:
             cached.is_cached = True
@@ -359,7 +444,7 @@ class StatCardService:
         # 소스 유형별 값 조회
         try:
             if config.source_type == "kpi":
-                value = await self._fetch_kpi_value(config, tenant_id)
+                value = await self._fetch_kpi_value(config, tenant_id, period_dates)
             elif config.source_type == "db_query":
                 value = await self._fetch_db_query_value(config, tenant_id)
             elif config.source_type == "mcp_tool":
@@ -379,6 +464,7 @@ class StatCardService:
         self,
         config: StatCardConfig,
         tenant_id: UUID,
+        period_dates: Optional[Tuple[date, date, date, date, str, str]] = None,
     ) -> StatCardValue:
         """KPI 소스에서 값 조회"""
         # dim_kpi에서 KPI 정보 조회
@@ -398,7 +484,20 @@ class StatCardService:
 
         kpi_name, unit, green_th, yellow_th, red_th, higher_is_better = kpi_row
 
-        # fact 테이블에서 최신 값 조회
+        # 기간 날짜 설정 (period_dates가 없으면 기본값 사용)
+        if period_dates:
+            current_start, current_end, prev_start, prev_end, period_label, comparison_label = period_dates
+        else:
+            # 기본값: 최근 7일
+            today = date.today()
+            current_end = today
+            current_start = today - timedelta(days=6)
+            prev_end = current_start - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=6)
+            period_label = "최근 7일"
+            comparison_label = "vs 전주"
+
+        # fact 테이블에서 현재 기간 값 조회
         value_query = text("""
             SELECT
                 CASE :kpi_code
@@ -415,16 +514,22 @@ class StatCardService:
                     ELSE 0
                 END as value
             FROM bi.fact_daily_production
-            WHERE tenant_id = :tenant_id AND date >= CURRENT_DATE - INTERVAL '7 days'
+            WHERE tenant_id = :tenant_id
+                AND date >= :start_date AND date <= :end_date
         """)
         value_result = self.db.execute(
             value_query,
-            {"tenant_id": str(tenant_id), "kpi_code": config.kpi_code},
+            {
+                "tenant_id": str(tenant_id),
+                "kpi_code": config.kpi_code,
+                "start_date": current_start,
+                "end_date": current_end,
+            },
         )
         value_row = value_result.fetchone()
         current_value = float(value_row[0]) if value_row and value_row[0] else 0.0
 
-        # 이전 기간 값 조회 (전주)
+        # 이전 기간 값 조회
         prev_query = text("""
             SELECT
                 CASE :kpi_code
@@ -442,12 +547,16 @@ class StatCardService:
                 END as value
             FROM bi.fact_daily_production
             WHERE tenant_id = :tenant_id
-                AND date >= CURRENT_DATE - INTERVAL '14 days'
-                AND date < CURRENT_DATE - INTERVAL '7 days'
+                AND date >= :start_date AND date <= :end_date
         """)
         prev_result = self.db.execute(
             prev_query,
-            {"tenant_id": str(tenant_id), "kpi_code": config.kpi_code},
+            {
+                "tenant_id": str(tenant_id),
+                "kpi_code": config.kpi_code,
+                "start_date": prev_start,
+                "end_date": prev_end,
+            },
         )
         prev_row = prev_result.fetchone()
         prev_value = float(prev_row[0]) if prev_row and prev_row[0] else None
@@ -473,11 +582,6 @@ class StatCardService:
             else:
                 trend = "down" if higher_is_better else "up"
 
-        # 기간 정보 계산
-        today = datetime.utcnow().date()
-        period_end = today
-        period_start = today - timedelta(days=7)
-
         return StatCardValue(
             config_id=config.config_id,
             value=current_value,
@@ -489,10 +593,10 @@ class StatCardService:
             title=config.custom_title or kpi_name,
             icon=config.custom_icon or self._get_kpi_icon(config.kpi_code),
             unit=config.custom_unit or unit,
-            period_start=datetime.combine(period_start, datetime.min.time()),
-            period_end=datetime.combine(period_end, datetime.min.time()),
-            period_label="최근 7일",
-            comparison_label="vs 전주",
+            period_start=datetime.combine(current_start, datetime.min.time()),
+            period_end=datetime.combine(current_end, datetime.min.time()),
+            period_label=period_label,
+            comparison_label=comparison_label,
             source_type="kpi",
             fetched_at=datetime.utcnow(),
             is_cached=False,

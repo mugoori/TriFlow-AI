@@ -84,3 +84,6 @@ grafana_data/
 # Workflow exports
 backend/exports/
 extract_code.py
+
+# Specs documents (internal design docs, not for git)
+docs/specs/

@@ -32,7 +32,6 @@ import {
   type MockTypesResponse,
   type ErpMesStats,
 } from '@/services/erpMesService';
-import { useAuth } from '@/contexts/AuthContext';
 
 // 소스 타입 한글 매핑
 const sourceTypeLabels: Record<string, string> = {
@@ -51,7 +50,6 @@ const recordTypeLabels: Record<string, string> = {
 };
 
 export function ErpMesDataTab() {
-  const { accessToken: token } = useAuth();
   const toast = useToast();
 
   // 상태
@@ -93,22 +91,17 @@ export function ErpMesDataTab() {
 
   // 데이터 로드
   const loadData = useCallback(async () => {
-    if (!token) return;
-
     setLoading(true);
     setError(null);
 
     try {
       const [dataResult, statsResult] = await Promise.all([
-        erpMesService.listData(
-          {
-            source_type: selectedSourceType || undefined,
-            record_type: selectedRecordType || undefined,
-            limit: 50,
-          },
-          token
-        ),
-        erpMesService.getStats(token),
+        erpMesService.listData({
+          source_type: selectedSourceType || undefined,
+          record_type: selectedRecordType || undefined,
+          limit: 50,
+        }),
+        erpMesService.getStats(),
       ]);
 
       setData(dataResult);
@@ -119,7 +112,7 @@ export function ErpMesDataTab() {
     } finally {
       setLoading(false);
     }
-  }, [token, selectedSourceType, selectedRecordType]);
+  }, [selectedSourceType, selectedRecordType]);
 
   // 초기 로드
   useEffect(() => {
@@ -132,15 +125,10 @@ export function ErpMesDataTab() {
 
   // 파일 업로드 핸들러
   const handleFileUpload = async (file: File) => {
-    if (!token) {
-      throw new Error('로그인이 필요합니다');
-    }
-
     const result = await erpMesService.importFile(
       file,
       importSourceType,
-      importRecordType,
-      token
+      importRecordType
     );
 
     if (!result.success) {
@@ -153,18 +141,13 @@ export function ErpMesDataTab() {
 
   // Mock 데이터 생성
   const handleGenerateMock = async () => {
-    if (!token) return;
-
     setGenerating(true);
     try {
-      await erpMesService.generateMockData(
-        {
-          source_type: mockSourceType,
-          record_type: mockRecordType,
-          count: mockCount,
-        },
-        token
-      );
+      await erpMesService.generateMockData({
+        source_type: mockSourceType,
+        record_type: mockRecordType,
+        count: mockCount,
+      });
       await loadData();
       setShowMockGenerator(false);
     } catch (err) {
@@ -176,8 +159,6 @@ export function ErpMesDataTab() {
 
   // 데이터 삭제
   const handleDelete = async (dataId: string) => {
-    if (!token) return;
-
     const confirmed = await toast.confirm({
       title: '데이터 삭제',
       message: '이 데이터를 삭제하시겠습니까?',
@@ -188,7 +169,7 @@ export function ErpMesDataTab() {
     if (!confirmed) return;
 
     try {
-      await erpMesService.deleteData(dataId, token);
+      await erpMesService.deleteData(dataId);
       toast.success('데이터가 삭제되었습니다');
       await loadData();
     } catch (err) {

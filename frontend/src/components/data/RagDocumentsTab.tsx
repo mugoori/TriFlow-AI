@@ -32,7 +32,6 @@ import {
   type SearchResult,
   type DocumentDetail,
 } from '@/services/ragService';
-import { useAuth } from '@/contexts/AuthContext';
 
 // 문서 타입 한글 매핑
 const documentTypeLabels: Record<string, string> = {
@@ -44,7 +43,6 @@ const documentTypeLabels: Record<string, string> = {
 };
 
 export function RagDocumentsTab() {
-  const { accessToken: token } = useAuth();
   const toast = useToast();
 
   // 상태
@@ -71,13 +69,11 @@ export function RagDocumentsTab() {
 
   // 문서 목록 로드
   const loadDocuments = useCallback(async () => {
-    if (!token) return;
-
     setLoading(true);
     setError(null);
 
     try {
-      const response = await ragService.listDocuments({}, token);
+      const response = await ragService.listDocuments({});
       setDocuments(response.documents);
     } catch (err) {
       setError(err instanceof Error ? err.message : '문서 목록 로드 실패');
@@ -85,7 +81,7 @@ export function RagDocumentsTab() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   // 초기 로드
   useEffect(() => {
@@ -94,21 +90,17 @@ export function RagDocumentsTab() {
 
   // 파일 업로드 핸들러
   const handleFileUpload = async (file: File) => {
-    if (!token) {
-      throw new Error('로그인이 필요합니다');
-    }
-
-    await ragService.uploadDocument(file, {}, token);
+    await ragService.uploadDocument(file, {});
     await loadDocuments();
   };
 
   // 텍스트 문서 추가
   const handleAddDocument = async () => {
-    if (!token || !newDocTitle.trim() || !newDocContent.trim()) return;
+    if (!newDocTitle.trim() || !newDocContent.trim()) return;
 
     setAdding(true);
     try {
-      await ragService.addDocument(newDocTitle, newDocContent, newDocType, token);
+      await ragService.addDocument(newDocTitle, newDocContent, newDocType);
       setNewDocTitle('');
       setNewDocContent('');
       setNewDocType('MANUAL');
@@ -123,8 +115,6 @@ export function RagDocumentsTab() {
 
   // 문서 삭제
   const handleDelete = async (documentId: string) => {
-    if (!token) return;
-
     const confirmed = await toast.confirm({
       title: '문서 삭제',
       message: '이 문서를 삭제하시겠습니까?',
@@ -135,7 +125,7 @@ export function RagDocumentsTab() {
     if (!confirmed) return;
 
     try {
-      await ragService.deleteDocument(documentId, token);
+      await ragService.deleteDocument(documentId);
       toast.success('문서가 삭제되었습니다');
       await loadDocuments();
     } catch (err) {
@@ -145,14 +135,14 @@ export function RagDocumentsTab() {
 
   // 검색 실행
   const handleSearch = async () => {
-    if (!token || !searchQuery.trim()) return;
+    if (!searchQuery.trim()) return;
 
     setSearching(true);
     try {
-      const response = await ragService.searchDocuments(
-        { query: searchQuery, topK: 10 },
-        token
-      );
+      const response = await ragService.searchDocuments({
+        query: searchQuery,
+        topK: 10,
+      });
       setSearchResults(response.results);
     } catch (err) {
       setError(err instanceof Error ? err.message : '검색 실패');
@@ -169,11 +159,9 @@ export function RagDocumentsTab() {
 
   // 문서 상세 보기
   const handleViewDocument = async (documentId: string) => {
-    if (!token) return;
-
     setLoadingDetail(true);
     try {
-      const response = await ragService.getDocument(documentId, token);
+      const response = await ragService.getDocument(documentId);
       setSelectedDocument(response.document);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '문서 조회 실패');

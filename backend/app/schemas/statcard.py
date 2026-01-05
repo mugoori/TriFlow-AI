@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 SourceType = Literal["kpi", "db_query", "mcp_tool"]
 AggregationType = Literal["sum", "avg", "min", "max", "count", "last"]
 StatusType = Literal["green", "yellow", "red", "gray"]
+PeriodType = Literal["auto", "7days", "30days", "90days", "ytd"]
 
 
 # =====================================================
@@ -171,6 +172,8 @@ class StatCardListResponse(BaseModel):
 
     cards: List[StatCardWithValue] = Field(..., description="StatCard 목록")
     total: int = Field(..., description="전체 개수")
+    latest_data_date: Optional[str] = Field(None, description="최신 데이터 날짜 (ISO format)")
+    period_used: Optional[PeriodType] = Field(None, description="사용된 기간 설정")
 
 
 class StatCardReorderRequest(BaseModel):

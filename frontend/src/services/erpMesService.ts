@@ -3,7 +3,7 @@
  * ERP/MES 데이터 조회, 업로드, Mock 생성 API 클라이언트
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { apiClient } from './api';
 
 // ===========================================
 // Types
@@ -77,15 +77,14 @@ export interface ErpMesStats {
 }
 
 // ===========================================
-// API Functions
+// API Functions (using apiClient for automatic token handling)
 // ===========================================
 
 /**
  * ERP/MES 데이터 목록 조회
  */
 export async function listErpMesData(
-  params: ErpMesListParams = {},
-  token: string
+  params: ErpMesListParams = {}
 ): Promise<ErpMesData[]> {
   const searchParams = new URLSearchParams();
 
@@ -108,135 +107,60 @@ export async function listErpMesData(
   const query = searchParams.toString();
   const endpoint = `/api/v1/erp-mes/data${query ? `?${query}` : ''}`;
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to list ERP/MES data');
-  }
-
-  return response.json();
+  return apiClient.get<ErpMesData[]>(endpoint);
 }
 
 /**
  * ERP/MES 데이터 삭제
  */
 export async function deleteErpMesData(
-  dataId: string,
-  token: string
+  dataId: string
 ): Promise<{ message: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/erp-mes/data/${dataId}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to delete data');
-  }
-
-  return response.json();
+  return apiClient.delete<{ message: string }>(`/api/v1/erp-mes/data/${dataId}`);
 }
 
 /**
  * Mock 데이터 타입 조회
  */
 export async function getMockTypes(): Promise<MockTypesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/erp-mes/mock/types`, {
-    method: 'GET',
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to get mock types');
-  }
-
-  return response.json();
+  return apiClient.get<MockTypesResponse>('/api/v1/erp-mes/mock/types');
 }
 
 /**
  * Mock 데이터 생성
  */
 export async function generateMockData(
-  request: MockGenerateRequest,
-  token: string
+  request: MockGenerateRequest
 ): Promise<MockGenerateResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/erp-mes/mock/generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      source_type: request.source_type,
-      source_system: request.source_system || 'mock_system',
-      record_type: request.record_type,
-      count: request.count || 10,
-    }),
+  return apiClient.post<MockGenerateResponse>('/api/v1/erp-mes/mock/generate', {
+    source_type: request.source_type,
+    source_system: request.source_system || 'mock_system',
+    record_type: request.record_type,
+    count: request.count || 10,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to generate mock data');
-  }
-
-  return response.json();
 }
 
 /**
  * ERP/MES 통계 조회
  */
-export async function getErpMesStats(token: string): Promise<ErpMesStats> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/erp-mes/stats`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to get stats');
-  }
-
-  return response.json();
+export async function getErpMesStats(): Promise<ErpMesStats> {
+  return apiClient.get<ErpMesStats>('/api/v1/erp-mes/stats');
 }
 
 /**
- * CSV/Excel 파일 Import (추후 백엔드 API 추가 예정)
+ * CSV/Excel 파일 Import
  */
 export async function importFile(
   file: File,
   sourceType: 'erp' | 'mes',
-  recordType: string,
-  token: string
+  recordType: string
 ): Promise<ImportResult> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('source_type', sourceType);
   formData.append('record_type', recordType);
 
-  const response = await fetch(`${API_BASE_URL}/api/v1/erp-mes/import`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to import file');
-  }
-
-  return response.json();
+  return apiClient.postFormData<ImportResult>('/api/v1/erp-mes/import', formData);
 }
 
 // ===========================================

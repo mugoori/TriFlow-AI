@@ -9,9 +9,10 @@
  */
 
 import { useState, useCallback } from 'react';
-import { Settings, GripVertical, Check } from 'lucide-react';
+import { Settings, GripVertical, Check, Calendar } from 'lucide-react';
 import { DynamicStatCard, AddStatCardButton, StatCardSkeleton } from './DynamicStatCard';
 import { useStatCards } from '@/contexts/StatCardContext';
+import { PERIOD_OPTIONS, type StatCardPeriod } from '@/types/statcard';
 
 interface StatCardGridProps {
   onAddCard: () => void;
@@ -26,10 +27,23 @@ export function StatCardGrid({
   onDeleteCard,
   maxCards = 6,
 }: StatCardGridProps) {
-  const { cards, loading, reorderCards, refreshValues } = useStatCards();
+  const {
+    cards,
+    loading,
+    reorderCards,
+    refreshValues,
+    selectedPeriod,
+    latestDataDate,
+    setSelectedPeriod,
+  } = useStatCards();
   const [isEditMode, setIsEditMode] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // 기간 변경 핸들러
+  const handlePeriodChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedPeriod(e.target.value as StatCardPeriod);
+  }, [setSelectedPeriod]);
 
   // 드래그 시작
   const handleDragStart = useCallback((e: React.DragEvent, configId: string) => {
@@ -92,9 +106,6 @@ export function StatCardGrid({
     setDragOverId(null);
   }, []);
 
-  // 첫 번째 카드에서 기간 라벨 가져오기 (모든 KPI 카드가 같은 기간이라고 가정)
-  const periodLabel = cards.length > 0 ? cards[0].value.period_label : null;
-
   if (loading) {
     return (
       <div className="space-y-4">
@@ -119,16 +130,32 @@ export function StatCardGrid({
           <h3 className="text-sm font-medium text-slate-600 dark:text-slate-400">
             핵심 지표
           </h3>
-          {periodLabel && (
-            <span className="text-xs text-slate-400 dark:text-slate-500">
-              ({periodLabel} 기준)
-            </span>
-          )}
           <span className="text-xs text-slate-400">
             {cards.length}/{maxCards}
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/* 기간 선택 드롭다운 */}
+          <div className="flex items-center gap-1">
+            <Calendar className="w-4 h-4 text-slate-400" />
+            <select
+              value={selectedPeriod}
+              onChange={handlePeriodChange}
+              className="text-xs border border-slate-200 dark:border-slate-700 rounded px-2 py-1 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {PERIOD_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {latestDataDate && selectedPeriod === 'auto' && (
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                ({latestDataDate} 기준)
+              </span>
+            )}
+          </div>
+
           {/* 편집 모드 토글 */}
           <button
             onClick={() => setIsEditMode(!isEditMode)}

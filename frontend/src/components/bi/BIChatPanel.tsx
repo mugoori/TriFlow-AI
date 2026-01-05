@@ -770,31 +770,6 @@ function MessageBubble({ message, onPin, onUnpin, onCreateAndPin }: MessageBubbl
     }
   };
 
-  // 디버그 로깅 (assistant 메시지만)
-  if (isAssistant) {
-    console.log('[MessageBubble] Debug:', {
-      message_id: message.message_id,
-      response_type: message.response_type,
-      linked_insight_id: message.linked_insight_id,
-      hasInsight,
-      isPinned,
-      pinnableInsightId,
-      canShowPinButton,
-      chartsCount: chartsData.length,
-      chartsData: chartsData.length > 0 ? chartsData.map(c => ({
-        chart_type: c.chart_type,
-        title: c.title,
-        dataLength: c.data?.length,
-      })) : null,
-      insightData: insightData ? {
-        title: insightData.title,
-        summary: insightData.summary?.substring(0, 50),
-        insight_id: insightData.insight_id,
-      } : null,
-      responseData: responseData ? Object.keys(responseData) : null,
-    });
-  }
-
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}

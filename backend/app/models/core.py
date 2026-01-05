@@ -127,6 +127,7 @@ class Ruleset(Base):
     """룰셋 (Rhai 스크립트 기반 규칙)
 
     B-3-1 스펙 섹션 5.1: 룰 그룹 정의 (KPI별 룰 모음)
+    V2.0 A-2-5 스펙: Progressive Trust Model 필드 추가
     """
 
     __tablename__ = "rulesets"
@@ -134,6 +135,10 @@ class Ruleset(Base):
         CheckConstraint(
             "category IN ('quality', 'production', 'equipment', 'inventory', 'safety')",
             name="ck_rulesets_category"
+        ),
+        CheckConstraint(
+            "trust_level >= 0 AND trust_level <= 3",
+            name="ck_rulesets_trust_level"
         ),
         UniqueConstraint('tenant_id', 'name', name='uq_rulesets_tenant_name'),
         {"schema": "core", "extend_existing": True}
@@ -153,6 +158,25 @@ class Ruleset(Base):
     priority = Column(Integer, default=100, nullable=False)
     ruleset_metadata = Column("metadata", JSONB, default={}, nullable=False)
 
+    # V2.0 Progressive Trust Model (A-2-5 스펙)
+    # Trust Level: 0=Proposed, 1=Alert Only, 2=Low Risk Auto, 3=Full Auto
+    trust_level = Column(Integer, default=0, nullable=False)
+    # Trust Score: 0.0000 ~ 1.0000 (가중 합계)
+    trust_score = Column(Numeric(5, 4), default=0.0, nullable=False)
+    # Trust Score 컴포넌트 (JSONB): accuracy, consistency, frequency, feedback, age
+    trust_score_components = Column(JSONB, nullable=True)
+
+    # 실행 메트릭 (Trust Score 계산용)
+    execution_count = Column(Integer, default=0, nullable=False)
+    positive_feedback_count = Column(Integer, default=0, nullable=False)
+    negative_feedback_count = Column(Integer, default=0, nullable=False)
+    accuracy_rate = Column(Numeric(5, 4), nullable=True)
+
+    # Trust 관리 타임스탬프
+    last_execution_at = Column(DateTime, nullable=True)
+    last_promoted_at = Column(DateTime, nullable=True)
+    last_demoted_at = Column(DateTime, nullable=True)
+
     created_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -162,9 +186,10 @@ class Ruleset(Base):
     versions = relationship("RulesetVersion", back_populates="ruleset", cascade="all, delete-orphan", order_by="desc(RulesetVersion.version_number)")
     scripts = relationship("RuleScript", back_populates="ruleset", cascade="all, delete-orphan")
     deployments = relationship("RuleDeployment", back_populates="ruleset", cascade="all, delete-orphan")
+    trust_history = relationship("TrustLevelHistory", back_populates="ruleset", cascade="all, delete-orphan", order_by="desc(TrustLevelHistory.created_at)")
 
     def __repr__(self):
-        return f"<Ruleset(id={self.ruleset_id}, name='{self.name}')>"
+        return f"<Ruleset(id={self.ruleset_id}, name='{self.name}', trust_level={self.trust_level})>"
 
 
 class RulesetVersion(Base):
@@ -292,6 +317,7 @@ class JudgmentExecution(Base):
     """판단 실행 로그 (Workflow/Ruleset 실행 결과)
 
     B-3-1 스펙 섹션 4.1: AI 판단 실행 이력 및 결과 저장 (이벤트 소싱)
+    V2.0 A-2-5 스펙: Trust & Auto Execution 필드 추가
     method_used: rule_only, llm_only, hybrid, cache
     result: normal, warning, critical, unknown
     """
@@ -314,6 +340,10 @@ class JudgmentExecution(Base):
             "confidence >= 0 AND confidence <= 1",
             name="ck_judgment_executions_confidence"
         ),
+        CheckConstraint(
+            "risk_level IS NULL OR risk_level IN ('none', 'low', 'medium', 'high')",
+            name="ck_judgment_executions_risk_level"
+        ),
         {"schema": "core", "extend_existing": True}
     )
 
@@ -321,6 +351,8 @@ class JudgmentExecution(Base):
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     workflow_instance_id = Column(PGUUID(as_uuid=True), ForeignKey("core.workflow_instances.instance_id"), nullable=True)
     workflow_id = Column(PGUUID(as_uuid=True), ForeignKey("core.workflows.workflow_id", ondelete="SET NULL"), nullable=True)
+    # V2.0: 룰셋 참조 (Trust 메트릭 추적용)
+    ruleset_id = Column(PGUUID(as_uuid=True), ForeignKey("core.rulesets.ruleset_id", ondelete="SET NULL"), nullable=True)
 
     # B-3-1 스펙 추가 컬럼
     source = Column(String(20), default="api", nullable=False)
@@ -339,6 +371,12 @@ class JudgmentExecution(Base):
     cache_hit = Column(Boolean, default=False, nullable=False)
     cache_key = Column(String(100), nullable=True)
 
+    # V2.0 Progressive Trust & Auto Execution (A-2-5 스펙)
+    trust_level = Column(Integer, nullable=True)  # 실행 시점의 Trust Level
+    risk_level = Column(String(20), nullable=True)  # none, low, medium, high
+    risk_score = Column(Numeric(5, 4), nullable=True)  # 0.0 ~ 1.0
+    auto_executed = Column(Boolean, default=False, nullable=False)  # 자동 실행 여부
+
     latency_ms = Column("execution_time_ms", Integer, nullable=True)
     created_at = Column("executed_at", DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
@@ -349,9 +387,10 @@ class JudgmentExecution(Base):
     workflow = relationship("Workflow", backref="executions")
     workflow_instance = relationship("WorkflowInstance")
     feedbacks = relationship("FeedbackLog", back_populates="judgment_execution")
+    ruleset = relationship("Ruleset", backref="executions")
 
     def __repr__(self):
-        return f"<JudgmentExecution(id={self.execution_id}, result={self.result}, confidence={self.confidence})>"
+        return f"<JudgmentExecution(id={self.execution_id}, result={self.result}, confidence={self.confidence}, trust_level={self.trust_level})>"
 
 
 class SensorData(Base):
@@ -1532,3 +1571,51 @@ class AuditLog(Base):
 
     def __repr__(self):
         return f"<AuditLog(id={self.log_id}, action='{self.action}', resource='{self.resource_type}')>"
+
+
+# ============================================
+# V2.0 Trust Model Tables
+# ============================================
+
+class TrustLevelHistory(Base):
+    """Trust Level 변경 이력
+
+    V2.0 A-2-5 스펙: Progressive Trust Model
+    - 룰셋의 Trust Level 변경 이력 추적
+    - 승격/강등 사유 및 시점의 메트릭 스냅샷 저장
+    """
+
+    __tablename__ = "trust_level_history"
+    __table_args__ = (
+        CheckConstraint(
+            "previous_level >= 0 AND previous_level <= 3",
+            name="ck_trust_history_prev_level"
+        ),
+        CheckConstraint(
+            "new_level >= 0 AND new_level <= 3",
+            name="ck_trust_history_new_level"
+        ),
+        {"schema": "core", "extend_existing": True}
+    )
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    ruleset_id = Column(PGUUID(as_uuid=True), ForeignKey("core.rulesets.ruleset_id", ondelete="CASCADE"), nullable=False)
+
+    previous_level = Column(Integer, nullable=False)
+    new_level = Column(Integer, nullable=False)
+    reason = Column(String(500), nullable=True)
+    triggered_by = Column(String(50), nullable=True)  # auto, manual, feedback, schedule
+
+    # 변경 시점의 메트릭 스냅샷 (JSONB)
+    # Contains: trust_score, accuracy_rate, execution_count, feedback_counts, etc.
+    metrics_snapshot = Column(JSONB, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
+
+    # Relationships
+    ruleset = relationship("Ruleset", back_populates="trust_history")
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<TrustLevelHistory(ruleset_id={self.ruleset_id}, {self.previous_level}->{self.new_level})>"

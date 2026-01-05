@@ -504,6 +504,18 @@ try:
 except Exception as e:
     logger.error(f"Failed to register mcp router: {e}")
 
+# ============================================
+# V2.0 API Endpoints
+# ============================================
+
+# V2.0 Trust 라우터 (Progressive Trust Model)
+try:
+    from app.routers import trust
+    app.include_router(trust.router, prefix="/api/v2/trust", tags=["v2-trust"])
+    logger.info("V2 Trust router registered")
+except Exception as e:
+    logger.error(f"Failed to register v2 trust router: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

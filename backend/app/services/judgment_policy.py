@@ -18,7 +18,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,13 @@ class JudgmentPolicy(str, Enum):
 
 @dataclass
 class JudgmentResult:
-    """판단 결과"""
+    """
+    판단 결과
+
+    V1 Gap 수정 (2026-01-05):
+    - explanation: 판단 근거 설명 (감사 추적용)
+    - evidence: 판단에 사용된 증거 목록
+    """
     decision: str  # OK, WARNING, CRITICAL, UNKNOWN
     confidence: float  # 0.0 ~ 1.0
     source: str  # rule, llm, hybrid
@@ -59,6 +65,9 @@ class JudgmentResult:
     execution_time_ms: int = 0
     cached: bool = False
     timestamp: str = ""
+    # V1 Gap 수정: 판단 근거 및 증거
+    explanation: Optional[Dict[str, Any]] = None
+    evidence: Optional[List[str]] = None
 
     def __post_init__(self):
         if not self.timestamp:
@@ -76,6 +85,8 @@ class JudgmentResult:
             "execution_time_ms": self.execution_time_ms,
             "cached": self.cached,
             "timestamp": self.timestamp,
+            "explanation": self.explanation,
+            "evidence": self.evidence,
         }
 
 
@@ -190,13 +201,21 @@ class HybridJudgmentService:
         rule_result = await self._run_rule_engine(tenant_id, ruleset_id, input_data)
 
         if rule_result["success"]:
+            decision = self._extract_decision(rule_result)
             return JudgmentResult(
-                decision=self._extract_decision(rule_result),
+                decision=decision,
                 confidence=self._calculate_rule_confidence(rule_result),
                 source="rule",
                 policy_used=JudgmentPolicy.RULE_ONLY,
                 rule_result=rule_result,
                 details={"checks": rule_result.get("result", {}).get("checks", [])},
+                explanation=self._generate_explanation(
+                    decision=decision,
+                    source="rule",
+                    rule_result=rule_result,
+                    policy=JudgmentPolicy.RULE_ONLY,
+                ),
+                evidence=self._extract_evidence(input_data, rule_result=rule_result),
             )
         else:
             return JudgmentResult(
@@ -206,6 +225,13 @@ class HybridJudgmentService:
                 policy_used=JudgmentPolicy.RULE_ONLY,
                 rule_result=rule_result,
                 details={"error": rule_result.get("error")},
+                explanation=self._generate_explanation(
+                    decision="UNKNOWN",
+                    source="rule",
+                    rule_result=rule_result,
+                    policy=JudgmentPolicy.RULE_ONLY,
+                ),
+                evidence=self._extract_evidence(input_data, rule_result=rule_result),
             )
 
     async def _execute_llm_only(
@@ -218,14 +244,22 @@ class HybridJudgmentService:
         LLM만 사용하여 판단
         """
         llm_result = await self._run_llm_judgment(tenant_id, input_data, context)
+        decision = llm_result.get("decision", "UNKNOWN")
 
         return JudgmentResult(
-            decision=llm_result.get("decision", "UNKNOWN"),
+            decision=decision,
             confidence=llm_result.get("confidence", 0.5),
             source="llm",
             policy_used=JudgmentPolicy.LLM_ONLY,
             llm_result=llm_result,
             details={"reasoning": llm_result.get("reasoning", "")},
+            explanation=self._generate_explanation(
+                decision=decision,
+                source="llm",
+                llm_result=llm_result,
+                policy=JudgmentPolicy.LLM_ONLY,
+            ),
+            evidence=self._extract_evidence(input_data, llm_result=llm_result),
         )
 
     async def _execute_escalate(
@@ -244,21 +278,30 @@ class HybridJudgmentService:
 
         # 2. 룰 신뢰도가 충분하면 룰 결과 사용
         if rule_result["success"] and rule_confidence >= self.RULE_CONFIDENCE_THRESHOLD:
+            decision = self._extract_decision(rule_result)
             return JudgmentResult(
-                decision=self._extract_decision(rule_result),
+                decision=decision,
                 confidence=rule_confidence,
                 source="rule",
                 policy_used=JudgmentPolicy.ESCALATE,
                 rule_result=rule_result,
                 details={"escalated": False},
+                explanation=self._generate_explanation(
+                    decision=decision,
+                    source="rule",
+                    rule_result=rule_result,
+                    policy=JudgmentPolicy.ESCALATE,
+                ),
+                evidence=self._extract_evidence(input_data, rule_result=rule_result),
             )
 
         # 3. 룰 불확실 → LLM으로 에스컬레이션
         logger.info(f"Escalating to LLM (rule confidence: {rule_confidence})")
         llm_result = await self._run_llm_judgment(tenant_id, input_data, context)
+        decision = llm_result.get("decision", "UNKNOWN")
 
         return JudgmentResult(
-            decision=llm_result.get("decision", "UNKNOWN"),
+            decision=decision,
             confidence=llm_result.get("confidence", 0.5),
             source="llm_escalated",
             policy_used=JudgmentPolicy.ESCALATE,
@@ -269,6 +312,14 @@ class HybridJudgmentService:
                 "rule_confidence": rule_confidence,
                 "reasoning": llm_result.get("reasoning", ""),
             },
+            explanation=self._generate_explanation(
+                decision=decision,
+                source="llm_escalated",
+                rule_result=rule_result,
+                llm_result=llm_result,
+                policy=JudgmentPolicy.ESCALATE,
+            ),
+            evidence=self._extract_evidence(input_data, rule_result=rule_result, llm_result=llm_result),
         )
 
     async def _execute_rule_fallback(
@@ -290,21 +341,30 @@ class HybridJudgmentService:
 
         # 2. 룰 성공 시 룰 결과 사용
         if rule_result.get("success"):
+            decision = self._extract_decision(rule_result)
             return JudgmentResult(
-                decision=self._extract_decision(rule_result),
+                decision=decision,
                 confidence=self._calculate_rule_confidence(rule_result),
                 source="rule",
                 policy_used=JudgmentPolicy.RULE_FALLBACK,
                 rule_result=rule_result,
                 details={"fallback_used": False},
+                explanation=self._generate_explanation(
+                    decision=decision,
+                    source="rule",
+                    rule_result=rule_result,
+                    policy=JudgmentPolicy.RULE_FALLBACK,
+                ),
+                evidence=self._extract_evidence(input_data, rule_result=rule_result),
             )
 
         # 3. 룰 실패 → LLM으로 폴백
         logger.info(f"Rule failed, falling back to LLM: {rule_result.get('error')}")
         llm_result = await self._run_llm_judgment(tenant_id, input_data, context)
+        decision = llm_result.get("decision", "UNKNOWN")
 
         return JudgmentResult(
-            decision=llm_result.get("decision", "UNKNOWN"),
+            decision=decision,
             confidence=llm_result.get("confidence", 0.5),
             source="llm_fallback",
             policy_used=JudgmentPolicy.RULE_FALLBACK,
@@ -315,6 +375,14 @@ class HybridJudgmentService:
                 "rule_error": rule_result.get("error"),
                 "reasoning": llm_result.get("reasoning", ""),
             },
+            explanation=self._generate_explanation(
+                decision=decision,
+                source="llm_fallback",
+                rule_result=rule_result,
+                llm_result=llm_result,
+                policy=JudgmentPolicy.RULE_FALLBACK,
+            ),
+            evidence=self._extract_evidence(input_data, rule_result=rule_result, llm_result=llm_result),
         )
 
     async def _execute_llm_fallback(
@@ -348,6 +416,13 @@ class HybridJudgmentService:
                     "fallback_used": False,
                     "reasoning": llm_result.get("reasoning", ""),
                 },
+                explanation=self._generate_explanation(
+                    decision=llm_decision,
+                    source="llm",
+                    llm_result=llm_result,
+                    policy=JudgmentPolicy.LLM_FALLBACK,
+                ),
+                evidence=self._extract_evidence(input_data, llm_result=llm_result),
             )
 
         # 3. LLM 실패 → 룰로 폴백
@@ -355,8 +430,9 @@ class HybridJudgmentService:
         rule_result = await self._run_rule_engine(tenant_id, ruleset_id, input_data)
 
         if rule_result.get("success"):
+            decision = self._extract_decision(rule_result)
             return JudgmentResult(
-                decision=self._extract_decision(rule_result),
+                decision=decision,
                 confidence=self._calculate_rule_confidence(rule_result),
                 source="rule_fallback",
                 policy_used=JudgmentPolicy.LLM_FALLBACK,
@@ -366,6 +442,14 @@ class HybridJudgmentService:
                     "fallback_used": True,
                     "llm_error": llm_error,
                 },
+                explanation=self._generate_explanation(
+                    decision=decision,
+                    source="rule_fallback",
+                    rule_result=rule_result,
+                    llm_result=llm_result,
+                    policy=JudgmentPolicy.LLM_FALLBACK,
+                ),
+                evidence=self._extract_evidence(input_data, rule_result=rule_result, llm_result=llm_result),
             )
         else:
             # 둘 다 실패
@@ -382,6 +466,14 @@ class HybridJudgmentService:
                     "rule_error": rule_result.get("error"),
                     "both_failed": True,
                 },
+                explanation=self._generate_explanation(
+                    decision="UNKNOWN",
+                    source="none",
+                    rule_result=rule_result,
+                    llm_result=llm_result,
+                    policy=JudgmentPolicy.LLM_FALLBACK,
+                ),
+                evidence=self._extract_evidence(input_data, rule_result=rule_result, llm_result=llm_result),
             )
 
     async def _execute_hybrid_gate(
@@ -424,6 +516,13 @@ class HybridJudgmentService:
                     "rule_confidence": rule_confidence,
                     "gate_threshold": GATE_THRESHOLD,
                 },
+                explanation=self._generate_explanation(
+                    decision=rule_decision,
+                    source="rule",
+                    rule_result=rule_result,
+                    policy=JudgmentPolicy.HYBRID_GATE,
+                ),
+                evidence=self._extract_evidence(input_data, rule_result=rule_result),
             )
 
         # 3. 신뢰도 낮음 → LLM도 호출
@@ -453,6 +552,14 @@ class HybridJudgmentService:
                     "llm_confidence": llm_confidence,
                     "gate_threshold": GATE_THRESHOLD,
                 },
+                explanation=self._generate_explanation(
+                    decision=rule_decision,
+                    source="hybrid_consensus",
+                    rule_result=rule_result,
+                    llm_result=llm_result,
+                    policy=JudgmentPolicy.HYBRID_GATE,
+                ),
+                evidence=self._extract_evidence(input_data, rule_result=rule_result, llm_result=llm_result),
             )
 
         # 5. 불일치 → 신뢰도 높은 쪽 선택
@@ -486,6 +593,14 @@ class HybridJudgmentService:
                 "disagreement_penalty_applied": True,
                 "gate_threshold": GATE_THRESHOLD,
             },
+            explanation=self._generate_explanation(
+                decision=final_decision,
+                source=f"hybrid_{primary_source}",
+                rule_result=rule_result,
+                llm_result=llm_result,
+                policy=JudgmentPolicy.HYBRID_GATE,
+            ),
+            evidence=self._extract_evidence(input_data, rule_result=rule_result, llm_result=llm_result),
         )
 
     async def _execute_hybrid_weighted(
@@ -547,6 +662,14 @@ class HybridJudgmentService:
                 "primary_source": primary_source,
                 "weights": {"rule": self.rule_weight, "llm": self.llm_weight},
             },
+            explanation=self._generate_explanation(
+                decision=final_decision,
+                source="hybrid",
+                rule_result=rule_result,
+                llm_result=llm_result,
+                policy=JudgmentPolicy.HYBRID_WEIGHTED,
+            ),
+            evidence=self._extract_evidence(input_data, rule_result=rule_result, llm_result=llm_result),
         )
 
     async def _run_rule_engine(
@@ -580,11 +703,15 @@ class HybridJudgmentService:
                     context={"input": input_data},
                 )
 
+                # V1 Gap 수정: ruleset_version, matched_rules, confidence 추가
                 return {
                     "success": True,
                     "ruleset_id": str(ruleset_id),
                     "ruleset_name": ruleset.name,
+                    "ruleset_version": ruleset.version,  # V1 Gap 수정
                     "result": result,
+                    "matched_rules": result.get("matched_rules", []),  # V1 Gap 수정
+                    "confidence": self._calculate_rule_confidence({"success": True, "result": result}),  # V1 Gap 수정
                 }
 
         except Exception as e:
@@ -644,6 +771,9 @@ JSON 형식으로 응답하세요."""
             import json
             import re
 
+            # V1 Gap 수정: 사용된 모델 정보 기록
+            model_used = "claude-sonnet-4-5-20250929"
+
             # JSON 추출
             json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
             if json_match:
@@ -653,6 +783,7 @@ JSON 형식으로 응답하세요."""
                     "confidence": float(result.get("confidence", 0.5)),
                     "reasoning": result.get("reasoning", ""),
                     "raw_response": response_text,
+                    "model": model_used,  # V1 Gap 수정
                 }
 
             return {
@@ -660,6 +791,7 @@ JSON 형식으로 응답하세요."""
                 "confidence": 0.3,
                 "reasoning": response_text,
                 "error": "Failed to parse JSON response",
+                "model": model_used,  # V1 Gap 수정
             }
 
         except Exception as e:
@@ -669,6 +801,7 @@ JSON 형식으로 응답하세요."""
                 "confidence": 0.0,
                 "reasoning": "",
                 "error": str(e),
+                "model": "unknown",  # V1 Gap 수정
             }
 
     def _format_sensor_data(self, input_data: Dict[str, Any]) -> str:
@@ -738,6 +871,118 @@ JSON 형식으로 응답하세요."""
 
         # 기본값: 룰이 성공적으로 실행되면 0.85
         return 0.85
+
+    def _generate_explanation(
+        self,
+        decision: str,
+        source: str,
+        rule_result: Optional[Dict[str, Any]] = None,
+        llm_result: Optional[Dict[str, Any]] = None,
+        policy: JudgmentPolicy = None,
+    ) -> Dict[str, Any]:
+        """
+        판단 근거 설명 생성 (V1 Gap 수정)
+
+        스펙 요구사항:
+        - 사용자에게 판단 근거를 제시
+        - 감사 추적을 위한 상세 기록
+        """
+        explanation = {
+            "summary": "",
+            "decision_factors": [],
+            "source_details": {},
+        }
+
+        # 결정 요약
+        decision_desc = {
+            "OK": "정상 상태입니다.",
+            "WARNING": "주의가 필요한 상태입니다.",
+            "CRITICAL": "즉각적인 조치가 필요합니다.",
+            "UNKNOWN": "판단을 내릴 수 없습니다.",
+        }
+        explanation["summary"] = decision_desc.get(decision, "알 수 없는 상태입니다.")
+
+        # 소스별 상세 설명
+        if source in ["rule", "rule_fallback"]:
+            explanation["source_details"]["type"] = "rule_based"
+            if rule_result and rule_result.get("success"):
+                result = rule_result.get("result", {})
+                checks = result.get("checks", [])
+                if checks:
+                    for check in checks:
+                        explanation["decision_factors"].append({
+                            "factor": check.get("name", "unknown"),
+                            "status": check.get("status", "unknown"),
+                            "value": check.get("value"),
+                            "threshold": check.get("threshold"),
+                        })
+                explanation["source_details"]["ruleset_id"] = rule_result.get("ruleset_id")
+                explanation["source_details"]["ruleset_name"] = rule_result.get("ruleset_name")
+
+        elif source in ["llm", "llm_fallback", "llm_escalated"]:
+            explanation["source_details"]["type"] = "llm_based"
+            if llm_result:
+                explanation["decision_factors"].append({
+                    "factor": "llm_reasoning",
+                    "reasoning": llm_result.get("reasoning", ""),
+                })
+                explanation["source_details"]["model"] = llm_result.get("model", "unknown")
+
+        elif source in ["hybrid", "hybrid_consensus", "hybrid_rule", "hybrid_llm"]:
+            explanation["source_details"]["type"] = "hybrid"
+            if rule_result and rule_result.get("success"):
+                explanation["decision_factors"].append({
+                    "factor": "rule_decision",
+                    "decision": self._extract_decision(rule_result),
+                    "confidence": self._calculate_rule_confidence(rule_result),
+                })
+            if llm_result:
+                explanation["decision_factors"].append({
+                    "factor": "llm_decision",
+                    "decision": llm_result.get("decision"),
+                    "confidence": llm_result.get("confidence"),
+                    "reasoning": llm_result.get("reasoning", ""),
+                })
+
+        # 정책 정보
+        if policy:
+            explanation["policy"] = policy.value
+
+        return explanation
+
+    def _extract_evidence(
+        self,
+        input_data: Dict[str, Any],
+        rule_result: Optional[Dict[str, Any]] = None,
+        llm_result: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        """
+        판단에 사용된 증거 목록 추출 (V1 Gap 수정)
+
+        스펙 요구사항:
+        - 판단 근거가 된 데이터 포인트 기록
+        """
+        evidence = []
+
+        # 입력 데이터에서 센서값 추출
+        for key, value in input_data.items():
+            if isinstance(value, (int, float)):
+                evidence.append(f"sensor:{key}={value}")
+
+        # 룰 결과에서 체크 결과 추출
+        if rule_result and rule_result.get("success"):
+            result = rule_result.get("result", {})
+            checks = result.get("checks", [])
+            for check in checks:
+                name = check.get("name", "unknown")
+                status = check.get("status", "unknown")
+                evidence.append(f"rule_check:{name}={status}")
+
+        # LLM 결과 참조
+        if llm_result and llm_result.get("decision"):
+            evidence.append(f"llm_decision:{llm_result.get('decision')}")
+
+        return evidence
 
 
 # 전역 인스턴스

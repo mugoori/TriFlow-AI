@@ -13,6 +13,7 @@ import type {
   KpiListResponse,
   AvailableTablesResponse,
   McpToolListResponse,
+  StatCardPeriod,
 } from '../types/statcard';
 
 const STAT_CARDS_BASE = '/api/v1/bi/stat-cards';
@@ -20,9 +21,10 @@ const STAT_CARDS_BASE = '/api/v1/bi/stat-cards';
 export const statCardService = {
   /**
    * 사용자 StatCard 목록 조회 (값 포함)
+   * @param period 기간 설정 (auto, 7days, 30days, 90days, ytd)
    */
-  async getStatCards(): Promise<StatCardListResponse> {
-    return apiClient.get<StatCardListResponse>(STAT_CARDS_BASE);
+  async getStatCards(period: StatCardPeriod = 'auto'): Promise<StatCardListResponse> {
+    return apiClient.get<StatCardListResponse>(`${STAT_CARDS_BASE}?period=${period}`);
   },
 
   /**

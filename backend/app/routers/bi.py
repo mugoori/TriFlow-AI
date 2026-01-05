@@ -2067,23 +2067,38 @@ async def unpin_insight(
 
 @router.get("/stat-cards")
 async def get_stat_cards(
+    period: str = Query(
+        default="auto",
+        description="기간 설정: auto(최신 데이터 기준), 7days, 30days, 90days, ytd",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     사용자의 StatCard 설정 및 현재 값 조회
 
+    Query Parameters:
+        - period: 기간 설정 (auto, 7days, 30days, 90days, ytd)
+
     Returns:
         - cards: StatCard 목록 (설정 + 현재 값)
         - total: 전체 카드 수
+        - latest_data_date: 최신 데이터 날짜 (ISO format)
+        - period_used: 사용된 기간 설정
     """
-    from app.services.stat_card_service import StatCardService
+    from app.services.stat_card_service import StatCardService, PeriodType
+
+    # period 값 검증
+    valid_periods = ["auto", "7days", "30days", "90days", "ytd"]
+    if period not in valid_periods:
+        period = "auto"
 
     try:
         service = StatCardService(db)
         result = await service.get_card_values(
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
+            period=period,  # type: ignore
         )
 
         return {
@@ -2095,12 +2110,14 @@ async def get_stat_cards(
                 for card in result.cards
             ],
             "total": result.total,
+            "latest_data_date": result.latest_data_date,
+            "period_used": result.period_used,
         }
     except Exception as e:
         logger.error(f"Failed to get stat cards: {e}")
         # 테이블이 없는 경우 빈 목록 반환
         if "stat_card_configs" in str(e) or "does not exist" in str(e):
-            return {"cards": [], "total": 0}
+            return {"cards": [], "total": 0, "latest_data_date": None, "period_used": period}
         raise HTTPException(status_code=500, detail=f"Failed to get stat cards: {str(e)}")
 
 

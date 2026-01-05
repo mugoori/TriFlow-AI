@@ -12,14 +12,13 @@ import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BarChart3, TrendingUp, AlertTriangle, X, LayoutDashboard, RefreshCw,
-  Thermometer, Gauge, Droplets, Loader2, Sparkles, BookOpen,
+  Loader2, Sparkles, BookOpen,
   ChevronDown, ChevronUp, MessageSquare, Save, FolderOpen, Trash2, Check,
-  MoreVertical, Edit2,
 } from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { ChartRenderer } from '@/components/charts';
-import { InsightPanel, StoryList, StoryViewer, BIChatPanel, DynamicStatCard, AddStatCardButton, StatCardSkeleton, StatCardConfigModal } from '@/components/bi';
+import { InsightPanel, StoryList, StoryViewer, BIChatPanel, StatCardGrid, StatCardConfigModal } from '@/components/bi';
 import { useToast } from '@/components/ui/Toast';
 import { useStatCards } from '@/contexts/StatCardContext';
 import { sensorService, SensorSummaryItem, SensorDataItem } from '@/services/sensorService';
@@ -39,7 +38,7 @@ interface DashboardStats {
 export function DashboardPage() {
   const { isAuthenticated } = useAuth();
   const { savedCharts, removeChart, loadCharts, clearCharts } = useDashboard();
-  const { cards, loading: statCardsLoading, deleteCard, refreshValues } = useStatCards();
+  const { cards, deleteCard, refreshValues } = useStatCards();
   const toast = useToast();
   const [stats, setStats] = useState<DashboardStats>({
     totalReadings: 0,
@@ -76,8 +75,6 @@ export function DashboardPage() {
   const [showStatCardModal, setShowStatCardModal] = useState(false);
   const [editingStatCardId, setEditingStatCardId] = useState<string | null>(null);
 
-  // 기본 카드 숨김 상태
-  const [hiddenDefaultCards, setHiddenDefaultCards] = useState<string[]>([]);
 
   // 중복 요청 방지용 ref
   const isInitializedRef = useRef(false);
@@ -106,28 +103,6 @@ export function DashboardPage() {
         console.error('Failed to delete stat card:', err);
         toast.error('카드 삭제에 실패했습니다.');
       }
-    }
-  };
-
-  // 기본 카드 편집 핸들러 (모달 열기)
-  const handleEditDefaultCard = (_cardId: string) => {
-    // 기본 카드 편집 시 새 카드 생성 모달을 열어 같은 타입의 카드를 만들 수 있게 함
-    setEditingStatCardId(null);
-    setShowStatCardModal(true);
-  };
-
-  // 기본 카드 삭제 핸들러
-  const handleDeleteDefaultCard = async (cardId: string) => {
-    const confirmed = await toast.confirm({
-      title: '카드 숨기기',
-      message: '이 기본 카드를 숨기시겠습니까? 새 카드를 추가하여 대체할 수 있습니다.',
-      confirmText: '숨기기',
-      cancelText: '취소',
-      variant: 'warning',
-    });
-    if (confirmed) {
-      setHiddenDefaultCards(prev => [...prev, cardId]);
-      toast.success('카드가 숨겨졌습니다.');
     }
   };
 
@@ -519,88 +494,15 @@ export function DashboardPage() {
         )}
 
         {/* Dynamic Stats Grid - DB 기반 동적 StatCard */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {statCardsLoading ? (
-            // 로딩 중 스켈레톤
-            <>
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-            </>
-          ) : cards.length > 0 ? (
-            // DB에서 설정된 동적 카드
-            <>
-              {cards.map((card) => (
-                <DynamicStatCard
-                  key={card.config.config_id}
-                  card={card}
-                  onEdit={handleEditStatCard}
-                  onDelete={handleDeleteStatCard}
-                  onRefresh={() => refreshValues()}
-                  showActions={true}
-                />
-              ))}
-              {/* 카드 추가 버튼 (6개 미만일 때만) */}
-              {cards.length < 6 && (
-                <AddStatCardButton onClick={() => {
-                  setEditingStatCardId(null);
-                  setShowStatCardModal(true);
-                }} />
-              )}
-            </>
-          ) : (
-            // 카드가 없을 때 - 기본 센서 통계 표시 + 카드 추가 유도
-            <>
-              {!hiddenDefaultCards.includes('temp') && (
-                <LegacyStatCard
-                  cardId="temp"
-                  title="평균 온도"
-                  value={isLoading ? '-' : stats.avgTemperature.toFixed(1)}
-                  unit="°C"
-                  subtitle={`${stats.activeLines}개 라인`}
-                  icon={Thermometer}
-                  iconBgColor="bg-orange-100 dark:bg-orange-900"
-                  iconColor="text-orange-600 dark:text-orange-400"
-                  onEdit={handleEditDefaultCard}
-                  onDelete={handleDeleteDefaultCard}
-                />
-              )}
-              {!hiddenDefaultCards.includes('pressure') && (
-                <LegacyStatCard
-                  cardId="pressure"
-                  title="평균 압력"
-                  value={isLoading ? '-' : stats.avgPressure.toFixed(2)}
-                  unit="bar"
-                  subtitle="최근 24시간"
-                  icon={Gauge}
-                  iconBgColor="bg-blue-100 dark:bg-blue-900"
-                  iconColor="text-blue-600 dark:text-blue-400"
-                  onEdit={handleEditDefaultCard}
-                  onDelete={handleDeleteDefaultCard}
-                />
-              )}
-              {!hiddenDefaultCards.includes('humidity') && (
-                <LegacyStatCard
-                  cardId="humidity"
-                  title="평균 습도"
-                  value={isLoading ? '-' : stats.avgHumidity.toFixed(1)}
-                  unit="%"
-                  subtitle="최근 24시간"
-                  icon={Droplets}
-                  iconBgColor="bg-cyan-100 dark:bg-cyan-900"
-                  iconColor="text-cyan-600 dark:text-cyan-400"
-                  onEdit={handleEditDefaultCard}
-                  onDelete={handleDeleteDefaultCard}
-                />
-              )}
-              <AddStatCardButton onClick={() => {
-                setEditingStatCardId(null);
-                setShowStatCardModal(true);
-              }} />
-            </>
-          )}
-        </div>
+        <StatCardGrid
+          onAddCard={() => {
+            setEditingStatCardId(null);
+            setShowStatCardModal(true);
+          }}
+          onEditCard={handleEditStatCard}
+          onDeleteCard={handleDeleteStatCard}
+          maxCards={6}
+        />
 
         {/* StatCard 설정 모달 */}
         <StatCardConfigModal
@@ -972,91 +874,3 @@ export function DashboardPage() {
   );
 }
 
-/**
- * LegacyStatCard - 기본 센서 통계용 (DB 카드가 없을 때 폴백)
- */
-interface LegacyStatCardProps {
-  title: string;
-  value: string;
-  unit: string;
-  subtitle: string;
-  icon: React.ComponentType<{ className?: string }>;
-  iconBgColor: string;
-  iconColor: string;
-  cardId: string;
-  onEdit?: (cardId: string) => void;
-  onDelete?: (cardId: string) => void;
-}
-
-function LegacyStatCard({ title, value, unit, subtitle, icon: Icon, iconBgColor, iconColor, cardId, onEdit, onDelete }: LegacyStatCardProps) {
-  const [showMenu, setShowMenu] = useState(false);
-
-  return (
-    <Card className="relative group">
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">{title}</p>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-2xl font-bold">{value}</span>
-              <span className="text-sm text-slate-500">{unit}</span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
-          </div>
-          <div className={`p-3 ${iconBgColor} rounded-lg`}>
-            <Icon className={`w-6 h-6 ${iconColor}`} />
-          </div>
-        </div>
-
-        {/* 액션 메뉴 */}
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="relative">
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <MoreVertical className="w-4 h-4 text-slate-400" />
-            </button>
-
-            {showMenu && (
-              <>
-                {/* Backdrop */}
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowMenu(false)}
-                />
-                {/* Menu */}
-                <div className="absolute right-0 top-6 z-20 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 py-1 min-w-[120px]">
-                  {onEdit && (
-                    <button
-                      onClick={() => {
-                        setShowMenu(false);
-                        onEdit(cardId);
-                      }}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                      편집
-                    </button>
-                  )}
-                  {onDelete && (
-                    <button
-                      onClick={() => {
-                        setShowMenu(false);
-                        onDelete(cardId);
-                      }}
-                      className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      삭제
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
