@@ -38,7 +38,7 @@ interface RulesetsPageProps {
   highlightRulesetId?: string | null;
 }
 
-export function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
+export default function RulesetsPage({ highlightRulesetId }: RulesetsPageProps) {
   const { isAuthenticated } = useAuth();
   const toast = useToast();
   // Tab state

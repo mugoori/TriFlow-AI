@@ -79,7 +79,7 @@ function getInitialSettings(): Settings {
   return defaultSettings;
 }
 
-export function SettingsPage() {
+export default function SettingsPage() {
   const { isAuthenticated } = useAuth();
 
   // 초기 상태를 localStorage에서 동기적으로 로드 (깜빡임 방지)

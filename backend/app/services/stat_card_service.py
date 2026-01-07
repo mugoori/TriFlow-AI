@@ -497,6 +497,13 @@ class StatCardService:
             period_label = "최근 7일"
             comparison_label = "vs 전주"
 
+        # inventory_days는 별도 테이블에서 조회
+        if config.kpi_code == "inventory_days":
+            return await self._fetch_inventory_days_value(
+                config, tenant_id, kpi_name, unit, green_th, yellow_th, red_th, higher_is_better,
+                current_start, current_end, prev_start, prev_end, period_label, comparison_label
+            )
+
         # fact 테이블에서 현재 기간 값 조회
         value_query = text("""
             SELECT
@@ -511,6 +518,12 @@ class StatCardService:
                         COALESCE(SUM(good_qty) / NULLIF(SUM(total_qty), 0) * 100, 0)
                     WHEN 'downtime' THEN
                         COALESCE(AVG(downtime_minutes), 0)
+                    WHEN 'availability' THEN
+                        COALESCE(AVG(runtime_minutes / NULLIF(runtime_minutes + downtime_minutes, 0)) * 100, 0)
+                    WHEN 'throughput' THEN
+                        COALESCE(SUM(total_qty), 0)
+                    WHEN 'cycle_time' THEN
+                        COALESCE(AVG(cycle_time_avg), 0)
                     ELSE 0
                 END as value
             FROM bi.fact_daily_production
@@ -543,6 +556,12 @@ class StatCardService:
                         COALESCE(SUM(good_qty) / NULLIF(SUM(total_qty), 0) * 100, 0)
                     WHEN 'downtime' THEN
                         COALESCE(AVG(downtime_minutes), 0)
+                    WHEN 'availability' THEN
+                        COALESCE(AVG(runtime_minutes / NULLIF(runtime_minutes + downtime_minutes, 0)) * 100, 0)
+                    WHEN 'throughput' THEN
+                        COALESCE(SUM(total_qty), 0)
+                    WHEN 'cycle_time' THEN
+                        COALESCE(AVG(cycle_time_avg), 0)
                     ELSE 0
                 END as value
             FROM bi.fact_daily_production
@@ -554,6 +573,95 @@ class StatCardService:
             {
                 "tenant_id": str(tenant_id),
                 "kpi_code": config.kpi_code,
+                "start_date": prev_start,
+                "end_date": prev_end,
+            },
+        )
+        prev_row = prev_result.fetchone()
+        prev_value = float(prev_row[0]) if prev_row and prev_row[0] else None
+
+        # 상태 결정
+        status = self._determine_status(
+            current_value,
+            float(green_th) if green_th else None,
+            float(yellow_th) if yellow_th else None,
+            float(red_th) if red_th else None,
+            higher_is_better,
+        )
+
+        # 변화율 계산
+        change_percent = None
+        trend = None
+        if prev_value and prev_value != 0:
+            change_percent = ((current_value - prev_value) / prev_value) * 100
+            if abs(change_percent) < 1:
+                trend = "stable"
+            elif change_percent > 0:
+                trend = "up" if higher_is_better else "down"
+            else:
+                trend = "down" if higher_is_better else "up"
+
+        return StatCardValue(
+            config_id=config.config_id,
+            value=current_value,
+            formatted_value=self._format_value(current_value, unit),
+            previous_value=prev_value,
+            change_percent=change_percent,
+            trend=trend,
+            status=status,
+            title=config.custom_title or kpi_name,
+            icon=config.custom_icon or self._get_kpi_icon(config.kpi_code),
+            unit=config.custom_unit or unit,
+            period_start=datetime.combine(current_start, datetime.min.time()),
+            period_end=datetime.combine(current_end, datetime.min.time()),
+            period_label=period_label,
+            comparison_label=comparison_label,
+            source_type="kpi",
+            fetched_at=datetime.utcnow(),
+            is_cached=False,
+        )
+
+    async def _fetch_inventory_days_value(
+        self,
+        config: StatCardConfig,
+        tenant_id: UUID,
+        kpi_name: str,
+        unit: str,
+        green_th: Optional[float],
+        yellow_th: Optional[float],
+        red_th: Optional[float],
+        higher_is_better: bool,
+        current_start: date,
+        current_end: date,
+        prev_start: date,
+        prev_end: date,
+        period_label: str,
+        comparison_label: str,
+    ) -> StatCardValue:
+        """재고일수 KPI 값 조회 (fact_inventory_snapshot 테이블 사용)"""
+        # 현재 기간 평균 재고일수 조회
+        value_query = text("""
+            SELECT COALESCE(AVG(coverage_days), 0) as value
+            FROM bi.fact_inventory_snapshot
+            WHERE tenant_id = :tenant_id
+                AND date >= :start_date AND date <= :end_date
+        """)
+        value_result = self.db.execute(
+            value_query,
+            {
+                "tenant_id": str(tenant_id),
+                "start_date": current_start,
+                "end_date": current_end,
+            },
+        )
+        value_row = value_result.fetchone()
+        current_value = float(value_row[0]) if value_row and value_row[0] else 0.0
+
+        # 이전 기간 값 조회
+        prev_result = self.db.execute(
+            value_query,
+            {
+                "tenant_id": str(tenant_id),
                 "start_date": prev_start,
                 "end_date": prev_end,
             },

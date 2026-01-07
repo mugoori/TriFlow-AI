@@ -12,15 +12,18 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 // Tauri 환경 여부 캐시
 let _isTauri: boolean | null = null;
 
-// Tauri 환경 여부 확인 (플러그인 로드 성공 여부로 판단)
+// Tauri 환경 여부 확인 (window.__TAURI__ 객체 존재 여부로 판단)
 async function isTauriEnvironment(): Promise<boolean> {
   if (_isTauri !== null) return _isTauri;
-  try {
-    await import('@tauri-apps/plugin-http');
-    _isTauri = true;
+
+  // window.__TAURI__ 객체가 있고, invoke 함수가 있어야 실제 Tauri 환경
+  _isTauri = typeof window !== 'undefined' &&
+             !!(window as any).__TAURI__ &&
+             typeof (window as any).__TAURI__?.invoke === 'function';
+
+  if (_isTauri) {
     console.log('[agentService] Tauri environment detected');
-  } catch {
-    _isTauri = false;
+  } else {
     console.log('[agentService] Browser environment detected');
   }
   return _isTauri;

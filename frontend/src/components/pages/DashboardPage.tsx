@@ -35,12 +35,12 @@ interface DashboardStats {
   alerts: number;
 }
 
-export function DashboardPage() {
+export default function DashboardPage() {
   const { isAuthenticated } = useAuth();
   const { savedCharts, removeChart, loadCharts, clearCharts } = useDashboard();
   const { cards, deleteCard, refreshValues } = useStatCards();
   const toast = useToast();
-  const [stats, setStats] = useState<DashboardStats>({
+  const [_stats, setStats] = useState<DashboardStats>({
     totalReadings: 0,
     avgTemperature: 0,
     avgPressure: 0,

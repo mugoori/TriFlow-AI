@@ -67,7 +67,7 @@ export function useModuleRegistry(): UseModuleRegistryResult {
         setLoading(true);
         // 동적 임포트로 레지스트리 로드
         // 빌드 시 생성되는 파일이므로 없을 수 있음
-        const registryModule = await import('../../modules/_registry.json');
+        const registryModule = await import('../modules/_registry.json');
         setRegistry(registryModule.default || registryModule);
         setError(null);
       } catch (err) {

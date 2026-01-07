@@ -543,6 +543,7 @@ class BIChatService:
         }
         kpi_name = kpi_name_map.get(kpi_code, kpi_code)
 
+        result = None
         with get_db_context() as db:
             stat_card_service = StatCardService(db)
 
@@ -550,27 +551,31 @@ class BIChatService:
             existing_configs = stat_card_service.list_configs(tenant_id, user_id, visible_only=False)
             for config in existing_configs:
                 if config.kpi_code == kpi_code:
-                    return {
+                    result = {
                         "success": False,
                         "message": f"'{kpi_name}' 카드가 이미 대시보드에 있습니다.",
                         "card_id": str(config.config_id),
                     }
+                    break
 
-            # 새 카드 생성
-            new_config = StatCardConfigCreate(
-                source_type="kpi",
-                kpi_code=kpi_code,
-                display_order=0,
-                is_visible=True,
-            )
+            if result is None:
+                # 새 카드 생성
+                new_config = StatCardConfigCreate(
+                    source_type="kpi",
+                    kpi_code=kpi_code,
+                    display_order=0,
+                    is_visible=True,
+                )
 
-            created = stat_card_service.create_config(tenant_id, user_id, new_config)
+                created = stat_card_service.create_config(tenant_id, user_id, new_config)
 
-            return {
-                "success": True,
-                "message": f"'{kpi_name}' 카드를 대시보드에 추가했습니다.",
-                "card_id": str(created.config_id),
-            }
+                result = {
+                    "success": True,
+                    "message": f"'{kpi_name}' 카드를 대시보드에 추가했습니다.",
+                    "card_id": str(created.config_id),
+                }
+        # with 블록 종료 후 commit 완료된 상태에서 return
+        return result
 
     async def _remove_stat_card(
         self,
@@ -591,6 +596,7 @@ class BIChatService:
         }
         kpi_name = kpi_name_map.get(kpi_code, kpi_code)
 
+        result = None
         with get_db_context() as db:
             stat_card_service = StatCardService(db)
 
@@ -603,24 +609,26 @@ class BIChatService:
                     break
 
             if not target_config:
-                return {
+                result = {
                     "success": False,
                     "message": f"'{kpi_name}' 카드를 찾을 수 없습니다.",
                 }
-
-            # 삭제
-            deleted = stat_card_service.delete_config(target_config.config_id, tenant_id, user_id)
-
-            if deleted:
-                return {
-                    "success": True,
-                    "message": f"'{kpi_name}' 카드를 대시보드에서 삭제했습니다.",
-                }
             else:
-                return {
-                    "success": False,
-                    "message": f"'{kpi_name}' 카드 삭제에 실패했습니다.",
-                }
+                # 삭제
+                deleted = stat_card_service.delete_config(target_config.config_id, tenant_id, user_id)
+
+                if deleted:
+                    result = {
+                        "success": True,
+                        "message": f"'{kpi_name}' 카드를 대시보드에서 삭제했습니다.",
+                    }
+                else:
+                    result = {
+                        "success": False,
+                        "message": f"'{kpi_name}' 카드 삭제에 실패했습니다.",
+                    }
+        # with 블록 종료 후 commit 완료된 상태에서 return
+        return result
 
     async def _create_session(
         self,

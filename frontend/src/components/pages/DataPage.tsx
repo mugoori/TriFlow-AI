@@ -23,7 +23,7 @@ const tabs: Tab[] = [
   { id: 'rag', label: '지식 베이스', icon: BookOpen },
 ];
 
-export function DataPage() {
+export default function DataPage() {
   const [activeTab, setActiveTab] = useState<TabType>('sensors');
 
   return (

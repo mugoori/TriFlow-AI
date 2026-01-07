@@ -6,7 +6,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from fastapi.exceptions import RequestValidationError
 from prometheus_client import make_asgi_app
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -318,7 +320,10 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 async def root():
-    """루트 엔드포인트"""
+    """루트 엔드포인트 - frontend_dist가 있으면 index.html 반환"""
+    frontend_dir = Path(__file__).parent.parent / "frontend_dist"
+    if frontend_dir.exists():
+        return FileResponse(frontend_dir / "index.html")
     return {
         "app": settings.app_name,
         "version": settings.app_version,
@@ -543,6 +548,36 @@ try:
     logger.info("V2 Trust router registered")
 except Exception as e:
     logger.error(f"Failed to register v2 trust router: {e}")
+
+# V2.0 Feature Flags 라우터
+try:
+    from app.routers import feature_flags
+    app.include_router(feature_flags.router, prefix="/api/v2/feature-flags", tags=["v2-feature-flags"])
+    logger.info("V2 Feature Flags router registered")
+except Exception as e:
+    logger.error(f"Failed to register v2 feature-flags router: {e}")
+
+
+# ========== 프론트엔드 정적 파일 서빙 (SPA) ==========
+# frontend/dist 폴더가 있으면 정적 파일 서빙
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend_dist"
+if FRONTEND_DIR.exists():
+    # 정적 에셋 (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="static")
+
+    # SPA 라우팅 - 모든 프론트엔드 경로에 대해 index.html 반환
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """SPA 라우팅 - API가 아닌 모든 경로에 대해 index.html 반환"""
+        # API, docs, health 등은 이미 위에서 처리됨
+        # 정적 파일이 있으면 반환
+        file_path = FRONTEND_DIR / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        # 그 외 모든 경로는 index.html로 (SPA 라우팅)
+        return FileResponse(FRONTEND_DIR / "index.html")
+
+    logger.info(f"Frontend static files served from {FRONTEND_DIR}")
 
 
 if __name__ == "__main__":

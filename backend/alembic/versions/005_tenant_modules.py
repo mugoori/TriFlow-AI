@@ -77,8 +77,7 @@ def upgrade():
     op.create_index('idx_tenant_modules_enabled', 'tenant_modules', ['tenant_id', 'is_enabled'], schema='core')
     op.create_index('idx_module_definitions_category', 'module_definitions', ['category'], schema='core')
 
-    # 5. tenants 테이블에 industry_code 컬럼 추가
-    op.add_column('tenants', sa.Column('industry_code', sa.String(50)), schema='core')
+    # 5. tenants 테이블에 industry_code FK 추가 (컬럼은 001에서 이미 생성됨)
     op.create_foreign_key(
         'fk_tenant_industry',
         'tenants', 'industry_profiles',
@@ -145,7 +144,7 @@ def downgrade():
     op.execute("DELETE FROM core.industry_profiles")
 
     op.drop_constraint('fk_tenant_industry', 'tenants', schema='core', type_='foreignkey')
-    op.drop_column('tenants', 'industry_code', schema='core')
+    # Note: industry_code column is created in 001, so we don't drop it here
 
     op.drop_index('idx_module_definitions_category', table_name='module_definitions', schema='core')
     op.drop_index('idx_tenant_modules_enabled', table_name='tenant_modules', schema='core')

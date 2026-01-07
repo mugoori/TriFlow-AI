@@ -13,7 +13,6 @@ import { lazy } from 'react';
  */
 export const PAGE_COMPONENTS: Record<string, React.LazyExoticComponent<React.ComponentType<any>>> = {
   // 기존 페이지들 (modules/ 폴더로 이관 전까지 사용)
-  ChatPage: lazy(() => import('@/components/pages/ChatPage')),
   DashboardPage: lazy(() => import('@/components/pages/DashboardPage')),
   WorkflowsPage: lazy(() => import('@/components/pages/WorkflowsPage')),
   RulesetsPage: lazy(() => import('@/components/pages/RulesetsPage')),

@@ -37,41 +37,108 @@ def upgrade() -> None:
     op.create_table(
         'tenants',
         sa.Column('tenant_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('name', sa.String(100), nullable=False),
-        sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
-        sa.Column('config', postgresql.JSONB(), nullable=False, server_default='{}'),
+        sa.Column('name', sa.String(255), nullable=False, unique=True),
+        sa.Column('slug', sa.String(100), nullable=False, unique=True),
+        sa.Column('settings', postgresql.JSONB(), nullable=False, server_default='{}'),
+        sa.Column('subscription_plan', sa.String(20), nullable=False, server_default='standard'),
+        sa.Column('max_users', sa.Integer(), nullable=False, server_default='10'),
+        sa.Column('max_workflows', sa.Integer(), nullable=False, server_default='50'),
+        sa.Column('max_judgments_per_day', sa.Integer(), nullable=False, server_default='10000'),
+        sa.Column('status', sa.String(20), nullable=False, server_default='active'),
+        sa.Column('industry_code', sa.String(50), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.PrimaryKeyConstraint('tenant_id'),
+        sa.CheckConstraint("subscription_plan IN ('trial', 'standard', 'enterprise', 'custom')", name='ck_tenants_subscription_plan'),
+        sa.CheckConstraint("status IN ('active', 'suspended', 'deleted')", name='ck_tenants_status'),
         schema='core'
     )
-    op.create_index('idx_tenants_is_active', 'tenants', ['is_active'], schema='core')
+    op.create_index('idx_tenants_status', 'tenants', ['status'], schema='core')
 
     # users table
     op.create_table(
         'users',
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('tenant_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('username', sa.String(100), nullable=False),
         sa.Column('email', sa.String(255), nullable=False),
-        sa.Column('hashed_password', sa.String(255), nullable=True),
-        sa.Column('name', sa.String(100), nullable=False),
+        sa.Column('password_hash', sa.String(255), nullable=True),
         sa.Column('role', sa.String(50), nullable=False, server_default='user'),
+        sa.Column('permissions', postgresql.ARRAY(sa.Text()), nullable=False, server_default='{}'),
+        sa.Column('metadata', postgresql.JSONB(), nullable=False, server_default='{}'),
+        sa.Column('status', sa.String(20), nullable=False, server_default='active'),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
-        sa.Column('preferences', postgresql.JSONB(), nullable=False, server_default='{}'),
-        sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('last_login', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('oauth_provider', sa.String(50), nullable=True),
+        sa.Column('oauth_provider_id', sa.String(255), nullable=True),
+        sa.Column('profile_image_url', sa.String(500), nullable=True),
+        sa.Column('display_name', sa.String(255), nullable=True),
         sa.PrimaryKeyConstraint('user_id'),
-        sa.ForeignKeyConstraint(['tenant_id'], ['core.tenants.tenant_id']),
-        sa.UniqueConstraint('email'),
+        sa.ForeignKeyConstraint(['tenant_id'], ['core.tenants.tenant_id'], ondelete='CASCADE'),
+        sa.CheckConstraint("role IN ('admin', 'approver', 'operator', 'viewer', 'user')", name='ck_users_role'),
+        sa.CheckConstraint("status IN ('active', 'inactive', 'locked')", name='ck_users_status'),
+        sa.UniqueConstraint('tenant_id', 'email', name='uq_users_tenant_email'),
+        sa.UniqueConstraint('tenant_id', 'username', name='uq_users_tenant_username'),
         schema='core'
     )
     op.create_index('idx_users_tenant_id', 'users', ['tenant_id'], schema='core')
     op.create_index('idx_users_email', 'users', ['email'], schema='core')
 
     # ============================================
-    # 2. Workflow Tables
+    # 2. Ruleset Tables
+    # ============================================
+
+    # rulesets table (Rhai script based rules)
+    op.create_table(
+        'rulesets',
+        sa.Column('ruleset_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('tenant_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('name', sa.String(255), nullable=False),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('rhai_code', sa.Text(), nullable=False),
+        sa.Column('version', sa.String(50), nullable=True, server_default='1.0.0'),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('target_kpi', sa.String(100), nullable=True),
+        sa.Column('category', sa.String(50), nullable=True),
+        sa.Column('priority', sa.Integer(), nullable=False, server_default='100'),
+        sa.Column('metadata', postgresql.JSONB(), nullable=False, server_default='{}'),
+        sa.Column('created_by', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.PrimaryKeyConstraint('ruleset_id'),
+        sa.ForeignKeyConstraint(['tenant_id'], ['core.tenants.tenant_id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['created_by'], ['core.users.user_id']),
+        sa.CheckConstraint("category IN ('quality', 'production', 'equipment', 'inventory', 'safety')", name='ck_rulesets_category'),
+        sa.UniqueConstraint('tenant_id', 'name', name='uq_rulesets_tenant_name'),
+        schema='core'
+    )
+    op.create_index('idx_rulesets_tenant_id', 'rulesets', ['tenant_id'], schema='core')
+    op.create_index('idx_rulesets_category', 'rulesets', ['category'], schema='core')
+    op.create_index('idx_rulesets_is_active', 'rulesets', ['is_active'], schema='core')
+
+    # ruleset_versions table (ruleset version history)
+    op.create_table(
+        'ruleset_versions',
+        sa.Column('version_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('ruleset_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('version_number', sa.Integer(), nullable=False),
+        sa.Column('version_label', sa.String(50), nullable=False),
+        sa.Column('rhai_script', sa.Text(), nullable=False),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('change_summary', sa.String(500), nullable=True),
+        sa.Column('created_by', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.PrimaryKeyConstraint('version_id'),
+        sa.ForeignKeyConstraint(['ruleset_id'], ['core.rulesets.ruleset_id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['created_by'], ['core.users.user_id']),
+        schema='core'
+    )
+    op.create_index('idx_ruleset_versions_ruleset', 'ruleset_versions', ['ruleset_id', 'version_number'], schema='core')
+
+    # ============================================
+    # 3. Workflow Tables
     # ============================================
 
     # workflows table
@@ -463,6 +530,8 @@ def downgrade() -> None:
     op.drop_table('node_executions', schema='core')
     op.drop_table('workflow_executions', schema='core')
     op.drop_table('workflows', schema='core')
+    op.drop_table('ruleset_versions', schema='core')
+    op.drop_table('rulesets', schema='core')
     op.drop_table('users', schema='core')
     op.drop_table('tenants', schema='core')
 

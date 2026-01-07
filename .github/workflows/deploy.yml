@@ -100,7 +100,10 @@ jobs:
   # ===========================================
   build:
     needs: [test]
-    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    if: |
+      always() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped' ||
+       (github.event.inputs.skip_tests == 'true'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -159,7 +162,11 @@ jobs:
   # ===========================================
   deploy-staging:
     needs: [build]
-    if: github.event.inputs.environment == 'staging' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    # staging 선택 시 OR 태그 푸시 시 (production은 staging 거쳐야 함)
+    if: |
+      needs.build.result == 'success' &&
+      (github.event.inputs.environment == 'staging' ||
+       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -175,14 +182,15 @@ jobs:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           key: ${{ secrets.STAGING_SSH_KEY }}
+          envs: IMAGE_FULL,NEW_TAG
           script: |
             cd /opt/triflow-ai
 
             # Pull latest images
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
+            docker pull $IMAGE_FULL
 
             # Update .env with new image tag
-            sed -i 's|APP_VERSION=.*|APP_VERSION=${{ needs.build.outputs.image_tag }}|' .env.production
+            sed -i "s|APP_VERSION=.*|APP_VERSION=${NEW_TAG}|" .env.production
 
             # Deploy with zero-downtime
             docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps backend
@@ -196,6 +204,9 @@ jobs:
 
             # Cleanup old images
             docker image prune -af --filter "until=24h"
+        env:
+          IMAGE_FULL: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
+          NEW_TAG: ${{ needs.build.outputs.image_tag }}
 
       - name: Notify Slack - Staging
         if: success()
@@ -223,7 +234,12 @@ jobs:
   # ===========================================
   deploy-production:
     needs: [build, deploy-staging]
-    if: github.event.inputs.environment == 'production' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    # production 선택 시 (staging 스킵 가능) OR 태그 푸시 후 staging 성공 시
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      (github.event.inputs.environment == 'production' ||
+       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.deploy-staging.result == 'success'))
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -235,10 +251,14 @@ jobs:
 
       - name: Deploy to Production Server
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          IMAGE_FULL: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
+          NEW_TAG: ${{ needs.build.outputs.image_tag }}
         with:
           host: ${{ secrets.PRODUCTION_HOST }}
           username: ${{ secrets.PRODUCTION_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          envs: IMAGE_FULL,NEW_TAG
           script: |
             cd /opt/triflow-ai
 
@@ -247,10 +267,10 @@ jobs:
             echo "ROLLBACK_VERSION=$CURRENT_VERSION" > .rollback
 
             # Pull latest images
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
+            docker pull $IMAGE_FULL
 
             # Update .env with new image tag
-            sed -i 's|APP_VERSION=.*|APP_VERSION=${{ needs.build.outputs.image_tag }}|' .env.production
+            sed -i "s|APP_VERSION=.*|APP_VERSION=${NEW_TAG}|" .env.production
 
             # Deploy with zero-downtime (rolling update)
             docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps --scale backend=2 backend

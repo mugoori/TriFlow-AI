@@ -253,7 +253,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX idx_aas_mappings_element ON aas.aas_source_mappings (element_id)")
     op.execute("CREATE INDEX idx_aas_mappings_tenant ON aas.aas_source_mappings (tenant_id)")
     op.execute("COMMENT ON TABLE aas.aas_source_mappings IS 'AAS Element Data Source Mappings'")
-    op.execute("COMMENT ON COLUMN aas.aas_source_mappings.filter_expr IS 'WHERE clause (e.g., line_code = :line AND date = :date)'")
+    op.execute("COMMENT ON COLUMN aas.aas_source_mappings.filter_expr IS 'WHERE clause (e.g., line_code = {line} AND date = {date})'")
     op.execute("COMMENT ON COLUMN aas.aas_source_mappings.transform_expr IS 'SQL expression (e.g., value * 100)'")
 
     # ============================================
@@ -385,7 +385,9 @@ def upgrade() -> None:
     # ============================================
 
     # get_aas_element_value function
-    op.execute("""
+    # Note: Using raw connection to avoid SQLAlchemy bind parameter interpretation
+    # Using %%s to escape percent signs for Python, and {line}/{date} instead of :line/:date
+    op.execute(sa.text("""
         CREATE OR REPLACE FUNCTION aas.get_aas_element_value(
             p_tenant_id uuid,
             p_asset_ref_code text,
@@ -421,16 +423,16 @@ def upgrade() -> None:
             -- Build dynamic query (postgres_table, postgres_view)
             IF v_mapping.source_type IN ('postgres_table', 'postgres_view') THEN
                 v_query := format(
-                    'SELECT %s(%s) FROM %s WHERE %s',
+                    'SELECT %%s(%%s) FROM %%s WHERE %%s',
                     COALESCE(v_mapping.aggregation, 'AVG'),
                     v_mapping.source_column,
                     v_mapping.source_table,
-                    replace(v_mapping.filter_expr, ':line', quote_literal(p_asset_ref_code))
+                    replace(v_mapping.filter_expr, '{line}', quote_literal(p_asset_ref_code))
                 );
 
                 -- Parameter substitution
                 IF p_params ? 'date' THEN
-                    v_query := replace(v_query, ':date', quote_literal(p_params->>'date'));
+                    v_query := replace(v_query, '{date}', quote_literal(p_params->>'date'));
                 END IF;
 
                 EXECUTE v_query INTO v_result;
@@ -443,7 +445,7 @@ def upgrade() -> None:
             END IF;
         END;
         $$ LANGUAGE plpgsql
-    """)
+    """))
 
     # get_aas_submodel_values function
     op.execute("""
