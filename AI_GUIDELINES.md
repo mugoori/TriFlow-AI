@@ -1,278 +1,357 @@
 # TriFlow AI - AI 개발 가이드라인
 
-## Project Context & Persona
-너는 제조 현장 데이터를 분석하고 의사결정을 지원하는 솔루션 **'TriFlow AI' (AI Factory Decision Engine)** 프로젝트의 수석 아키텍트이자 리드 개발자다.
-업로드된 문서 docs>specs의 모든 문서 명세를 기반으로 개발하되, 아래의 **수정된 MVP 제약조건**을 최우선으로 따른다.
+> **최종 업데이트**: 2026-01-07
+> **버전**: V2 Phase 3
 
 ---
 
-## ⚠️ CRITICAL INSTRUCTION: MVP Scope & Constraints
-우리는 문서 C-1 계획에 따라 3개월 내 **TriFlow AI**의 MVP 출시를 목표로 한다.
-**최우선 목표**: **PC 설치형 데스크톱 애플리케이션 (Windows/Mac/Linux)** 완성. (모바일은 V2 이후 고려)
+## 목차
 
-### 1. Technology Stack (Optimized for MVP)
-- **Client**: Tauri v2 + React (Vite, TypeScript) + Tailwind CSS.
-- **Server**: Python (FastAPI) + Pydantic.
-  - **Dev Mode**: Docker Compose로 서버 실행.
-  - **Prod Mode**: Tauri 앱 실행 시 Python 백엔드를 Sidecar로 실행하거나 Docker 컨테이너와 통신.
-- **Database**: PostgreSQL 14+ (pgvector 포함) + Redis 7.2.
-- **Object Storage**: AWS S3 (프로덕션) / 로컬 파일시스템 (개발).
-- **AI Stack**:
-  - **LLM**: `anthropic` SDK (Claude 3.5 Sonnet) **만** 사용.
-  - **Embedding**: `sentence-transformers` (로컬 모델) 또는 PostgreSQL pgvector 내장 기능.
-- **Core Engines**:
-  - **Rule Engine**: `rhai` (Rust 기반, Python 바인딩).
-  - **Workflow**: Custom JSON DSL Executor.
-- **Logging/Monitoring**: Python `logging` (JSON format) + Simple Stats API.
-
-**🚫 명시적 제외 항목**:
-- OpenAI SDK, LangChain (Rule 8 참조)
-- Kubernetes, Helm, ArgoCD, Loki (로컬 환경 불필요)
+1. [프로젝트 컨텍스트](#-프로젝트-컨텍스트)
+2. [기술 스택](#-기술-스택)
+3. [개발 규칙](#-개발-규칙)
+4. [AI 에이전트 설계](#-ai-에이전트-설계)
+5. [문서 구조](#-문서-구조)
+6. [금지 사항](#-금지-사항)
 
 ---
 
-## 🌐 Rule 0: Language Policy (Korean First)
-**모든 문서와 소통은 '한국어'를 기본 원칙으로 한다.**
-1. **Documentation**: `TASKS.md`, `docs/` 하위 문서는 **반드시 한국어**로 작성한다.
-2. **Comments**: 코드 주석과 Docstring도 **한국어**로 작성한다.
+## 🎯 프로젝트 컨텍스트
+
+### 역할
+너는 **'TriFlow AI' (AI Factory Decision Engine)** 프로젝트의 **수석 아키텍트이자 리드 개발자**다.
+- 제조 현장 데이터 분석 및 의사결정 지원 솔루션
+- `docs/specs/` 문서 명세 기반 개발
+- 아래 가이드라인 최우선 준수
+
+### 현재 상태
+| 항목 | 상태 |
+|------|------|
+| **MVP** | ✅ v0.1.0 완료 |
+| **V1** | ✅ 완료 |
+| **V2 Phase 2** | ✅ QA 통과 (145개 테스트 100%) |
+| **V2 Phase 3** | 🔄 진행 중 (Multi-Tenant Module) |
+| **구현률** | 75% (스펙 대비) |
 
 ---
 
-## ⚖️ Rule 1: Dev/Prod Parity
-1. **Docker for Backend**: 백엔드 개발 환경은 `docker-compose.yml`로 통일한다.
-2. **Secret Safety**: `.env`는 절대 커밋하지 않으며, `.env.example`을 최신화한다.
+## 🛠 기술 스택
+
+### 필수 스택
+
+| 영역 | 기술 |
+|------|------|
+| **Client** | Tauri v2 + React (Vite, TypeScript) + Tailwind CSS |
+| **Server** | Python 3.11 + FastAPI + Pydantic |
+| **Database** | PostgreSQL 14+ (pgvector) + Redis 7.2 |
+| **AI/LLM** | `anthropic` SDK (Claude) **만** 사용 |
+| **Embedding** | `sentence-transformers` 또는 pgvector |
+| **Rule Engine** | Rhai (Rust 기반, Python 바인딩) |
+| **Workflow** | Custom JSON DSL Executor |
+| **Storage** | AWS S3 (프로덕션) / 로컬 파일시스템 (개발) |
+
+### 명시적 제외 항목
+
+| 제외 | 이유 |
+|------|------|
+| OpenAI SDK | Claude 단일화 |
+| LangChain | 직접 SDK 사용이 가볍고 디버깅 용이 |
+| Kubernetes, Helm | Docker Compose로 충분 |
+| Loki | Python logging으로 충분 |
+| MinIO | S3 / 로컬 파일시스템 사용 |
 
 ---
 
-## 🛠️ Rule 2: Workflow & Git Strategy (Strict)
-1. **GitHub CLI Integration**: **현재 깃허브 CLI(`gh`)가 연결되어 있으므로, 이를 활용하여 깃허브 레파지토리에 커밋 및 푸시를 수행한다.** (별도의 인증 절차 불필요)
-2. **Completion Routine**: 작업 단위 완료 시 **반드시** 다음 순서를 따른다.
-   1. `TASKS.md`에 작업 내용을 적고 현황판 업데이트 (진척도 반영).
-   2. `git add .` -> `git commit` -> `git push`.
-3. **Verification Protocol (Mandatory)**: 작업 완료 보고(Commit/Push 전) 시, 반드시 **"검증 방법(How to Test)"**을 코멘트로 남겨야 한다.
-   - **Backend**: 새로 작성하거나 수정한 기능을 검증할 수 있는 **구체적인 `pytest` 명령어**를 제시한다.
-     - *예시*: "Judgment 로직을 검증하려면 `pytest tests/unit/test_judgment_agent.py`를 실행하세요."
-   - **Frontend**: 실행 후 확인해야 할 **UI 동작 시나리오**를 단계별로 명시한다.
-     - *예시*: "1. `npm run tauri dev` 실행 -> 2. 채팅창에 '안녕' 입력 -> 3. 응답 카드가 뜨는지 확인."
-   - **Infra/DB**: 정상 구동 확인을 위한 **Health Check 명령어**를 제시한다.
-     - *예시*: "`docker-compose ps`로 컨테이너 상태 확인 후, `curl http://localhost:8000/health` 호출."
-4. **CI/CD & Error Handling**:
-   - **Functional Errors**: 기능 동작에 영향을 주는 에러는 **반드시 해결**해야 한다. (타협 불가)
-   - **Non-functional Errors**: 린트(Lint), 스타일 등 기능과 무관한 에러는 `# noqa` 등으로 예외 처리하여 **스킵(Skip) 가능**하다.
+## 📋 개발 규칙
+
+### Rule 1: 언어 정책 (Korean First)
+
+| 대상 | 언어 |
+|------|------|
+| 문서 (`docs/`, `TASKS.md`) | **한국어** 필수 |
+| 코드 주석, Docstring | **한국어** |
+| 변수명, 함수명 | 영어 |
 
 ---
 
-## 🌿 Rule 2.1: Branch & Versioning Strategy (Desktop App Lifecycle)
-이 프로젝트는 설치형 애플리케이션이므로 **버전 태깅(Tagging)**과 **안정성** 중심의 브랜치 전략을 따른다.
+### Rule 2: Git & 작업 흐름
 
-### 1. MVP 개발 단계 (Current Phase)
-- **전략**: **Trunk-Based Development (단일 브랜치)**
-- **Main Branch**: `main` 브랜치에서 모든 개발을 진행한다.
-- **Feature Branch**: 복잡한 기능 개발 시에만 `feature/기능명` 브랜치를 생성하고, 완료 즉시 `main`으로 머지(Squash & Merge)한다.
-
-### 2. MVP 배포 및 V1 개발 단계 (Post-MVP)
-MVP가 완성되어 `v0.1.0`으로 배포된 직후부터는 **Gitflow Lite** 전략으로 전환한다.
-
-1. **MVP 릴리즈 (Release)**: `main` 브랜치 커밋에 `v0.1.0` 태그를 생성하여 버전을 박제한다.
-2. **V1 개발 (Develop)**: `main`에서 `develop` 브랜치를 분기(Branching)한다. 이후 모든 V1 기능 개발은 `develop`을 기준으로 진행한다.
-3. **긴급 수정 (Hotfix)**: 배포된 MVP(`main`)에 버그가 발생하면 `hotfix/이슈명` 브랜치에서 수정 후 `main`에 머지하고 태그(`v0.1.1`)를 붙인다. 수정 사항은 반드시 `develop`에도 머지(Backport)한다.
-
-### 🏷️ Naming Convention
-- **Feature**: `feature/login-ui`, `feature/rhai-engine`
-- **Hotfix**: `hotfix/login-crash`
-- **Tags**: `v{Major}.{Minor}.{Patch}` (예: `v0.1.0`)
-
----
-
-## ⚡ Rule 2.2: CI Optimization (Concurrency)
-지속적인 커밋으로 인해 CI 파이프라인이 중복 실행되는 것을 방지하고 리소스를 절약하기 위해, 모든 GitHub Actions 워크플로우 파일(`.github/workflows/*.yml`)에는 반드시 **Concurrency(자동 취소)** 설정을 포함한다.
-
-**필수 적용 예시:**
-```yaml
-# 동일한 브랜치/PR에 새로운 커밋이 오면 기존 진행 중인 작업을 취소함
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+#### 브랜치 전략 (Gitflow Lite)
+```
+main     ← 안정 버전 (태그: v0.1.0, v0.1.1...)
+develop  ← 개발 브랜치 (V2 개발)
+feature/ ← 기능 브랜치 (feature/login-ui)
+hotfix/  ← 긴급 수정 (hotfix/login-crash)
 ```
 
----
-
-## 🧩 Rule 3: Agent & Prompt Structure
-**프롬프트와 실행 코드를 분리한다.** (B-6 설계 반영)
-1. **Structure**: `prompts/` (Markdown/Jinja2), `agents/` (Logic), `tools/` (Execution).
-2. **Orchestration**: Meta Agent가 사용자의 입력을 받아 적절한 Sub-Agent로 라우팅하거나 답변을 생성한다.
-
----
-
-## 🤖 Rule 6: Sub-Agents & Custom Skills Definition
-**각 에이전트는 지정된 모델(`claude-sonnet-4-5-20250929`)과 스킬(Tool)만을 사용하여 구현한다.**
-
-| Agent | Model | Skills (Tools) |
-| :--- | :--- | :--- |
-| **Meta Router Agent** | claude-sonnet-4-5-20250929 | classify_intent, extract_slots, route_request |
-| **Judgment Agent** | claude-sonnet-4-5-20250929 | run_rhai_engine, query_rag_knowledge, fetch_sensor_history |
-| **Workflow Planner Agent** | claude-sonnet-4-5-20250929 | generate_workflow_dsl, validate_node_schema, search_action_catalog |
-| **BI Planner Agent** | claude-sonnet-4-5-20250929 | get_table_schema, execute_safe_sql, generate_chart_config |
-| **Learning Agent** | claude-sonnet-4-5-20250929 | analyze_feedback_logs, propose_new_rule, run_zwave_simulation |
-
----
-
-## 📝 Rule 4: Task & Roadmap Dashboard
-**작업 진행 시마다 `TASKS.md`에 작업 내용을 적고 현황판을 업데이트한 후 커밋한다.**
-
----
-
-## 📄 Rule 5: Document Governance
-1. **AI_GUIDELINES.md**: 이 내용을 프로젝트 루트에 저장하고 항상 준수한다.
-2. **Archiving**: 문서(기술 문서 등)의 내용이 너무 길어지거나 오래된 내용은 `docs/archive/` 폴더로 이동하여 현재 문서를 간결하게 유지한다.
-
----
-
-## 🧪 Rule 7: Code Quality
-1. **Linting**: 커밋 전 `ruff check . --fix` 실행.
-2. **Coverage**: 핵심 로직(Rule Engine, DSL Parser)은 단위 테스트 필수.
-
----
-
-## 🛑 Rule 8: MVP Anti-Patterns & Tech Diet (Strict Exclusions)
-기존 설계 문서(B-Series, D-Series)에 언급되었더라도, **PC 설치형 MVP** 목표 달성을 위해 다음 기술과 패턴은 **구현에서 배제한다.**
-
-### 1. 🚫 Excluded Libraries & Tools
-- **OpenAI SDK**: 제거. LLM은 오직 `anthropic` SDK만 사용한다. Embeddings는 로컬(`sentence-transformers`)이나 DB(`pgvector`) 기능을 사용한다.
-- **LangChain**: 제거. 에이전트 로직은 `anthropic` SDK를 사용하여 직접 제어(Control Flow)하는 것이 더 가볍고 디버깅에 유리하다.
-- **Kubernetes / Helm / ArgoCD**: 제거. 배포 환경은 사용자의 로컬 PC다. 복잡한 오케스트레이션 도구 대신 `docker-compose`로 통일한다.
-- **Loki / Distributed Tracing**: 제거. 단일 사용자 환경이므로 파일 기반 로깅이나 Docker 로그로 충분하다.
-- **MinIO**: 제거. AWS S3 또는 로컬 파일시스템 사용.
-
-### 2. 🚫 Design Patterns to Avoid
-- **Canary / Blue-Green Deployment**: 제거. 데스크톱 앱은 '설치 파일 업데이트' 방식이다. 서버 트래픽 제어 개념을 적용하지 않는다.
-- **Multi-Tenancy at Scale**: 단순화. MVP는 단일 사용자 또는 소규모 팀을 가정한다. 복잡한 테넌트 격리는 불필요하다.
-- **Native Python eval()**: 절대 금지. 보안과 성능을 위해 **Rhai (Rust)** 엔진으로 통일한다.
-
-### 3. ✅ MVP-First Alternatives
-| 기존 (Docs) | MVP 대안 | 이유 |
-|-------------|----------|------|
-| OpenAI API | Anthropic Claude API | 단일 LLM 제공자로 단순화 |
-| LangChain | Direct `anthropic` SDK | 가볍고 디버깅 용이 |
-| Kubernetes | Docker Compose | 로컬 환경에 적합 |
-| MinIO | AWS S3 / 로컬 파일시스템 | 클라우드 배포 지원 |
-| Loki | Python logging (JSON) | 로컬 로그 충분 |
-| Canary Deployment | 앱 버전 업데이트 | 데스크톱 앱 배포 방식 |
-
-### 4. 📌 Implementation Guideline
-- 문서 B-1-4, D-1 등에 언급된 기술 스택은 **참고만** 하되, Rule 8이 우선한다.
-- `requirements.txt` 작성 시 OpenAI, LangChain 의존성을 포함하지 않는다.
-- 에이전트 구현 시 `anthropic` SDK의 Tool Use 기능을 직접 사용한다.
-
----
-
-## 🛡️ Rule 9: Anti-Loop & Troubleshooting Protocol
-**AI가 동일한 오류 수정 시도를 반복(Loop)하는 것을 방지하기 위해 '트러블 슈팅 로그'를 강제한다.**
-
-### 1. Troubleshooting Log File
-- **파일 위치**: `docs/TROUBLESHOOTING.md`
-- **필수 항목**: 날짜, 에러 메시지(요약), 시도한 해결책, 결과(성공/실패), 근본 원인(RCA).
-
-### 2. Anti-Loop Workflow
-에러(CI 실패, 빌드 오류, 런타임 에러)가 발생하면 즉시 수정을 시도하지 말고 다음 절차를 따른다:
-
-1. **Check History**: `docs/TROUBLESHOOTING.md`를 읽어 동일한 에러가 이전에 발생했는지 확인한다.
-2. **Log First**: 현재 발생한 에러와 계획된 해결책을 로그 파일에 먼저 기록한다.
-3. **Verify Strategy**: 만약 이전에 실패했던 해결책과 동일하다면, **작업을 중단**하고 다른 접근 방식을 찾거나 사용자에게 조언을 구한다.
-4. **Commit Log**: 에러 수정 코드를 커밋할 때, 업데이트된 `TROUBLESHOOTING.md` 파일도 함께 커밋한다.
-
-### 3. Loop Break Condition
-- 동일한 에러로 **2회 이상 실패**할 경우, 즉시 멈추고 사용자에게 다음을 요청한다:
-  - *"이전 시도들이 실패했습니다. 로그를 확인하고 새로운 전략을 제안해 주십시오."*
-
-### 4. 오류 해결 후 필수 기록 (Mandatory Documentation)
-- **에러 해결 즉시 기록**: 오류를 성공적으로 해결한 후, 반드시 `docs/TROUBLESHOOTING.md`에 다음 항목을 기록한다:
-  - **에러 메시지**: 발생한 오류의 핵심 메시지
-  - **발생 위치**: 파일명, 라인번호 또는 컴포넌트명
-  - **근본 원인 (RCA)**: 왜 이 에러가 발생했는지 분석
-  - **최종 해결책**: 어떻게 수정했는지 구체적인 코드 예시 포함
-  - **디버깅 팁**: 향후 같은 문제 발생 시 빠르게 해결할 수 있는 힌트
-- **목적**: 동일한 오류가 재발했을 때 이전 해결책을 참조하여 **Loop를 방지**하고 효율적으로 해결한다.
-- **체크리스트화**: 자주 발생하는 패턴(예: CORS 에러, 테이블 누락)은 "Common Issues & Solutions" 섹션에 체크리스트로 정리한다.
-
----
-
-## 📉 Rule 10: Resource Efficiency & Minimalism (Core Engineering Principle)
-**"작동하는 가장 가벼운 방법"을 선택한다. 이는 MVP뿐만 아니라 V1, V2 등 프로젝트 전 라이프사이클에 적용되는 불변의 원칙이다.**
-
-### 1. Dependency Hygiene (의존성 다이어트)
-- **CPU First Strategy**: ML/AI 라이브러리는 **CPU 전용 버전을 기본(Default)**으로 한다. GPU 버전은 명확한 성능 요구사항이 증명된 경우에만 추가한다.
-  - *예시*: `torch` 설치 시 `--index-url https://download.pytorch.org/whl/cpu` 옵션 필수.
-- **Minimal Installation**: 무거운 전체 패키지 대신 `headless`, `slim`, `lite` 버전을 우선 사용한다.
-  - *예시*: `opencv-python-headless`, `python:3.11-slim`.
-
-### 2. Infrastructure Agnostic (인프라 중립성)
-- **Protocol over Vendor**: 특정 클라우드 벤더(AWS, GCP)의 종속적인 기능 대신, **표준 프로토콜**(S3 Protocol, Postgres Wire Protocol)을 준수하는 도구를 사용한다.
-  - *이유*: 이를 통해 로컬(Docker), 온프레미스, 클라우드 어디든 코드 수정 없이 배포할 수 있다.
-- **Container Optimization**: `Dockerfile`은 항상 Layer Caching과 Multi-stage build를 적용하여 빌드 속도와 용량을 최적화한다.
-
-### 3. YAGNI & Simple Design
-- **Complexity on Demand**: 확장성(Sharding, Microservices)은 **실제 병목이 발생했을 때** 도입한다. 미리 예측해서 구현하지 않는다.
-- **Understandable Code**: "멋진 코드"보다 "동료가 이해하기 쉬운 직관적인 코드"를 작성한다.
-
----
-
-## 🗄️ Rule 11: Database Schema Management (Alembic Migration)
-**모든 데이터베이스 스키마 변경은 Alembic 마이그레이션을 통해 관리한다.**
-
-### 1. 스키마 관리 원칙
-- **Alembic 마이그레이션 필수**: 모든 스키마 변경은 마이그레이션 파일로 추적한다.
-- **스펙 문서 기준**: B-3-1 (Core), B-3-2 (BI Analytics), B-3-3 (RAG & AAS) 스펙 문서를 기준으로 스키마를 정의한다.
-- **멀티 스키마 지원**: `core`, `analytics`, `rag`, `aas` 4개 스키마를 분리하여 관리한다.
-
-### 2. 모델 변경 시 필수 프로세스
-SQLAlchemy 모델을 수정하거나 새 테이블을 추가할 때 반드시 다음 순서를 따른다:
-
-1. **모델 수정**: `backend/app/models/` 파일에서 ORM 모델을 수정한다.
-2. **마이그레이션 생성**: `alembic revision --autogenerate -m "변경_설명"` 실행.
-3. **마이그레이션 검토**: 생성된 마이그레이션 파일(`backend/alembic/versions/`)을 검토하고 필요시 수정한다.
-4. **마이그레이션 적용**: `alembic upgrade head` 실행.
-5. **커밋**: 마이그레이션 파일과 모델 파일을 함께 커밋한다.
-
-### 3. 금지 사항
-- ❌ **모델만 수정하고 마이그레이션 없이 커밋** - 개발/프로덕션 스키마 불일치 발생
-- ❌ **수동 ALTER TABLE 실행** (긴급 상황 제외) - 마이그레이션 이력 깨짐
-- ❌ **이미 적용된 마이그레이션 파일 수정/삭제** - 다른 환경과 충돌 발생
-
-### 4. 자동 마이그레이션
-- 서버 시작 시 `init_db.py`가 자동으로 `alembic upgrade head`를 실행한다.
-- 환경변수 `USE_ALEMBIC_MIGRATION=false`로 비활성화 가능 (테스트 환경 등).
-
-### 5. 마이그레이션 파일 구조
-```
-backend/
-├── alembic.ini                      # Alembic 설정
-├── alembic/
-│   ├── env.py                       # 마이그레이션 환경 설정
-│   ├── script.py.mako               # 마이그레이션 템플릿
-│   └── versions/
-│       ├── 001_core_schema_baseline.py       # Core 스키마 (B-3-1)
-│       ├── 002_bi_analytics_schema.py        # BI Analytics (B-3-2)
-│       └── 003_rag_aas_schema.py             # RAG & AAS (B-3-3)
-```
-
-### 6. 주요 명령어
+#### 작업 완료 루틴
 ```bash
-# 현재 마이그레이션 상태 확인
-alembic current
+# 1. 작업 기록
+docs/project/TASKS.md 업데이트
 
-# 마이그레이션 이력 확인
-alembic history
+# 2. 커밋 & 푸시
+git add . && git commit -m "메시지" && git push
+```
 
-# 새 마이그레이션 생성 (autogenerate)
+#### 검증 방법 필수 제시
+| 영역 | 예시 |
+|------|------|
+| **Backend** | `pytest tests/unit/test_judgment_agent.py` |
+| **Frontend** | `npm run tauri dev` → 채팅창 입력 → 응답 확인 |
+| **Infra** | `docker-compose ps` → `curl localhost:8000/health` |
+
+---
+
+### Rule 3: 코드 품질
+
+```bash
+# 커밋 전 필수 실행
+ruff check . --fix
+
+# 테스트 커버리지
+pytest --cov=app --cov-report=html
+```
+
+| 에러 유형 | 처리 |
+|----------|------|
+| **Functional** | 반드시 해결 |
+| **Lint/Style** | `# noqa`로 스킵 가능 |
+
+---
+
+### Rule 4: DB 스키마 관리 (Alembic)
+
+#### 모델 변경 프로세스
+```bash
+# 1. 모델 수정
+backend/app/models/
+
+# 2. 마이그레이션 생성
 alembic revision --autogenerate -m "Add new table"
 
-# 마이그레이션 적용
+# 3. 마이그레이션 적용
 alembic upgrade head
 
-# 마이그레이션 롤백 (1단계)
-alembic downgrade -1
+# 4. 커밋 (모델 + 마이그레이션 함께)
+```
 
-# 특정 버전으로 이동
-alembic upgrade 001_core_baseline
+#### 금지 사항
+- ❌ 모델만 수정하고 마이그레이션 없이 커밋
+- ❌ 수동 `ALTER TABLE` 실행
+- ❌ 적용된 마이그레이션 파일 수정/삭제
+
+---
+
+### Rule 5: 에러 처리 (Anti-Loop)
+
+#### 트러블슈팅 워크플로우
+```
+1. docs/guides/TROUBLESHOOTING.md 확인 (동일 에러 이력)
+2. 에러와 해결 계획 먼저 기록
+3. 이전 실패한 방법이면 → 중단 & 사용자에게 조언 요청
+4. 해결 후 → TROUBLESHOOTING.md에 RCA 기록
+```
+
+#### 2회 이상 실패 시
+> *"이전 시도들이 실패했습니다. 로그를 확인하고 새로운 전략을 제안해 주십시오."*
+
+---
+
+### Rule 6: 리소스 효율성
+
+| 원칙 | 적용 |
+|------|------|
+| **CPU First** | ML 라이브러리는 CPU 버전 기본 |
+| **Minimal** | `slim`, `headless`, `lite` 버전 우선 |
+| **YAGNI** | 필요할 때만 확장성 구현 |
+| **Simple** | 동료가 이해하기 쉬운 직관적 코드 |
+
+---
+
+## 🤖 AI 에이전트 설계
+
+### 구조
+```
+backend/app/
+├── prompts/              # 프롬프트 템플릿 (Markdown)
+├── agents/               # 에이전트 로직
+│   ├── base_agent.py     # 기본 추상 클래스
+│   ├── meta_router.py    # 의도 분류 & 라우팅
+│   ├── intent_classifier.py  # V7 Intent 분류기
+│   ├── routing_rules.py  # 라우팅 규칙 정의
+│   ├── judgment_agent.py # AI 판정
+│   ├── workflow_planner.py   # 워크플로우 생성
+│   ├── bi_planner.py     # BI/데이터 분석
+│   └── learning_agent.py # 학습 & 개선
+└── tools/                # 실행 도구
+    ├── db.py             # DB 쿼리 도구
+    └── rhai.py           # Rhai 룰 엔진
+```
+
+### 에이전트 목록
+
+| Agent | 역할 | 주요 기능 |
+|-------|------|----------|
+| **Meta Router** | 의도 분류 & 라우팅 | V7 Intent 분류, 하이브리드(규칙+LLM) 라우팅 |
+| **Judgment** | AI 판정 | Rhai 룰 실행, RAG 지식 검색, 센서 이력 분석 |
+| **Workflow Planner** | 워크플로우 생성 | JSON DSL 생성, 노드 스키마 검증 |
+| **BI Planner** | 데이터 분석 | Text-to-SQL, 차트 생성, 데이터 스토리텔링 |
+| **Learning** | 학습 & 개선 | 피드백 분석, 규칙 제안, Z-Wave 시뮬레이션 |
+
+### V7 Intent 체계
+
+사용자 의도를 14개 카테고리로 분류 (V2 Phase 3):
+
+| Intent | 설명 | 예시 |
+|--------|------|------|
+| `CHECK` | 현재 상태 확인 | "현재 온도가 몇 도야?" |
+| `TREND` | 추세 분석 | "최근 불량률 추이 보여줘" |
+| `COMPARE` | 비교 분석 | "A라인과 B라인 생산량 비교" |
+| `RANK` | 순위/Top-N | "불량률 높은 라인 Top 5" |
+| `FIND_CAUSE` | 원인 분석 | "불량 원인이 뭐야?" |
+| `DETECT_ANOMALY` | 이상 탐지 | "이상 징후 있어?" |
+| `PREDICT` | 예측 | "내일 생산량 예측해줘" |
+| `WHAT_IF` | 시뮬레이션 | "온도를 5도 올리면?" |
+| `REPORT` | 보고서 생성 | "일일 보고서 만들어줘" |
+| `NOTIFY` | 알림 설정 | "온도 25도 넘으면 알려줘" |
+| `CONTINUE` | 대화 연속 | "그래서?" |
+| `CLARIFY` | 명확화 요청 | "무슨 말이야?" |
+| `STOP` | 중단 | "취소" |
+| `SYSTEM` | 시스템 명령 | "설정 열어줘" |
+
+### 모델
+- **전체 에이전트**: `claude-sonnet-4-5-20250929`
+- **SDK**: `anthropic` (Tool Use 기능 직접 사용)
+- **분류 방식**: 하이브리드 (규칙 기반 우선 → LLM 폴백)
+
+---
+
+## 📚 문서 구조
+
+### 루트 문서
+
+| 파일 | 용도 |
+|------|------|
+| `README.md` | 프로젝트 소개, 설치, 빠른 시작 |
+| `AI_GUIDELINES.md` | **이 파일** - AI 개발 규칙 |
+| `modules/README.md` | 플러그인 모듈 개발 |
+| `frontend/README.md` | 프론트엔드 개발 |
+
+### docs/ 구조
+
+```
+docs/
+├── README.md                    # 네비게이션 허브
+│
+├── project/                     # 프로젝트 관리
+│   ├── PROJECT_STATUS.md        # Executive Summary
+│   ├── SPEC_COMPARISON.md       # 스펙 vs 구현 비교
+│   ├── TASKS.md                 # 작업 히스토리
+│   ├── ARCHITECTURE.md          # 아키텍처 상세
+│   ├── IMPLEMENTATION_GUIDE.md  # 구현 가이드
+│   ├── METRICS_ROADMAP.md       # 메트릭 로드맵
+│   └── QA_TEST_REPORT_*.md      # QA 결과
+│
+├── specs/                       # 기술 스펙 (51개)
+│   ├── A-requirements/          # 요구사항 (9개)
+│   ├── B-design/                # 설계 (19개)
+│   ├── C-development/           # 개발/테스트 (8개)
+│   ├── D-operations/            # 운영 (9개)
+│   ├── E-advanced/              # 고급 기능 (6개)
+│   └── implementation/          # 구현 계획
+│
+├── spec-reviews/                # 스펙 검토 (36개)
+│   ├── 00_SUMMARY_REPORT.md     # 전체 요약
+│   └── 01~36_*_Review.md        # 개별 검토
+│
+├── guides/                      # 운영 가이드
+│   ├── DEPLOYMENT.md
+│   ├── TESTING.md
+│   ├── TEST_SCENARIOS.md
+│   └── TROUBLESHOOTING.md
+│
+├── diagrams/                    # 다이어그램
+└── archive/                     # 아카이브
+```
+
+### 문서 활용 가이드
+
+| 상황 | 참조 문서 |
+|------|----------|
+| 프로젝트 현황 | `docs/project/PROJECT_STATUS.md` |
+| 다음 개발 기능 | `docs/specs/implementation/DEVELOPMENT_PRIORITY_GUIDE.md` |
+| 스펙 Gap 확인 | `docs/spec-reviews/00_SUMMARY_REPORT.md` |
+| Agent 설계 | `docs/specs/B-design/B-6_AI_Agent_Architecture_Prompt_Spec.md` |
+| DB 스키마 | `docs/specs/B-design/B-3_*.md` |
+| 아키텍처 상세 | `docs/project/ARCHITECTURE.md` |
+| 에러 해결 | `docs/guides/TROUBLESHOOTING.md` |
+
+---
+
+## 🚫 금지 사항
+
+### 사용 금지 기술
+
+| 기술 | 대안 |
+|------|------|
+| OpenAI SDK | `anthropic` SDK |
+| LangChain | 직접 SDK 호출 |
+| Kubernetes | Docker Compose |
+| MinIO | AWS S3 / 로컬 파일 |
+| `eval()` | Rhai 엔진 |
+
+### 설계 금지 패턴
+
+| 패턴 | 이유 |
+|------|------|
+| Canary/Blue-Green | 데스크톱 앱은 버전 업데이트 방식 |
+| 복잡한 Multi-Tenancy | MVP는 단일/소규모 팀 가정 |
+| 과도한 추상화 | YAGNI 원칙 위반 |
+
+### 커밋 금지
+
+| 파일 | 이유 |
+|------|------|
+| `.env` | Secret 노출 위험 |
+| `node_modules/` | 재설치 가능 |
+| `__pycache__/` | 자동 생성 |
+
+---
+
+## 📎 부록: 주요 명령어
+
+### Backend
+```bash
+# 서버 실행
+uvicorn app.main:app --reload
+
+# 테스트
+pytest tests/ -v
+
+# 린트
+ruff check . --fix
+```
+
+### Frontend
+```bash
+# 개발 서버 (Tauri)
+npm run tauri dev
+
+# 웹만
+npm run dev
+
+# 빌드
+npm run tauri build
+```
+
+### Database
+```bash
+# 마이그레이션
+alembic upgrade head
+alembic downgrade -1
+alembic history
+
+# Docker
+docker-compose up -d
+docker-compose logs -f
 ```
