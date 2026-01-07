@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BI & Dashboard 스펙 분석 - TriFlow AI</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --gray-50: #f8fafc;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-300: #cbd5e1;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --gray-800: #1e293b;
+            --gray-900: #0f172a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-800);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--gray-900), var(--gray-800));
+            color: white;
+            padding: 3rem 2rem;
+            margin-bottom: 2rem;
+            border-radius: 1rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            color: var(--gray-300);
+            font-size: 1.1rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 0.75rem 1.5rem;
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .nav-tab:hover {
+            background: var(--gray-100);
+        }
+
+        .nav-tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        .card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid var(--gray-200);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .card-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .card-header .icon {
+            width: 2.5rem;
+            height: 2.5rem;
+            background: var(--primary);
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.25rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        th {
+            background: var(--gray-100);
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--gray-600);
+        }
+
+        tr:hover {
+            background: var(--gray-50);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-gray {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 0.5rem;
+            background: var(--gray-200);
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.3s;
+        }
+
+        .progress-fill.high { background: var(--success); }
+        .progress-fill.medium { background: var(--warning); }
+        .progress-fill.low { background: var(--danger); }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        @media (max-width: 1024px) {
+            .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 768px) {
+            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            border: 1px solid var(--gray-200);
+        }
+
+        .stat-card .label {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+
+        .stat-card .sub {
+            font-size: 0.875rem;
+            color: var(--gray-500);
+            margin-top: 0.25rem;
+        }
+
+        .code-block {
+            background: var(--gray-900);
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        .code-block .comment { color: #6b7280; }
+        .code-block .keyword { color: #f472b6; }
+        .code-block .string { color: #a5f3fc; }
+        .code-block .function { color: #fbbf24; }
+
+        .mockup {
+            background: var(--gray-800);
+            color: white;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.75rem;
+            line-height: 1.4;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .mockup .highlight { color: #fbbf24; }
+        .mockup .success { color: #4ade80; }
+        .mockup .warning { color: #fb923c; }
+        .mockup .danger { color: #f87171; }
+        .mockup .info { color: #60a5fa; }
+
+        .priority-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 0.75rem;
+            border: 1px solid var(--gray-200);
+            margin-bottom: 0.75rem;
+        }
+
+        .priority-rank {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .priority-rank.gold { background: #fef3c7; color: #b45309; }
+        .priority-rank.silver { background: #f1f5f9; color: #475569; }
+        .priority-rank.bronze { background: #fed7aa; color: #c2410c; }
+
+        .priority-content {
+            flex: 1;
+        }
+
+        .priority-content h4 {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .priority-content p {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+        }
+
+        .flow-diagram {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: var(--gray-100);
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .flow-step {
+            background: white;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--gray-300);
+            white-space: nowrap;
+            font-size: 0.875rem;
+        }
+
+        .flow-arrow {
+            color: var(--gray-400);
+            font-size: 1.25rem;
+        }
+
+        .comparison-row {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .comparison-box {
+            flex: 1;
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+
+        .comparison-box.before {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+        }
+
+        .comparison-box.after {
+            background: #dcfce7;
+            border: 1px solid #bbf7d0;
+        }
+
+        .comparison-box h4 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            background: var(--gray-50);
+            border-radius: 0.5rem;
+        }
+
+        .feature-item .check {
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+        }
+
+        .feature-item .check.done { background: #dcfce7; color: #166534; }
+        .feature-item .check.partial { background: #fef3c7; color: #92400e; }
+        .feature-item .check.pending { background: #fee2e2; color: #991b1b; }
+
+        .accordion {
+            border: 1px solid var(--gray-200);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .accordion-header {
+            padding: 1rem;
+            background: var(--gray-50);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: 600;
+        }
+
+        .accordion-header:hover {
+            background: var(--gray-100);
+        }
+
+        .accordion-content {
+            display: none;
+            padding: 1rem;
+            border-top: 1px solid var(--gray-200);
+        }
+
+        .accordion.open .accordion-content {
+            display: block;
+        }
+
+        .accordion-arrow {
+            transition: transform 0.2s;
+        }
+
+        .accordion.open .accordion-arrow {
+            transform: rotate(180deg);
+        }
+
+        .stars {
+            color: #fbbf24;
+            letter-spacing: 2px;
+        }
+
+        .widget-preview {
+            background: var(--gray-100);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .widget-preview .icon-large {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .widget-preview .name {
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .widget-preview .desc {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>BI & Dashboard 스펙 분석</h1>
+            <p>TriFlow AI - 스펙 문서 vs 현재 구현 비교 및 구현 가능성 분석</p>
+        </header>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showSection('overview')">개요</button>
+            <button class="nav-tab" onclick="showSection('current')">현재 구현</button>
+            <button class="nav-tab" onclick="showSection('spec')">스펙 기능</button>
+            <button class="nav-tab" onclick="showSection('analysis')">구현 가능성</button>
+            <button class="nav-tab" onclick="showSection('mockup')">구현 후 UI</button>
+            <button class="nav-tab" onclick="showSection('priority')">우선순위</button>
+        </div>
+
+        <!-- Overview Section -->
+        <section id="overview" class="section active">
+            <div class="grid-4">
+                <div class="stat-card">
+                    <div class="label">현재 구현율</div>
+                    <div class="value" style="color: var(--warning);">35%</div>
+                    <div class="sub">핵심 기능 중심</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">스펙 기능 수</div>
+                    <div class="value">42개</div>
+                    <div class="sub">4개 스펙 문서 기준</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">평균 구현 가능성</div>
+                    <div class="value" style="color: var(--success);">78%</div>
+                    <div class="sub">기술적 실현 가능</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">예상 ROI</div>
+                    <div class="value" style="color: var(--primary);">High</div>
+                    <div class="sub">사용자 가치 극대화</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">📊</div>
+                    <h2>분석 대상 스펙 문서</h2>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>문서</th>
+                            <th>제목</th>
+                            <th>주요 내용</th>
+                            <th>구현 상태</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>B-2-2</strong></td>
+                            <td>BI Service & Learning Design</td>
+                            <td>LLM 기반 BI, 규칙 자동 추출, Canary 배포</td>
+                            <td><span class="badge badge-warning">부분 구현</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>B-3-2</strong></td>
+                            <td>BI Analytics Schema</td>
+                            <td>Star Schema, ETL, Data Quality</td>
+                            <td><span class="badge badge-warning">부분 구현</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>B-4-1</strong></td>
+                            <td>Dashboard Design Spec</td>
+                            <td>위젯 라이브러리, 프리셋, 마법사</td>
+                            <td><span class="badge badge-danger">미구현</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🎯</div>
+                    <h2>핵심 Gap 요약</h2>
+                </div>
+                <div class="grid-2">
+                    <div>
+                        <h4 style="margin-bottom: 1rem; color: var(--gray-700);">✅ 구현됨</h4>
+                        <div class="feature-grid">
+                            <div class="feature-item">
+                                <span class="check done">✓</span>
+                                <span>BI Chat Service</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check done">✓</span>
+                                <span>StatCard Service</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check done">✓</span>
+                                <span>대시보드 CRUD</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check done">✓</span>
+                                <span>인사이트 Pin</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check done">✓</span>
+                                <span>차트 고정</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check done">✓</span>
+                                <span>기본 분석 API</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 1rem; color: var(--gray-700);">❌ 미구현 (스펙)</h4>
+                        <div class="feature-grid">
+                            <div class="feature-item">
+                                <span class="check pending">✗</span>
+                                <span>Widget Library (30+)</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check pending">✗</span>
+                                <span>Dashboard Preset</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check pending">✗</span>
+                                <span>LLM SQL Generator</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check pending">✗</span>
+                                <span>Materialized View</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check pending">✗</span>
+                                <span>Dashboard Wizard</span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="check pending">✗</span>
+                                <span>Learning Service</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Current Implementation Section -->
+        <section id="current" class="section">
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">💻</div>
+                    <h2>현재 구현된 핵심 서비스</h2>
+                </div>
+
+                <div class="accordion open">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <span>🤖 BI Chat Service</span>
+                        <span class="accordion-arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <p style="margin-bottom: 1rem; color: var(--gray-600);">
+                            <strong>파일:</strong> backend/app/services/bi_chat_service.py (1,400줄)
+                        </p>
+                        <table>
+                            <thead>
+                                <tr><th>기능</th><th>설명</th><th>상태</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>자연어 질의</td><td>LLM 기반 생산 데이터 분석</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td>인사이트 생성</td><td>Fact/Reasoning/Action 구조</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td>세션 관리</td><td>대화 히스토리 유지</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td>카드 관리</td><td>"불량률 카드 추가해줘" 처리</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td>인사이트 Pin</td><td>대시보드 고정</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                            </tbody>
+                        </table>
+                        <div class="code-block" style="margin-top: 1rem;">
+<span class="comment"># 현재 BI Chat 아키텍처</span>
+사용자 질문 → <span class="function">_collect_context_data()</span> → Star Schema 데이터 수집
+           → <span class="function">_call_llm()</span> → Claude API (컨텍스트 + 프롬프트)
+           → <span class="function">_save_insight_from_response()</span> → DB 저장
+           → ChatResponse 반환
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <span>📊 StatCard Service</span>
+                        <span class="accordion-arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <p style="margin-bottom: 1rem; color: var(--gray-600);">
+                            <strong>파일:</strong> backend/app/services/stat_card_service.py (1,000줄)
+                        </p>
+                        <table>
+                            <thead>
+                                <tr><th>데이터 소스</th><th>설명</th><th>상태</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>kpi</code></td><td>dim_kpi + fact_daily_production</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td><code>db_query</code></td><td>동적 SQL 쿼리 실행</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td><code>mcp_tool</code></td><td>MCPToolHub 외부 연동</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                            </tbody>
+                        </table>
+                        <h4 style="margin: 1rem 0 0.5rem;">지원 KPI (6개)</h4>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <span class="badge badge-info">defect_rate</span>
+                            <span class="badge badge-info">oee</span>
+                            <span class="badge badge-info">yield_rate</span>
+                            <span class="badge badge-info">downtime</span>
+                            <span class="badge badge-info">daily_production</span>
+                            <span class="badge badge-info">achievement_rate</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <span>📈 Dashboard Page</span>
+                        <span class="accordion-arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <p style="margin-bottom: 1rem; color: var(--gray-600);">
+                            <strong>파일:</strong> frontend/src/components/pages/DashboardPage.tsx (875줄)
+                        </p>
+                        <table>
+                            <thead>
+                                <tr><th>컴포넌트</th><th>기능</th><th>상태</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>StatCardGrid</td><td>KPI 카드 그리드</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td>BIChatPanel</td><td>AI 채팅 슬라이드 패널</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td>InsightPanel</td><td>AI 인사이트 표시</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td>ChartRenderer</td><td>고정된 차트 렌더링</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                                <tr><td>StoryList/Viewer</td><td>데이터 스토리</td><td><span class="badge badge-success">구현됨</span></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Spec Features Section -->
+        <section id="spec" class="section">
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">📋</div>
+                    <h2>B-2-2: LLM 기반 BI Service 아키텍처</h2>
+                </div>
+
+                <h4 style="margin-bottom: 1rem;">스펙 정의 파이프라인</h4>
+                <div class="flow-diagram">
+                    <div class="flow-step">사용자 NL 질의</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step" style="background: #dbeafe;">LLMBIPlanner</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step" style="background: #dcfce7;">AnalysisPlan</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step" style="background: #fef3c7;">SQLGenerator</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">SQL Query</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step" style="background: #e0e7ff;">ChartBuilder</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">chart_config</div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr><th>구성요소</th><th>역할</th><th>현재 상태</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>IBIPlanner</strong></td>
+                            <td>자연어 → AnalysisPlan 변환</td>
+                            <td><span class="badge badge-danger">미구현</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>ISQLGenerator</strong></td>
+                            <td>AnalysisPlan → SQL 자동 생성</td>
+                            <td><span class="badge badge-danger">미구현</span> (하드코딩 SQL)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>IQueryExecutor</strong></td>
+                            <td>SQL 실행 + 결과 캐싱</td>
+                            <td><span class="badge badge-warning">부분</span> (캐싱 없음)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>IChartBuilder</strong></td>
+                            <td>데이터 → chart_config</td>
+                            <td><span class="badge badge-warning">부분</span> (LLM 직접 생성)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>ICacheManager</strong></td>
+                            <td>Redis 기반 결과 캐싱</td>
+                            <td><span class="badge badge-danger">미구현</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>ICatalogRepository</strong></td>
+                            <td>BI Catalog 메타데이터 관리</td>
+                            <td><span class="badge badge-danger">미구현</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🧠</div>
+                    <h2>B-2-2: Learning Service</h2>
+                </div>
+
+                <div class="flow-diagram">
+                    <div class="flow-step">과거 판단 데이터</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step" style="background: #dcfce7;">DecisionTree</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step" style="background: #fef3c7;">규칙 추출</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step" style="background: #e0e7ff;">Rhai 스크립트</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step" style="background: #fee2e2;">Canary 배포</div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr><th>기능</th><th>설명</th><th>현재 상태</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>DecisionTreeRuleExtractor</strong></td>
+                            <td>scikit-learn 기반 규칙 자동 추출</td>
+                            <td><span class="badge badge-danger">미구현</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>CanaryDeployer</strong></td>
+                            <td>10% → 50% → 100% 점진적 배포</td>
+                            <td><span class="badge badge-danger">미구현</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>TrafficRouter</strong></td>
+                            <td>Redis 기반 버전별 트래픽 분배</td>
+                            <td><span class="badge badge-danger">미구현</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Auto Rollback</strong></td>
+                            <td>메트릭 이상 시 자동 롤백</td>
+                            <td><span class="badge badge-danger">미구현</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🗄️</div>
+                    <h2>B-3-2: Data Warehouse Star Schema</h2>
+                </div>
+
+                <div class="grid-3">
+                    <div>
+                        <h4 style="margin-bottom: 0.75rem; color: var(--primary);">RAW Layer</h4>
+                        <div class="feature-grid" style="grid-template-columns: 1fr;">
+                            <div class="feature-item"><span class="check partial">△</span>raw_mes_production</div>
+                            <div class="feature-item"><span class="check pending">✗</span>raw_erp_order</div>
+                            <div class="feature-item"><span class="check pending">✗</span>raw_inventory</div>
+                            <div class="feature-item"><span class="check done">✓</span>sensor_data (기존)</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 0.75rem; color: var(--success);">DIM Layer</h4>
+                        <div class="feature-grid" style="grid-template-columns: 1fr;">
+                            <div class="feature-item"><span class="check pending">✗</span>dim_date</div>
+                            <div class="feature-item"><span class="check partial">△</span>dim_line</div>
+                            <div class="feature-item"><span class="check pending">✗</span>dim_product</div>
+                            <div class="feature-item"><span class="check done">✓</span>dim_kpi</div>
+                            <div class="feature-item"><span class="check pending">✗</span>dim_shift</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 0.75rem; color: var(--warning);">FACT Layer</h4>
+                        <div class="feature-grid" style="grid-template-columns: 1fr;">
+                            <div class="feature-item"><span class="check done">✓</span>fact_daily_production</div>
+                            <div class="feature-item"><span class="check partial">△</span>fact_daily_defect</div>
+                            <div class="feature-item"><span class="check partial">△</span>fact_inventory_snapshot</div>
+                            <div class="feature-item"><span class="check pending">✗</span>fact_hourly_production</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h4 style="margin: 1.5rem 0 0.75rem;">Pre-Aggregation (Materialized Views) - 미구현</h4>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <span class="badge badge-danger">mv_defect_trend</span>
+                    <span class="badge badge-danger">mv_oee_daily</span>
+                    <span class="badge badge-danger">mv_inventory_coverage</span>
+                    <span class="badge badge-danger">mv_line_performance</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">📊</div>
+                    <h2>B-4-1: Dashboard Design Spec</h2>
+                </div>
+
+                <h4 style="margin-bottom: 1rem;">Widget Library (30+ 위젯) - 미구현</h4>
+                <div class="grid-4">
+                    <div class="widget-preview">
+                        <div class="icon-large">📈</div>
+                        <div class="name">PROD-001~006</div>
+                        <div class="desc">생산 관련 6개</div>
+                    </div>
+                    <div class="widget-preview">
+                        <div class="icon-large">🔍</div>
+                        <div class="name">QUAL-001~006</div>
+                        <div class="desc">품질 관련 6개</div>
+                    </div>
+                    <div class="widget-preview">
+                        <div class="icon-large">⚙️</div>
+                        <div class="name">EQUIP-001~008</div>
+                        <div class="desc">설비 관련 8개</div>
+                    </div>
+                    <div class="widget-preview">
+                        <div class="icon-large">📦</div>
+                        <div class="name">INV-001~004</div>
+                        <div class="desc">재고 관련 4개</div>
+                    </div>
+                </div>
+
+                <h4 style="margin: 1.5rem 0 0.75rem;">부서별 기본 대시보드 (7개) - 미구현</h4>
+                <table>
+                    <thead>
+                        <tr><th>프리셋</th><th>대상</th><th>기본 위젯</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>executive</td><td>경영진</td><td>EXEC-001~004</td></tr>
+                        <tr><td>production_manager</td><td>생산 관리자</td><td>PROD-001~004, EQUIP-001</td></tr>
+                        <tr><td>production_staff</td><td>생산 담당자</td><td>PROD-001~002</td></tr>
+                        <tr><td>quality_manager</td><td>품질 관리자</td><td>QUAL-001~004</td></tr>
+                        <tr><td>quality_staff</td><td>품질 담당자</td><td>QUAL-001~002</td></tr>
+                        <tr><td>equipment_manager</td><td>설비 관리자</td><td>EQUIP-001~006</td></tr>
+                        <tr><td>equipment_staff</td><td>설비 담당자</td><td>EQUIP-001~003</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 style="margin: 1.5rem 0 0.75rem;">권한 매트릭스</h4>
+                <table>
+                    <thead>
+                        <tr><th>권한</th><th>Viewer</th><th>Staff</th><th>Manager</th><th>Admin</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>view_adjustment</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                        <tr><td>widget_adjustment</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                        <tr><td>widget_creation</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+                        <tr><td>dashboard_creation</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Implementation Analysis Section -->
+        <section id="analysis" class="section">
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🔬</div>
+                    <h2>구현 가능성 분석</h2>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>기능</th>
+                            <th>구현 가능성</th>
+                            <th>기술 스택</th>
+                            <th>난이도</th>
+                            <th>기대 효과</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Widget Library</strong></td>
+                            <td>
+                                <div class="progress-bar"><div class="progress-fill high" style="width: 95%;"></div></div>
+                                <span style="font-size: 0.875rem;">95%</span>
+                            </td>
+                            <td>React + TypeScript</td>
+                            <td>⭐⭐</td>
+                            <td><span class="stars">★★★★★</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Dashboard Preset</strong></td>
+                            <td>
+                                <div class="progress-bar"><div class="progress-fill high" style="width: 95%;"></div></div>
+                                <span style="font-size: 0.875rem;">95%</span>
+                            </td>
+                            <td>JSON Config + DB</td>
+                            <td>⭐⭐</td>
+                            <td><span class="stars">★★★★★</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Materialized View</strong></td>
+                            <td>
+                                <div class="progress-bar"><div class="progress-fill high" style="width: 85%;"></div></div>
+                                <span style="font-size: 0.875rem;">85%</span>
+                            </td>
+                            <td>PostgreSQL + pg_cron</td>
+                            <td>⭐⭐</td>
+                            <td><span class="stars">★★★★☆</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>LLM SQL Generator</strong></td>
+                            <td>
+                                <div class="progress-bar"><div class="progress-fill high" style="width: 80%;"></div></div>
+                                <span style="font-size: 0.875rem;">80%</span>
+                            </td>
+                            <td>Claude API + Function Calling</td>
+                            <td>⭐⭐⭐</td>
+                            <td><span class="stars">★★★★☆</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Dashboard Wizard</strong></td>
+                            <td>
+                                <div class="progress-bar"><div class="progress-fill medium" style="width: 70%;"></div></div>
+                                <span style="font-size: 0.875rem;">70%</span>
+                            </td>
+                            <td>LLM + State Machine</td>
+                            <td>⭐⭐⭐</td>
+                            <td><span class="stars">★★★☆☆</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Learning Service</strong></td>
+                            <td>
+                                <div class="progress-bar"><div class="progress-fill medium" style="width: 60%;"></div></div>
+                                <span style="font-size: 0.875rem;">60%</span>
+                            </td>
+                            <td>scikit-learn + Rhai</td>
+                            <td>⭐⭐⭐⭐</td>
+                            <td><span class="stars">★★★☆☆</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Canary Deployment</strong></td>
+                            <td>
+                                <div class="progress-bar"><div class="progress-fill medium" style="width: 60%;"></div></div>
+                                <span style="font-size: 0.875rem;">60%</span>
+                            </td>
+                            <td>Redis + Prometheus</td>
+                            <td>⭐⭐⭐⭐</td>
+                            <td><span class="stars">★★☆☆☆</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon" style="background: var(--success);">✅</div>
+                        <h2>기대 효과: Widget Library</h2>
+                    </div>
+                    <div class="comparison-row">
+                        <div class="comparison-box before">
+                            <h4>현재</h4>
+                            <ul style="margin-left: 1rem; font-size: 0.875rem;">
+                                <li>StatCard 6개만 지원</li>
+                                <li>차트 수동 생성 필요</li>
+                                <li>신규 위젯 개발 필요</li>
+                            </ul>
+                        </div>
+                        <div class="comparison-box after">
+                            <h4>구현 후</h4>
+                            <ul style="margin-left: 1rem; font-size: 0.875rem;">
+                                <li>30+ 사전 정의 위젯</li>
+                                <li>드래그앤드롭 배치</li>
+                                <li>즉시 사용 가능</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p style="color: var(--gray-600); font-size: 0.875rem;">
+                        <strong>ROI:</strong> 신규 고객 온보딩 시간 80% 단축
+                    </p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="icon" style="background: var(--primary);">⚡</div>
+                        <h2>기대 효과: Materialized View</h2>
+                    </div>
+                    <div class="comparison-row">
+                        <div class="comparison-box before">
+                            <h4>현재</h4>
+                            <ul style="margin-left: 1rem; font-size: 0.875rem;">
+                                <li>매 요청마다 집계</li>
+                                <li>응답 시간: 500ms~2s</li>
+                                <li>DB 부하 높음</li>
+                            </ul>
+                        </div>
+                        <div class="comparison-box after">
+                            <h4>구현 후</h4>
+                            <ul style="margin-left: 1rem; font-size: 0.875rem;">
+                                <li>주기적 갱신만</li>
+                                <li>응답 시간: 10~50ms</li>
+                                <li>DB 부하 최소화</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p style="color: var(--gray-600); font-size: 0.875rem;">
+                        <strong>ROI:</strong> 대시보드 로딩 속도 10x 개선
+                    </p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon" style="background: var(--warning);">🤖</div>
+                    <h2>기대 효과: LLM SQL Generator</h2>
+                </div>
+                <div class="comparison-row">
+                    <div class="comparison-box before" style="flex: 1;">
+                        <h4>현재 프로세스</h4>
+                        <div class="code-block" style="background: #7f1d1d; font-size: 0.75rem;">
+현업: "지난 달 LINE_A 불량률 추이 보고 싶어요"
+    ↓
+IT팀: SQL 쿼리 작성 (30분~2시간)
+    ↓
+리포트 생성 및 전달
+    ↓
+수정 요청... 반복
+                        </div>
+                    </div>
+                    <div class="comparison-box after" style="flex: 1;">
+                        <h4>구현 후</h4>
+                        <div class="code-block" style="background: #14532d; font-size: 0.75rem;">
+현업: "지난 달 LINE_A 불량률 추이 보여줘"
+    ↓
+LLM: AnalysisPlan 생성 (2초)
+    ↓
+SQL 자동 생성 + 실행 (3초)
+    ↓
+차트 즉시 표시
+                        </div>
+                    </div>
+                </div>
+                <p style="color: var(--gray-600); font-size: 0.875rem; margin-top: 1rem;">
+                    <strong>ROI:</strong> 데이터 분석 요청 처리 시간 70% 감소, IT 부서 업무 부하 감소
+                </p>
+            </div>
+        </section>
+
+        <!-- Mockup Section -->
+        <section id="mockup" class="section">
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🖥️</div>
+                    <h2>현재 대시보드 UI</h2>
+                </div>
+                <div class="mockup">
+┌─────────────────────────────────────────────────────────┐
+│ Dashboard                        [AI 채팅] [인사이트]   │
+├─────────────────────────────────────────────────────────┤
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐    │
+│ │ <span class="warning">불량률</span>   │ │ <span class="success">OEE</span>      │ │ <span class="info">수율</span>     │ │ <span class="warning">비가동</span>   │    │
+│ │ 2.3%  ▼ │ │ 87.5% ▲ │ │ 97.7% ─ │ │ 45분  ▲ │    │
+│ └──────────┘ └──────────┘ └──────────┘ └──────────┘    │
+│                                                         │
+│ ┌─────────────────────┐ ┌─────────────────────┐        │
+│ │ 라인별 센서 현황     │ │ 고정된 차트          │        │
+│ │ LINE_A: 온도 68.5°C │ │ (차트 영역)          │        │
+│ │ LINE_B: 온도 65.2°C │ │                     │        │
+│ └─────────────────────┘ └─────────────────────┘        │
+└─────────────────────────────────────────────────────────┘
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon" style="background: var(--success);">✨</div>
+                    <h2>스펙 구현 후 대시보드 UI</h2>
+                </div>
+                <div class="mockup">
+┌─────────────────────────────────────────────────────────────────────┐
+│ Dashboard                    [<span class="info">생산관리자 ▼</span>] [<span class="success">+ 위젯</span>] [<span class="highlight">🔮 마법사</span>]    │
+├─────────────────────────────────────────────────────────────────────┤
+│ ┌─────────────────────────────────────────────────────────────────┐ │
+│ │ <span class="info">📊 실시간 생산 현황 (PROD-001)</span>                    [⚙️] [📌] [×] │ │
+│ │ ┌─────┬─────┬─────┬─────┐  목표: 15,000개         │ │
+│ │ │<span class="success">█████</span>│<span class="success">█████</span>│<span class="warning">█████</span>│<span class="danger">████</span> │  달성: 12,847개 (85.6%) │ │
+│ │ │LINE │LINE │LINE │LINE │                          │ │
+│ │ │ A   │ B   │ C   │ D   │  <span class="warning">⚠️ LINE_D 목표 미달</span>    │ │
+│ │ └─────┴─────┴─────┴─────┘                          │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│ ┌───────────────────────────┐ ┌───────────────────────────────────┐│
+│ │ <span class="info">📈 불량률 추이 (QUAL-002)</span>  │ │ <span class="highlight">⚡ 설비 가동률 (EQUIP-001)</span>       ││
+│ │                           │ │                                   ││
+│ │    <span class="danger">3.2%</span>                   │ │  LINE_A <span class="success">████████████</span>░░ 92%       ││
+│ │   /    \    <span class="success">2.1%</span>          │ │  LINE_B <span class="success">█████████████</span>░░ 95%      ││
+│ │  /      \  /              │ │  LINE_C <span class="warning">███████</span>░░░░░░░ 78% <span class="warning">⚠️</span>   ││
+│ │ 2.8%     \/               │ │  LINE_D <span class="success">██████████████</span> 98%       ││
+│ │ ─────────────────         │ │                                   ││
+│ │ Mon Tue Wed Thu Fri       │ │  평균: 90.8%  목표: 95%          ││
+│ └───────────────────────────┘ └───────────────────────────────────┘│
+│                                                                     │
+│ ┌───────────────────────────┐ ┌───────────────────────────────────┐│
+│ │ <span class="info">📦 재고 현황 (INV-001)</span>     │ │ <span class="danger">🚨 알림 (ALERT-001)</span>              ││
+│ │                           │ │                                   ││
+│ │  A-001 <span class="success">████████</span>░░ 80%     │ │  <span class="danger">🔴</span> LINE_C 설비 점검 필요        ││
+│ │  A-002 <span class="success">██████████</span> 100%    │ │  <span class="warning">🟡</span> A-003 재고 부족 예상 (3일)   ││
+│ │  A-003 <span class="danger">███</span>░░░░░░░ 30% <span class="warning">⚠️</span>  │ │  <span class="success">🟢</span> LINE_B 생산량 목표 초과      ││
+│ │  A-004 <span class="success">█████████</span>░ 95%     │ │                                   ││
+│ └───────────────────────────┘ └───────────────────────────────────┘│
+│                                                                     │
+│ ┌─────────────────────────────────────────────────────────────────┐ │
+│ │ <span class="highlight">💡 AI 인사이트</span>                                                   │ │
+│ │ ────────────────────────────────────────────────────────────── │ │
+│ │ <span class="warning">⚠️ LINE_C 가동률 78%로 목표 미달</span>                               │ │
+│ │    원인: 14:00~15:30 계획외 정지 (설비 이상)                    │ │
+│ │    권장: 설비 점검 일정 조정 및 예방보전 강화                    │ │
+│ │                                           [상세보기] [<span class="info">Pin</span>]     │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon" style="background: #8b5cf6;">🔮</div>
+                    <h2>Dashboard Wizard (대화형 UI)</h2>
+                </div>
+                <div class="mockup">
+┌─────────────────────────────────────────────────────────────────────┐
+│ <span class="highlight">🔮 대시보드 마법사</span>                                           [×]   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ <span class="info">🤖 AI:</span> 어떤 목적의 대시보드를 만들까요?                      │   │
+│  │                                                             │   │
+│  │    ○ 생산 현황 모니터링                                     │   │
+│  │    <span class="success">●</span> 품질 분석                                              │   │
+│  │    ○ 설비 관리                                              │   │
+│  │    ○ 재고 관리                                              │   │
+│  │    ○ 직접 입력...                                           │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ <span class="info">🤖 AI:</span> 품질 분석이군요! 어떤 지표에 관심이 있으신가요?       │   │
+│  │        (복수 선택 가능)                                      │   │
+│  │                                                             │   │
+│  │    <span class="success">☑</span> 불량률 추이                                            │   │
+│  │    <span class="success">☑</span> 불량 유형별 분포                                       │   │
+│  │    ☐ 공정별 수율                                            │   │
+│  │    <span class="success">☑</span> 라인별 품질 비교                                       │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ <span class="info">🤖 AI:</span> 분석 대상 라인을 선택해주세요.                        │   │
+│  │                                                             │   │
+│  │    <span class="success">☑</span> LINE_A                                                 │   │
+│  │    <span class="success">☑</span> LINE_B                                                 │   │
+│  │    ☐ LINE_C                                                 │   │
+│  │    ☐ LINE_D                                                 │   │
+│  │    ○ 전체 라인                                              │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│                              [이전]  [<span class="success">다음: 미리보기 →</span>]            │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon" style="background: #06b6d4;">➕</div>
+                    <h2>Widget 추가 패널</h2>
+                </div>
+                <div class="mockup">
+┌─────────────────────────────────────────────────────────────────────┐
+│ <span class="success">+ 위젯 추가</span>                                                   [×]   │
+├─────────────────────────────────────────────────────────────────────┤
+│  🔍 검색...                              [<span class="info">생산</span>] [<span class="warning">품질</span>] [설비] [재고]│
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │
+│  │ <span class="info">PROD-001</span>    │ │ <span class="info">PROD-002</span>    │ │ <span class="info">PROD-003</span>    │ │ <span class="info">PROD-004</span>    │   │
+│  │ ┌─────────┐ │ │ ┌─────────┐ │ │ ┌─────────┐ │ │ ┌─────────┐ │   │
+│  │ │ <span class="success">█ █ █ █</span> │ │ │ │ ──/──  │ │ │ │  <span class="highlight">◐</span> 85%  │ │ │ │ ┌──────┐ │ │   │
+│  │ └─────────┘ │ │ └─────────┘ │ │ └─────────┘ │ │ │ └──────┘ │ │   │
+│  │ 일일 생산량 │ │ 생산 추이   │ │ 달성률 게이지│ │ │ 라인별 비교│ │   │
+│  │             │ │             │ │             │ │             │   │
+│  │    [<span class="success">추가</span>]   │ │    [<span class="success">추가</span>]   │ │    [<span class="success">추가</span>]   │ │    [<span class="success">추가</span>]   │   │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘   │
+│                                                                     │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │
+│  │ <span class="warning">QUAL-001</span>    │ │ <span class="warning">QUAL-002</span>    │ │ <span class="warning">QUAL-003</span>    │ │ <span class="warning">QUAL-004</span>    │   │
+│  │ ┌─────────┐ │ │ ┌─────────┐ │ │ ┌─────────┐ │ │ ┌─────────┐ │   │
+│  │ │ <span class="danger">2.3%</span>  ▼ │ │ │ │ /\_/\   │ │ │ │  <span class="danger">◔</span> 🔴  │ │ │ │ <span class="warning">■ ■ ■ ■</span> │ │   │
+│  │ └─────────┘ │ │ └─────────┘ │ │ └─────────┘ │ │ └─────────┘ │   │
+│  │ 불량률 KPI  │ │ 불량률 추이 │ │ 불량 유형   │ │ 라인별 불량 │   │
+│  │             │ │             │ │             │ │             │   │
+│  │    [<span class="success">추가</span>]   │ │    [<span class="success">추가</span>]   │ │    [<span class="success">추가</span>]   │ │    [<span class="success">추가</span>]   │   │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                </div>
+            </div>
+        </section>
+
+        <!-- Priority Section -->
+        <section id="priority" class="section">
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🎯</div>
+                    <h2>구현 우선순위 권장</h2>
+                </div>
+
+                <h3 style="margin: 1.5rem 0 1rem; color: var(--primary);">🥇 Phase 1: 즉각적인 사용자 가치 (단기)</h3>
+
+                <div class="priority-item">
+                    <div class="priority-rank gold">1</div>
+                    <div class="priority-content">
+                        <h4>Widget Library (30+ 위젯)</h4>
+                        <p>사전 정의된 위젯으로 즉시 대시보드 구성 가능. 가장 높은 ROI.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-success">구현 가능성 95%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★★★★</span></div>
+                    </div>
+                </div>
+
+                <div class="priority-item">
+                    <div class="priority-rank gold">2</div>
+                    <div class="priority-content">
+                        <h4>Dashboard Preset (부서별 기본 대시보드)</h4>
+                        <p>신규 고객 온보딩 즉시 완료. 역할 기반 최적화된 화면 제공.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-success">구현 가능성 95%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★★★★</span></div>
+                    </div>
+                </div>
+
+                <div class="priority-item">
+                    <div class="priority-rank gold">3</div>
+                    <div class="priority-content">
+                        <h4>Materialized View (Pre-Aggregation)</h4>
+                        <p>대시보드 로딩 속도 10x 개선. DB 부하 최소화.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-success">구현 가능성 85%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★★★☆</span></div>
+                    </div>
+                </div>
+
+                <h3 style="margin: 2rem 0 1rem; color: var(--warning);">🥈 Phase 2: 분석 자유도 확대 (중기)</h3>
+
+                <div class="priority-item">
+                    <div class="priority-rank silver">4</div>
+                    <div class="priority-content">
+                        <h4>LLM SQL Generator</h4>
+                        <p>자연어 → SQL 자동 생성. 현업 직접 데이터 조회 가능.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-info">구현 가능성 80%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★★★☆</span></div>
+                    </div>
+                </div>
+
+                <div class="priority-item">
+                    <div class="priority-rank silver">5</div>
+                    <div class="priority-content">
+                        <h4>ETL Pipeline 기본 구조</h4>
+                        <p>RAW → FACT 데이터 파이프라인 자동화. 데이터 신선도 보장.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-info">구현 가능성 75%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★★☆☆</span></div>
+                    </div>
+                </div>
+
+                <div class="priority-item">
+                    <div class="priority-rank silver">6</div>
+                    <div class="priority-content">
+                        <h4>Dashboard Wizard</h4>
+                        <p>대화형 대시보드 구성. 비개발자 접근성 극대화.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-warning">구현 가능성 70%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★★☆☆</span></div>
+                    </div>
+                </div>
+
+                <h3 style="margin: 2rem 0 1rem; color: var(--danger);">🥉 Phase 3: 고급 자동화 (장기)</h3>
+
+                <div class="priority-item">
+                    <div class="priority-rank bronze">7</div>
+                    <div class="priority-content">
+                        <h4>Learning Service (규칙 자동 추출)</h4>
+                        <p>과거 판단 데이터 → Rhai 규칙 자동 생성.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-warning">구현 가능성 60%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★★☆☆</span></div>
+                    </div>
+                </div>
+
+                <div class="priority-item">
+                    <div class="priority-rank bronze">8</div>
+                    <div class="priority-content">
+                        <h4>Canary Deployment</h4>
+                        <p>규칙 점진적 배포 + 자동 롤백. 안전한 프로덕션 적용.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-warning">구현 가능성 60%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★☆☆☆</span></div>
+                    </div>
+                </div>
+
+                <div class="priority-item">
+                    <div class="priority-rank bronze">9</div>
+                    <div class="priority-content">
+                        <h4>Data Quality Monitoring</h4>
+                        <p>데이터 품질 규칙 + 자동 체크 + 알림.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="badge badge-warning">구현 가능성 65%</div>
+                        <div style="margin-top: 0.25rem;"><span class="stars">★★☆☆☆</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">📊</div>
+                    <h2>종합 평가 매트릭스</h2>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>기능</th>
+                            <th style="text-align: center;">구현 가능성</th>
+                            <th style="text-align: center;">기대 효과</th>
+                            <th style="text-align: center;">난이도</th>
+                            <th style="text-align: center;">우선순위</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Widget Library</td>
+                            <td style="text-align: center;"><span class="badge badge-success">95%</span></td>
+                            <td style="text-align: center;"><span class="stars">★★★★★</span></td>
+                            <td style="text-align: center;">⭐⭐</td>
+                            <td style="text-align: center;"><span class="badge badge-success">🥇 1순위</span></td>
+                        </tr>
+                        <tr>
+                            <td>Dashboard Preset</td>
+                            <td style="text-align: center;"><span class="badge badge-success">95%</span></td>
+                            <td style="text-align: center;"><span class="stars">★★★★★</span></td>
+                            <td style="text-align: center;">⭐⭐</td>
+                            <td style="text-align: center;"><span class="badge badge-success">🥇 1순위</span></td>
+                        </tr>
+                        <tr>
+                            <td>Materialized View</td>
+                            <td style="text-align: center;"><span class="badge badge-success">85%</span></td>
+                            <td style="text-align: center;"><span class="stars">★★★★☆</span></td>
+                            <td style="text-align: center;">⭐⭐</td>
+                            <td style="text-align: center;"><span class="badge badge-info">🥈 2순위</span></td>
+                        </tr>
+                        <tr>
+                            <td>LLM SQL Generator</td>
+                            <td style="text-align: center;"><span class="badge badge-info">80%</span></td>
+                            <td style="text-align: center;"><span class="stars">★★★★☆</span></td>
+                            <td style="text-align: center;">⭐⭐⭐</td>
+                            <td style="text-align: center;"><span class="badge badge-info">🥈 2순위</span></td>
+                        </tr>
+                        <tr>
+                            <td>Dashboard Wizard</td>
+                            <td style="text-align: center;"><span class="badge badge-warning">70%</span></td>
+                            <td style="text-align: center;"><span class="stars">★★★☆☆</span></td>
+                            <td style="text-align: center;">⭐⭐⭐</td>
+                            <td style="text-align: center;"><span class="badge badge-warning">🥉 3순위</span></td>
+                        </tr>
+                        <tr>
+                            <td>Learning Service</td>
+                            <td style="text-align: center;"><span class="badge badge-warning">60%</span></td>
+                            <td style="text-align: center;"><span class="stars">★★★☆☆</span></td>
+                            <td style="text-align: center;">⭐⭐⭐⭐</td>
+                            <td style="text-align: center;"><span class="badge badge-warning">🥉 3순위</span></td>
+                        </tr>
+                        <tr>
+                            <td>Canary Deployment</td>
+                            <td style="text-align: center;"><span class="badge badge-warning">60%</span></td>
+                            <td style="text-align: center;"><span class="stars">★★☆☆☆</span></td>
+                            <td style="text-align: center;">⭐⭐⭐⭐</td>
+                            <td style="text-align: center;"><span class="badge badge-gray">4순위</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            // Deactivate all tabs
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected section
+            document.getElementById(sectionId).classList.add('active');
+
+            // Activate clicked tab
+            event.target.classList.add('active');
+        }
+
+        function toggleAccordion(header) {
+            const accordion = header.parentElement;
+            accordion.classList.toggle('open');
+        }
+    </script>
+</body>
+</html>

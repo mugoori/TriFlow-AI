@@ -104,3 +104,18 @@ test_*.txt
 
 # Export temp folder
 exports/
+
+# Demo & Distribution (internal/sales materials)
+demo/
+dist*/
+backend/start_demo.sh
+
+# Build scripts (internal)
+scripts/build_demo*.ps1
+scripts/build_demo_package.ps1
+
+# SQL Migrations (schema exposure risk)
+backend/migrations/
+
+# Spec reviews (internal analysis)
+docs/spec-reviews/
