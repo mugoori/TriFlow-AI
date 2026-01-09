@@ -20,7 +20,6 @@ from uuid import UUID
 
 from sqlalchemy import func, and_, desc
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert
 
 from app.models import Sample, FeedbackLog, JudgmentExecution
 from app.schemas.sample import (

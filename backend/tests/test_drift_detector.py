@@ -8,8 +8,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 from datetime import datetime, timezone
-import hashlib
-import json
 
 
 class TestConnectorType:
@@ -825,7 +823,7 @@ class TestSchemaDriftDetectorUpdateConnector:
     async def test_update_connector_success(self):
         """커넥터 업데이트 - 성공"""
         from app.services.drift_detector import SchemaDriftDetector
-        from app.models.mcp import DataConnectorUpdate, ConnectorType
+        from app.models.mcp import DataConnectorUpdate
 
         mock_db = AsyncMock()
         connector_id = uuid4()
@@ -889,7 +887,7 @@ class TestSchemaDriftDetectorUpdateConnector:
     async def test_update_connector_no_changes(self):
         """커넥터 업데이트 - 변경 없음"""
         from app.services.drift_detector import SchemaDriftDetector
-        from app.models.mcp import DataConnectorUpdate, ConnectorType
+        from app.models.mcp import DataConnectorUpdate
 
         mock_db = AsyncMock()
         connector_id = uuid4()
@@ -1409,7 +1407,7 @@ class TestSchemaDriftDetectorUpdateConnectorWithStatusAndAttributes:
     async def test_update_connector_with_status(self):
         """커넥터 업데이트 - 상태 변경"""
         from app.services.drift_detector import SchemaDriftDetector
-        from app.models.mcp import DataConnectorUpdate, ConnectorType
+        from app.models.mcp import DataConnectorUpdate
 
         mock_db = AsyncMock()
         connector_id = uuid4()
@@ -1450,7 +1448,7 @@ class TestSchemaDriftDetectorUpdateConnectorWithStatusAndAttributes:
     async def test_update_connector_with_attributes(self):
         """커넥터 업데이트 - 속성 변경"""
         from app.services.drift_detector import SchemaDriftDetector
-        from app.models.mcp import DataConnectorUpdate, ConnectorType
+        from app.models.mcp import DataConnectorUpdate
 
         mock_db = AsyncMock()
         connector_id = uuid4()
@@ -1707,7 +1705,6 @@ class TestSchemaDriftDetectorDetectDrift:
     async def test_detect_drift_first_snapshot(self):
         """Drift 감지 - 첫 스냅샷 (비교 대상 없음)"""
         from app.services.drift_detector import SchemaDriftDetector
-        from app.models.mcp import ConnectorType
 
         mock_db = AsyncMock()
         connector_id = uuid4()
@@ -1784,7 +1781,6 @@ class TestSchemaDriftDetectorDetectDrift:
     async def test_detect_drift_no_changes_same_hash(self):
         """Drift 감지 - 변경 없음 (해시 동일)"""
         from app.services.drift_detector import SchemaDriftDetector
-        from app.models.mcp import ConnectorType
 
         mock_db = AsyncMock()
         connector_id = uuid4()
@@ -1866,7 +1862,7 @@ class TestSchemaDriftDetectorDetectDrift:
     async def test_detect_drift_with_changes(self):
         """Drift 감지 - 변경 있음"""
         from app.services.drift_detector import SchemaDriftDetector
-        from app.models.mcp import ConnectorType, DriftChangeType, DriftSeverity
+        from app.models.mcp import DriftSeverity
 
         mock_db = AsyncMock()
         connector_id = uuid4()
@@ -1953,7 +1949,6 @@ class TestSchemaDriftDetectorDetectDrift:
     async def test_detect_drift_connection_error(self):
         """Drift 감지 - 연결 실패"""
         from app.services.drift_detector import SchemaDriftDetector, ConnectionError
-        from app.models.mcp import ConnectorType
 
         mock_db = AsyncMock()
         connector_id = uuid4()

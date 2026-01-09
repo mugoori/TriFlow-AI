@@ -5,7 +5,7 @@ StatCard 설정 CRUD 및 값 조회 테스트
 """
 
 import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch, AsyncMock
 from uuid import uuid4
 
@@ -15,7 +15,6 @@ class TestStatCardSourceType:
 
     def test_source_type_kpi(self):
         """KPI 소스 타입"""
-        from app.schemas.statcard import SourceType
 
         assert "kpi" in ["kpi", "db_query", "mcp_tool"]
 

@@ -3,7 +3,7 @@ Judgment Cache 테스트
 JudgmentCache 클래스 테스트 (메모리 캐시)
 """
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 from datetime import datetime, timedelta
 

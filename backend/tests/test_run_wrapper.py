@@ -198,7 +198,6 @@ class TestArgumentParser:
 
     def test_default_values(self):
         """기본값 확인"""
-        import argparse
         from app.mcp_wrappers.run_wrapper import main
 
         test_args = [

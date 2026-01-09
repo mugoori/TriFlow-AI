@@ -6,7 +6,7 @@ API Key 관리 엔드포인트 단위 테스트
 
 import pytest
 from datetime import datetime, timezone
-from uuid import uuid4, UUID
+from uuid import uuid4
 
 from pydantic import ValidationError
 

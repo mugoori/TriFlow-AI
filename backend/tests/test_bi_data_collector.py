@@ -4,7 +4,7 @@ bi_data_collector.py의 데이터 수집 레이어 테스트
 """
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 

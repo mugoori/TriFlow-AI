@@ -12,7 +12,6 @@ Schema Drift Detector
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -29,8 +28,6 @@ from app.models.mcp import (
     DriftChangeType,
     DriftReport,
     DriftSeverity,
-    SchemaColumn,
-    SchemaSnapshot,
     SchemaDriftDetection,
     SchemaDriftDetectionList,
 )

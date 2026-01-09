@@ -340,7 +340,6 @@ class CircuitBreaker:
             return
 
         try:
-            import json
 
             key = self._cache_key(state.server_id)
             data = state.model_dump_json()

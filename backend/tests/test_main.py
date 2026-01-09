@@ -3,9 +3,8 @@ Main Application 테스트
 app/main.py 테스트
 """
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
-from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.main import app

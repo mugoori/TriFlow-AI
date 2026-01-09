@@ -6,7 +6,7 @@
 
 import pytest
 from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 
 
 class TestJobStatusResponseSchema:

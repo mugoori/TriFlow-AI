@@ -4,7 +4,7 @@ bi_chat_service.py의 BIChatService 클래스 테스트
 """
 import json
 import pytest
-from datetime import datetime, date
+from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
 

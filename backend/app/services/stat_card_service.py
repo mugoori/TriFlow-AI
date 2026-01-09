@@ -476,7 +476,7 @@ class StatCardService:
         # dim_kpi에서 KPI 정보 조회
         kpi_query = text("""
             SELECT name, unit, green_threshold, yellow_threshold, red_threshold, higher_is_better
-            FROM analytics.dim_kpi
+            FROM bi.dim_kpi
             WHERE tenant_id = :tenant_id AND kpi_code = :kpi_code AND is_active = true
         """)
         kpi_result = self.db.execute(
@@ -705,7 +705,7 @@ class StatCardService:
                         COALESCE(AVG(cycle_time_avg), 0)
                     ELSE 0
                 END as value
-            FROM analytics.fact_daily_production
+            FROM bi.fact_daily_production
             WHERE tenant_id = :tenant_id
                 AND date >= :start_date AND date <= :end_date
         """)
@@ -796,7 +796,7 @@ class StatCardService:
         # 현재 기간 평균 재고일수 조회
         value_query = text("""
             SELECT COALESCE(AVG(coverage_days), 0) as value
-            FROM analytics.fact_inventory_snapshot
+            FROM bi.fact_inventory_snapshot
             WHERE tenant_id = :tenant_id
                 AND date >= :start_date AND date <= :end_date
         """)
@@ -894,7 +894,7 @@ class StatCardService:
         agg_func = agg_map.get(config.aggregation, "AVG")
 
         # 쿼리 생성 (안전하게)
-        schema_table = f"analytics.{config.table_name}"
+        schema_table = f"bi.{config.table_name}"
         query_sql = f"""
             SELECT {agg_func}({config.column_name}) as value
             FROM {schema_table}
@@ -997,7 +997,7 @@ class StatCardService:
         query = text("""
             SELECT kpi_code, name, name_en, category, unit, description,
                    higher_is_better, default_target, green_threshold, yellow_threshold, red_threshold
-            FROM analytics.dim_kpi
+            FROM bi.dim_kpi
             WHERE tenant_id = :tenant_id AND is_active = true
             ORDER BY category, kpi_code
         """)
@@ -1035,7 +1035,7 @@ class StatCardService:
         """StatCard DB 쿼리에서 사용 가능한 테이블/컬럼 목록"""
         query = text("""
             SELECT schema_name, table_name, column_name, data_type, description, allowed_aggregations
-            FROM analytics.allowed_stat_card_tables
+            FROM bi.allowed_stat_card_tables
             WHERE tenant_id = :tenant_id AND is_active = true
             ORDER BY schema_name, table_name, column_name
         """)
@@ -1126,7 +1126,7 @@ class StatCardService:
     ) -> bool:
         """테이블/컬럼 화이트리스트 검증"""
         query = text("""
-            SELECT 1 FROM analytics.allowed_stat_card_tables
+            SELECT 1 FROM bi.allowed_stat_card_tables
             WHERE tenant_id = :tenant_id
                 AND table_name = :table_name
                 AND column_name = :column_name

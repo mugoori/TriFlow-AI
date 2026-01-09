@@ -24,7 +24,6 @@ from sklearn.metrics import (
     f1_score as sklearn_f1_score,
     accuracy_score,
 )
-from sklearn.model_selection import train_test_split
 from sqlalchemy import func, and_, desc
 from sqlalchemy.orm import Session
 

@@ -5,8 +5,7 @@ MES/ERP DataSource 기반 MCP 도구 통합 기능 테스트
 """
 
 import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 from app.services.datasource_mcp_service import DataSourceMCPService

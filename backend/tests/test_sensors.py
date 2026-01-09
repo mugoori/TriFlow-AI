@@ -6,9 +6,8 @@ Tests for sensor data endpoints (via /api/v1/sensors/*)
 
 import pytest
 from httpx import AsyncClient
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock
 from datetime import datetime
-from uuid import uuid4
 
 
 class TestSensorPydanticModels:

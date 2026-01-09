@@ -12,8 +12,6 @@ Create Date: 2026-01-09
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 # revision identifiers, used by Alembic.
 revision: str = '011_sample_curation'

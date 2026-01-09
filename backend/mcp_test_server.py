@@ -5,7 +5,6 @@ MCP Test HTTP Server
 실행: python mcp_test_server.py
 포트: 3001
 """
-import os
 import json
 from pathlib import Path
 from typing import Any
@@ -223,7 +222,7 @@ async def root():
 
 
 if __name__ == "__main__":
-    print(f"MCP Test Server starting...")
+    print("MCP Test Server starting...")
     print(f"Test directory: {TEST_DIR}")
-    print(f"Endpoint: http://localhost:3002/mcp")
+    print("Endpoint: http://localhost:3002/mcp")
     uvicorn.run(app, host="0.0.0.0", port=3002)

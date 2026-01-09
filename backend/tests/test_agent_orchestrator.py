@@ -4,8 +4,7 @@ TriFlow AI - Agent Orchestrator Tests
 Tests for app/services/agent_orchestrator.py
 """
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import patch
 
 
 class TestAgentOrchestratorInit:

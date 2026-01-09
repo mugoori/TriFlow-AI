@@ -352,7 +352,6 @@ class TestGetSetting:
 
     def test_get_setting_from_env(self):
         """환경변수에서 설정 조회"""
-        from app.services.notifications import get_setting
 
         with patch("os.getenv") as mock_env:
             mock_env.return_value = "test_value"

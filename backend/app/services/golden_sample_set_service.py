@@ -16,11 +16,11 @@ import io
 import json
 import logging
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import func, and_, desc
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.models import Sample, GoldenSampleSet, GoldenSampleSetMember
 from app.schemas.sample import (

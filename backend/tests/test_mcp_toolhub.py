@@ -8,9 +8,8 @@ MCP ToolHub Tests
 4. Schema Drift Detection
 """
 
-import asyncio
 from datetime import datetime, timedelta, timezone
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -31,7 +30,7 @@ from app.models.mcp import (
 )
 from app.services.circuit_breaker import InMemoryCircuitBreaker
 from app.services.drift_detector import SchemaDriftDetector
-from app.services.mcp_proxy import MCPCallResponse, MockMCPProxy
+from app.services.mcp_proxy import MockMCPProxy
 
 
 # =====================================================
@@ -1713,7 +1712,7 @@ class TestMCPToolHubServiceHealthCheck:
 
     def test_health_check_healthy(self, mock_service):
         """헬스체크 - 정상"""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
         from app.services.mcp_toolhub import MCPServerResponse
 
         now = datetime.now(timezone.utc)

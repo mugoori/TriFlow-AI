@@ -3,8 +3,8 @@ BI Correlation Analyzer 테스트
 bi_correlation_analyzer.py의 연관 분석 엔진 테스트
 """
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from datetime import date, timedelta
+from unittest.mock import MagicMock, AsyncMock
+from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 

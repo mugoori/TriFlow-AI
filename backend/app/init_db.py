@@ -10,7 +10,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 
 from app.models import Tenant, User
 from app.auth.password import get_password_hash

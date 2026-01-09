@@ -320,7 +320,6 @@ class TestAsyncEngine:
     def test_get_async_engine_url_conversion_logic(self):
         """비동기 엔진 URL 변환 로직만 테스트"""
         from app.database import _get_async_database_url
-        from app.config import settings
 
         # URL 변환 로직만 테스트 (실제 엔진 생성 없이)
         result = _get_async_database_url()
@@ -367,7 +366,6 @@ class TestGetAsyncSession:
     async def test_get_async_session_rollback_on_error(self):
         """get_async_session 에러 시 롤백"""
         from app.database import get_async_session
-        from sqlalchemy import text
 
         with pytest.raises(ValueError):
             async with get_async_session() as session:

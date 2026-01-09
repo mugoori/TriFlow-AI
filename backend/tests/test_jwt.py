@@ -2,10 +2,8 @@
 JWT 토큰 생성 및 검증 테스트
 app/auth/jwt.py 테스트
 """
-import pytest
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4, UUID
-from unittest.mock import patch
+from uuid import uuid4
 
 from app.auth.jwt import (
     create_access_token,

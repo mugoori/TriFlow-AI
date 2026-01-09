@@ -45,7 +45,6 @@ from app.schemas.sample import (
     # Sample
     SampleCreate,
     SampleUpdate,
-    SampleApproveRequest,
     SampleRejectRequest,
     SampleExtractRequest,
     SampleResponse,
@@ -61,8 +60,6 @@ from app.schemas.sample import (
     GoldenSetListResponse,
     GoldenSetSampleListResponse,
     GoldenSetAutoUpdateResponse,
-    ExportRequest,
-    ExportResponse,
     ExportFormat,
 )
 

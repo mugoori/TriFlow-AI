@@ -6,7 +6,7 @@ Circuit Breaker Service 테스트
 
 import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 
@@ -242,7 +242,6 @@ class TestIsOpenMethod:
     async def test_is_open_closed_state(self):
         """CLOSED 상태 = not open"""
         from app.services.circuit_breaker import CircuitBreaker
-        from app.models.mcp import CircuitBreakerStateEnum
 
         mock_db = AsyncMock()
 
@@ -546,7 +545,6 @@ class TestInMemoryGetOrCreateState:
     def test_get_existing_state(self):
         """기존 상태 조회"""
         from app.services.circuit_breaker import InMemoryCircuitBreaker
-        from app.models.mcp import CircuitBreakerStateEnum
 
         cb = InMemoryCircuitBreaker()
         server_id = uuid4()
@@ -580,7 +578,7 @@ class TestInMemoryIsOpen:
     async def test_open_is_open(self):
         """OPEN 상태는 open"""
         from app.services.circuit_breaker import InMemoryCircuitBreaker
-        from app.models.mcp import CircuitBreakerStateEnum, CircuitBreakerConfig
+        from app.models.mcp import CircuitBreakerConfig
 
         config = CircuitBreakerConfig(
             failure_threshold=3,
@@ -1019,7 +1017,6 @@ class TestGetStateWithRedisCache:
         """Redis 캐시에서 상태 조회"""
         from app.services.circuit_breaker import CircuitBreaker
         from app.models.mcp import CircuitBreakerState, CircuitBreakerStateEnum
-        import json
 
         mock_db = AsyncMock()
         mock_redis = AsyncMock()
@@ -1045,7 +1042,6 @@ class TestGetStateWithRedisCache:
     async def test_get_state_caches_to_redis(self):
         """DB에서 조회 후 Redis에 캐싱"""
         from app.services.circuit_breaker import CircuitBreaker
-        from app.models.mcp import CircuitBreakerStateEnum
 
         mock_db = AsyncMock()
         mock_redis = AsyncMock()
@@ -1152,7 +1148,6 @@ class TestIsOpenWithOpenState:
     async def test_is_open_half_open_state(self):
         """HALF_OPEN 상태 = not open"""
         from app.services.circuit_breaker import CircuitBreaker
-        from app.models.mcp import CircuitBreakerStateEnum
 
         mock_db = AsyncMock()
 
@@ -1379,7 +1374,6 @@ class TestInitialize:
     async def test_initialize_existing_server(self):
         """기존 서버 초기화 (ON CONFLICT DO NOTHING)"""
         from app.services.circuit_breaker import CircuitBreaker
-        from app.models.mcp import CircuitBreakerStateEnum
 
         mock_db = AsyncMock()
 

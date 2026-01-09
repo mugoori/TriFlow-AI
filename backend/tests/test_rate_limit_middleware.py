@@ -2,7 +2,6 @@
 Rate Limiting 미들웨어 테스트
 app/middleware/rate_limit.py의 RateLimitMiddleware 테스트
 """
-import pytest
 from unittest.mock import MagicMock, patch
 
 from starlette.testclient import TestClient

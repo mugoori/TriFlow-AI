@@ -8,7 +8,7 @@ StatCard Pydantic Schemas
 - mcp_tool: MCP 도구를 통한 외부 시스템 연동
 """
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator

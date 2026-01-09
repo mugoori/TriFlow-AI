@@ -9,15 +9,11 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, date
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
 from app.routers.bi import (
     DashboardCreate,
     DashboardUpdate,
     DashboardLayout,
     DashboardLayoutComponent,
-    DashboardResponse,
-    DatasetResponse,
-    MetricResponse,
     MetricValueResponse,
     ProductionSummary,
     ProductionResponse,
@@ -2153,7 +2149,7 @@ class TestChartConfigModels:
 
     def test_dashboard_response_model(self):
         """DashboardResponse 모델"""
-        from app.routers.bi import DashboardResponse, DashboardLayout
+        from app.routers.bi import DashboardResponse
 
         response = DashboardResponse(
             id=uuid4(),

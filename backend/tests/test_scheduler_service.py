@@ -5,7 +5,7 @@ scheduler_service.py의 SchedulerService 클래스 테스트
 import pytest
 import asyncio
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 
 # ========== JobStatus Enum 테스트 ==========
@@ -353,7 +353,7 @@ class TestExecuteJob:
     @pytest.mark.asyncio
     async def test_execute_async_handler(self):
         """비동기 핸들러 실행"""
-        from app.services.scheduler_service import SchedulerService, ScheduledJob, JobStatus
+        from app.services.scheduler_service import SchedulerService, ScheduledJob
 
         service = SchedulerService()
 

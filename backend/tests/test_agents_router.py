@@ -6,8 +6,7 @@ Tests for app/routers/agents.py
 
 import pytest
 from httpx import AsyncClient
-from unittest.mock import MagicMock, AsyncMock, patch
-import json
+from unittest.mock import patch
 
 
 class TestAgentSchemas:

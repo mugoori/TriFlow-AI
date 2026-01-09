@@ -5,8 +5,8 @@ JudgmentAgent 테스트
 """
 
 import pytest
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, AsyncMock, patch
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 

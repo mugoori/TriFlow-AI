@@ -5,8 +5,8 @@ LearningAgent 클래스의 모든 메서드 테스트
 """
 
 import pytest
-from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 

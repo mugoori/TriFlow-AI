@@ -594,7 +594,7 @@ class AgentOrchestrator:
 
         # BIPlannerAgent만 처리
         if "BIPlanner" not in agent_name:
-            logger.info(f"[Orchestrator] Skipping - not BIPlannerAgent")
+            logger.info("[Orchestrator] Skipping - not BIPlannerAgent")
             return None
 
         tool_calls = result.get("tool_calls", [])

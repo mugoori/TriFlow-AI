@@ -5,8 +5,8 @@ story_service.py의 StoryService 클래스 테스트
 import json
 import pytest
 from datetime import datetime
-from unittest.mock import MagicMock, patch, AsyncMock
-from uuid import uuid4, UUID
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 from app.schemas.bi_story import (
     StoryCreateRequest,

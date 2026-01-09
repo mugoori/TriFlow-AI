@@ -2,9 +2,8 @@
 StatCard ORM Models 테스트
 app/models/statcard.py의 StatCardConfig, AllowedStatCardTable 테스트
 """
-import pytest
 from uuid import uuid4
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 # ========== StatCardConfig 테스트 ==========

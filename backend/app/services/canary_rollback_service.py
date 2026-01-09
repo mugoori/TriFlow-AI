@@ -23,7 +23,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models import RuleDeployment
-from app.models.canary import CanaryAssignment, CanaryExecutionLog
+from app.models.canary import CanaryExecutionLog
 from app.services.canary_assignment_service import CanaryAssignmentService
 
 logger = logging.getLogger(__name__)

@@ -183,7 +183,6 @@ class SystemSettingsService:
         """
         from app.database import get_db_context
         from sqlalchemy import text
-        from uuid import UUID
 
         # 1. Tenant 설정 확인 (tenant_id가 있는 경우)
         if tenant_id:

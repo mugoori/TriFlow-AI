@@ -9,7 +9,7 @@ Canary 배포를 위한 SQLAlchemy 모델 정의:
 LRN-FR-050 스펙 참조
 """
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -19,7 +19,6 @@ from sqlalchemy import (
     Boolean,
     Text,
     DateTime,
-    Float,
     Numeric,
     ForeignKey,
     CheckConstraint,

@@ -3,7 +3,7 @@ Workflow Router Mock 테스트
 PostgreSQL 없이 워크플로우 라우터 테스트
 """
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 from datetime import datetime
 from uuid import uuid4
 
@@ -163,7 +163,7 @@ class TestWorkflowPydanticModels:
 
     def test_workflow_create_model(self):
         """WorkflowCreate 모델"""
-        from app.routers.workflows import WorkflowCreate, WorkflowDSL, WorkflowTrigger, WorkflowNode
+        from app.routers.workflows import WorkflowCreate, WorkflowDSL, WorkflowTrigger
 
         create = WorkflowCreate(
             name="My Workflow",
@@ -275,7 +275,6 @@ class TestWorkflowEndpointsMock:
 
     def test_list_workflows_empty(self, mock_db):
         """빈 워크플로우 목록"""
-        from app.routers.workflows import list_workflows
 
         mock_db.query.return_value.filter.return_value.all.return_value = []
 

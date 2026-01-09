@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.models.core import Tenant
 from app.models.tenant_config import ModuleDefinition, TenantModule, IndustryProfile

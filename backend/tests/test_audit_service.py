@@ -487,7 +487,7 @@ class TestAuditLogEdgeCases:
 
 
 # ========== Mock 기반 테스트 (DB 불필요) ==========
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 class TestCreateAuditLogMock:

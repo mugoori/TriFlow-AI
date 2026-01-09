@@ -2,7 +2,6 @@
 Intent Routing Rules 테스트
 app/agents/routing_rules.py 테스트
 """
-import pytest
 
 
 # ========== Enum 테스트 ==========

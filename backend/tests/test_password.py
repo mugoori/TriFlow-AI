@@ -2,7 +2,6 @@
 Password 유틸리티 테스트
 app/auth/password.py의 비밀번호 해싱/검증 테스트
 """
-import pytest
 
 from app.auth.password import verify_password, get_password_hash
 

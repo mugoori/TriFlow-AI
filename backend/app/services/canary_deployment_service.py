@@ -15,13 +15,11 @@ from typing import Optional, Any, Literal
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 
 from app.models import RuleDeployment, Ruleset
-from app.models.canary import CanaryAssignment, CanaryExecutionLog
+from app.models.canary import CanaryExecutionLog
 from app.services.canary_assignment_service import CanaryAssignmentService
 from app.schemas.deployment import (
-    CanaryConfig,
     DeploymentCreate,
     DeploymentUpdate,
     CompensationStrategy,

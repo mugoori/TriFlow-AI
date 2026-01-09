@@ -2,9 +2,8 @@
 API Key Service 테스트
 api_key_service.py의 함수들 테스트
 """
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 

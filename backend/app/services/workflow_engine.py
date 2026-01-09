@@ -37,20 +37,17 @@ import os
 import time
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-from uuid import UUID, uuid4
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from app.services.notifications import notification_manager, NotificationStatus
 
 # Retry & Circuit Breaker 유틸리티
-from app.utils.retry import RetryableOperation, is_retryable_error
+from app.utils.retry import is_retryable_error
 from app.utils.circuit_breaker import (
-    get_circuit_breaker,
     get_external_api_circuit_breaker,
     get_mcp_circuit_breaker,
-    CircuitBreakerConfig,
     CircuitBreakerError,
-    CircuitState,
 )
 
 logger = logging.getLogger(__name__)
@@ -2745,7 +2742,6 @@ class WorkflowEngine:
                 # DataConnector 통해 데이터 조회
                 from app.models.core import DataConnector as DataConnectorModel
                 from uuid import UUID as UUIDType
-                import sqlalchemy as sa
 
                 source_id = config.get("source_id")
                 query = config.get("query", "")

@@ -149,14 +149,14 @@ def main():
 
     # 서버 시작 정보 출력
     logger.info("=" * 60)
-    logger.info(f"MCP Wrapper Server Starting")
+    logger.info("MCP Wrapper Server Starting")
     logger.info(f"  Type: {args.type.upper()}")
     logger.info(f"  Host: {args.host}")
     logger.info(f"  Port: {args.port}")
     logger.info(f"  Target URL: {args.target_url}")
     logger.info(f"  API Key: {'*****' if args.api_key else 'None'}")
     logger.info("=" * 60)
-    logger.info(f"MCP Endpoints:")
+    logger.info("MCP Endpoints:")
     logger.info(f"  POST http://{args.host}:{args.port}/tools/list")
     logger.info(f"  POST http://{args.host}:{args.port}/tools/call")
     logger.info(f"  GET  http://{args.host}:{args.port}/health")

@@ -14,7 +14,6 @@ from typing import Optional, Literal
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
 
 from app.models import RuleDeployment
 from app.models.canary import DeploymentMetrics, CanaryExecutionLog

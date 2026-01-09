@@ -5,7 +5,7 @@ insight_service.py의 InsightService 클래스 테스트
 import json
 import pytest
 from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.schemas.bi_insight import InsightRequest
@@ -349,7 +349,7 @@ class TestCallLlmForInsight:
     def test_call_llm(self, mock_anthropic):
         """LLM 호출"""
         from app.services.insight_service import InsightService
-        from anthropic.types import Message, TextBlock, Usage
+        from anthropic.types import Message, TextBlock
 
         mock_response = MagicMock(spec=Message)
         mock_response.content = [TextBlock(type="text", text='{"title": "Test"}')]

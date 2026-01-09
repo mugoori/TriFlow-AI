@@ -17,8 +17,6 @@ BI Analytics Schema (based on B-3-2 spec)
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '002_bi_analytics'

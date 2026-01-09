@@ -4,7 +4,7 @@ app/auth/dependencies.py의 인증 의존성 테스트
 """
 import pytest
 from uuid import uuid4
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 

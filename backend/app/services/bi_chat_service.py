@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 
 from anthropic import Anthropic
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
@@ -29,7 +29,7 @@ from app.schemas.bi_insight import (
     InsightReasoning,
     InsightAction,
 )
-from app.services.bi_data_collector import BIDataCollector, ThresholdEvaluator
+from app.services.bi_data_collector import BIDataCollector
 from app.services.bi_correlation_analyzer import CorrelationAnalyzer
 from app.schemas.statcard import StatCardConfigCreate
 
@@ -73,7 +73,7 @@ KPI_KEYWORD_MAPPING = {
 # Pydantic Models
 # =====================================================
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ChatSession(BaseModel):
@@ -287,7 +287,7 @@ class BIChatService:
         5. 응답 저장 및 반환
         """
         # 디버그: 요청 메시지 로깅
-        logger.info(f"[BIChat] ========== chat() CALLED ==========")
+        logger.info("[BIChat] ========== chat() CALLED ==========")
         logger.info(f"[BIChat] message: {request.message}")
 
         # 1. 세션 처리

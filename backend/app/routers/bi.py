@@ -2086,7 +2086,7 @@ async def get_stat_cards(
         - latest_data_date: 최신 데이터 날짜 (ISO format)
         - period_used: 사용된 기간 설정
     """
-    from app.services.stat_card_service import StatCardService, PeriodType
+    from app.services.stat_card_service import StatCardService
 
     # period 값 검증
     valid_periods = ["auto", "7days", "30days", "90days", "ytd"]
@@ -2647,7 +2647,7 @@ async def seed_sample_production_data(
 
         return SeedSampleDataResponse(
             success=True,
-            message=f"샘플 데이터가 성공적으로 생성되었습니다.",
+            message="샘플 데이터가 성공적으로 생성되었습니다.",
             created_lines=created_lines,
             created_products=created_products,
             created_shifts=created_shifts,

@@ -9,7 +9,7 @@ Learning Pipeline을 위한 샘플 큐레이션 모델 정의:
 LRN-FR-020 스펙 참조
 """
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import (

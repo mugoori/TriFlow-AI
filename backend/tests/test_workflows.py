@@ -6,7 +6,7 @@ Tests for workflow endpoints
 
 import pytest
 from httpx import AsyncClient
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock
 from datetime import datetime
 from uuid import uuid4
 
@@ -293,7 +293,6 @@ class TestWorkflowPydanticModels:
             WorkflowCreate,
             WorkflowDSL,
             WorkflowTrigger,
-            WorkflowNode,
         )
 
         create = WorkflowCreate(
