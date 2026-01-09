@@ -92,6 +92,13 @@ from app.models.canary import (
     CanaryExecutionLog,
 )
 
+from app.models.sample import (
+    # Sample Curation
+    Sample,
+    GoldenSampleSet,
+    GoldenSampleSetMember,
+)
+
 from app.models.bi import (
     # RAW Layer
     RawMesProduction,
@@ -225,4 +232,8 @@ __all__ = [
     "CanaryAssignment",
     "DeploymentMetrics",
     "CanaryExecutionLog",
+    # Sample Curation
+    "Sample",
+    "GoldenSampleSet",
+    "GoldenSampleSetMember",
 ]

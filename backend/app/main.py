@@ -581,6 +581,15 @@ try:
 except Exception as e:
     logger.error(f"Failed to register deployments router: {e}")
 
+# Samples 라우터 (Sample Curation)
+try:
+    from app.routers import samples
+    app.include_router(samples.router, prefix="/api/v1", tags=["samples"])
+    app.include_router(samples.golden_router, prefix="/api/v1", tags=["golden-sets"])
+    logger.info("Samples router registered")
+except Exception as e:
+    logger.error(f"Failed to register samples router: {e}")
+
 
 # ========== 프론트엔드 정적 파일 서빙 (SPA) ==========
 # frontend/dist 폴더가 있으면 정적 파일 서빙

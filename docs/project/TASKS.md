@@ -34,7 +34,7 @@
 | **RAG/Search** | 85% | ✅ | `rag_service.py` |
 | **BI/Analytics** | 80% | 🟢 | `bi_chat_service.py` |
 | **MCP ToolHub** | 90% | ✅ | `mcp_toolhub.py` |
-| **Learning Pipeline** | 30% | 🔴 | `feedback_analyzer.py` |
+| **Learning Pipeline** | 60% | 🟡 | `feedback_analyzer.py`, `sample_curation_service.py` |
 | **RBAC** | 40% | 🟡 | `rbac_service.py` |
 
 #### Frontend 구현 현황
@@ -51,7 +51,7 @@
 ### 🔴 Critical Gap (V2 Plan Phase 0 대상)
 | 기능 | 중요도 | 현재 상태 |
 |------|:------:|:--------:|
-| Sample Curation Service | 🔴🔴🔴 | 미구현 |
+| Sample Curation Service | ✅ | **완료** (2026-01-09) |
 | Rule Extraction (Decision Tree → Rhai) | 🔴🔴🔴 | 미구현 |
 | Canary Deployment | ✅ | **완료** (2026-01-09) |
 | Materialized Views + MV 버그 수정 | ✅ | **완료** (2026-01-09) |
@@ -776,6 +776,77 @@ curl -X POST http://localhost:8000/api/v1/tenant/modules/enable \
 ---
 
 ## 📝 작업 히스토리
+
+### 2026-01-09 (Sample Curation Service 구현 완료)
+
+#### 구현 내역
+피드백에서 학습 샘플 자동 추출 및 골든 샘플셋 관리 시스템 전체 구현 (LRN-FR-020 스펙)
+
+#### 핵심 기능
+1. **자동 샘플 추출**: FeedbackLog + JudgmentExecution → Sample 변환
+2. **중복 제거**: MD5 결정론적 해싱 (ExperimentService 패턴 재사용)
+3. **품질 점수 계산**: `(rating/5) × confidence × recency_factor`
+4. **골든 샘플셋 관리**: 검증된 샘플 그룹화, 자동 업데이트, JSON/CSV 내보내기
+
+#### 신규 파일 (7개)
+| 파일 | 설명 |
+|------|------|
+| `alembic/versions/011_sample_curation.py` | DB 마이그레이션 (3 테이블, 트리거, 뷰) |
+| `models/sample.py` | Sample, GoldenSampleSet, GoldenSampleSetMember |
+| `schemas/sample.py` | Pydantic 스키마 (17개) |
+| `services/sample_curation_service.py` | 샘플 추출/관리 서비스 |
+| `services/golden_sample_set_service.py` | 골든 샘플셋 관리 서비스 |
+| `routers/samples.py` | REST API (17개 엔드포인트) |
+
+#### 수정 파일 (2개)
+- `models/__init__.py` - Sample, GoldenSampleSet, GoldenSampleSetMember export
+- `main.py` - 라우터 등록
+
+#### DB 스키마
+```sql
+-- core.samples: 학습 샘플 저장
+-- core.golden_sample_sets: 골든 샘플셋 정의
+-- core.golden_sample_set_members: N:M 연결 테이블
+-- core.sample_stats_by_category: 통계 뷰
+```
+
+#### API 엔드포인트 (17개)
+```
+# 샘플 관리 (9개)
+POST   /api/v1/samples                      # 샘플 생성 (수동)
+GET    /api/v1/samples                      # 샘플 목록
+GET    /api/v1/samples/{id}                 # 샘플 조회
+PUT    /api/v1/samples/{id}                 # 샘플 수정
+DELETE /api/v1/samples/{id}                 # 샘플 삭제
+POST   /api/v1/samples/{id}/approve         # 샘플 승인
+POST   /api/v1/samples/{id}/reject          # 샘플 거부
+POST   /api/v1/samples/extract              # 피드백에서 자동 추출
+GET    /api/v1/samples/stats                # 샘플 통계
+
+# 골든 샘플셋 (8개)
+POST   /api/v1/golden-sets                  # 셋 생성
+GET    /api/v1/golden-sets                  # 셋 목록
+GET    /api/v1/golden-sets/{id}             # 셋 조회
+PUT    /api/v1/golden-sets/{id}             # 셋 수정
+DELETE /api/v1/golden-sets/{id}             # 셋 삭제
+POST   /api/v1/golden-sets/{id}/samples     # 샘플 추가
+DELETE /api/v1/golden-sets/{id}/samples/{sample_id}  # 샘플 제거
+POST   /api/v1/golden-sets/{id}/auto-update # 자동 업데이트
+GET    /api/v1/golden-sets/{id}/export      # 내보내기
+```
+
+#### 검증 방법
+```bash
+# 1. Python import 검증
+cd backend
+python -c "from app.routers.samples import router, golden_router; print(f'Sample: {len(router.routes)}, Golden: {len(golden_router.routes)}')"
+
+# 2. 서버 시작 테스트
+uvicorn app.main:app --reload
+# 로그에서 "Samples router registered" 확인
+```
+
+---
 
 ### 2026-01-09 (Canary Deployment 구현 완료)
 
