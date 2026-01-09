@@ -980,6 +980,13 @@ class RuleDeployment(Base):
     canary_target_filter = Column(JSONB, nullable=True)  # {line_codes: [...], shift: "..."}
     rollback_to = Column(Integer, nullable=True)  # 롤백 대상 버전
 
+    # Canary 배포 확장 필드 (010_canary_deployment)
+    canary_config = Column(JSONB, default=dict, nullable=False)  # auto_rollback, min_samples 등
+    started_at = Column(DateTime, nullable=True)  # Canary 시작 시점
+    promoted_at = Column(DateTime, nullable=True)  # 100% 승격 시점
+    rollback_reason = Column(Text, nullable=True)  # 롤백 사유
+    compensation_strategy = Column(String(50), default="ignore", nullable=False)  # ignore, mark_and_reprocess, soft_delete
+
     changelog = Column(Text, nullable=False)
     approver_id = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
@@ -994,6 +1001,21 @@ class RuleDeployment(Base):
 
     def __repr__(self):
         return f"<RuleDeployment(ruleset_id={self.ruleset_id}, version={self.version}, status='{self.status}')>"
+
+    @property
+    def is_canary_active(self) -> bool:
+        """Canary 배포 활성 상태 여부"""
+        return self.status == "canary" and self.canary_pct is not None and self.canary_pct > 0
+
+    @property
+    def canary_auto_rollback_enabled(self) -> bool:
+        """자동 롤백 활성화 여부"""
+        return self.canary_config.get("auto_rollback_enabled", True)
+
+    @property
+    def canary_min_samples(self) -> int:
+        """통계적 유의성을 위한 최소 샘플 수"""
+        return self.canary_config.get("min_samples", 100)
 
 
 class RuleConflict(Base):

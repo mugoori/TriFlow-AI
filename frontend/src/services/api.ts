@@ -2,13 +2,76 @@ import { getAccessToken, refreshAccessToken, clearAuth } from './authService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+// Canary 관련 쿼리 키 (버전 변경 시 무효화 대상)
+export const CANARY_AFFECTED_QUERY_KEYS = [
+  'ruleset',
+  'rulesets',
+  'judgment',
+  'workflow',
+  'deployments',
+];
+
 export class ApiClient {
   private baseUrl: string;
   private isRefreshing = false;
   private refreshSubscribers: Array<(token: string | null) => void> = [];
 
+  // Canary 버전 추적
+  private currentCanaryVersion: string | null = null;
+  private canaryDeploymentId: string | null = null;
+
+  // 캐시 무효화 콜백 (React Query 연동용)
+  private onCanaryVersionChange: ((version: string) => void) | null = null;
+
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
+  }
+
+  /**
+   * Canary 버전 변경 시 콜백 등록
+   * React Query의 invalidateQueries와 연동
+   */
+  setCanaryVersionChangeHandler(handler: (version: string) => void) {
+    this.onCanaryVersionChange = handler;
+  }
+
+  /**
+   * 현재 Canary 버전 조회
+   */
+  getCanaryVersion(): string | null {
+    return this.currentCanaryVersion;
+  }
+
+  /**
+   * 현재 Canary 배포 ID 조회
+   */
+  getCanaryDeploymentId(): string | null {
+    return this.canaryDeploymentId;
+  }
+
+  /**
+   * 응답 헤더에서 Canary 정보 추출 및 버전 변경 감지
+   */
+  private handleCanaryHeaders(response: Response): void {
+    const newVersion = response.headers.get('X-Canary-Version');
+    const deploymentId = response.headers.get('X-Canary-Deployment-Id');
+
+    if (deploymentId) {
+      this.canaryDeploymentId = deploymentId;
+    }
+
+    if (newVersion && newVersion !== this.currentCanaryVersion) {
+      const previousVersion = this.currentCanaryVersion;
+      this.currentCanaryVersion = newVersion;
+
+      // 버전이 변경되었고, 이전 버전이 있었다면 콜백 호출
+      if (previousVersion !== null && this.onCanaryVersionChange) {
+        console.log(
+          `[Canary] Version changed: ${previousVersion} -> ${newVersion}`
+        );
+        this.onCanaryVersionChange(newVersion);
+      }
+    }
   }
 
   private subscribeTokenRefresh(cb: (token: string | null) => void) {
@@ -78,6 +141,9 @@ export class ApiClient {
           throw new Error('Session expired. Please login again.');
         }
       }
+
+      // Canary 헤더 처리 (성공/실패 모두)
+      this.handleCanaryHeaders(response);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

@@ -85,6 +85,13 @@ from app.models.rag import (
     AASSourceMapping,
 )
 
+from app.models.canary import (
+    # Canary Deployment
+    CanaryAssignment,
+    DeploymentMetrics,
+    CanaryExecutionLog,
+)
+
 from app.models.bi import (
     # RAW Layer
     RawMesProduction,
@@ -214,4 +221,8 @@ __all__ = [
     # BI - Data Quality
     "DataQualityRule",
     "DataQualityCheck",
+    # Canary Deployment
+    "CanaryAssignment",
+    "DeploymentMetrics",
+    "CanaryExecutionLog",
 ]

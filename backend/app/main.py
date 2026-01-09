@@ -120,10 +120,26 @@ async def lifespan(app: FastAPI):
     await warmup_agents()
     logger.info("Agents warmed up successfully")
 
+    # Canary 모니터 태스크 시작
+    try:
+        from app.tasks.canary_monitor_task import start_monitor
+        start_monitor()
+        logger.info("Canary monitor task started")
+    except Exception as e:
+        logger.warning(f"Canary monitor task failed to start: {e}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down TriFlow AI Backend...")
+
+    # Canary 모니터 태스크 중지
+    try:
+        from app.tasks.canary_monitor_task import stop_monitor
+        stop_monitor()
+        logger.info("Canary monitor task stopped")
+    except Exception as e:
+        logger.warning(f"Canary monitor task failed to stop: {e}")
 
 
 # FastAPI 앱 생성
@@ -556,6 +572,14 @@ try:
     logger.info("V2 Feature Flags router registered")
 except Exception as e:
     logger.error(f"Failed to register v2 feature-flags router: {e}")
+
+# Deployments 라우터 (Canary Deployment)
+try:
+    from app.routers import deployments
+    app.include_router(deployments.router, prefix="/api/v1", tags=["deployments"])
+    logger.info("Deployments router registered")
+except Exception as e:
+    logger.error(f"Failed to register deployments router: {e}")
 
 
 # ========== 프론트엔드 정적 파일 서빙 (SPA) ==========

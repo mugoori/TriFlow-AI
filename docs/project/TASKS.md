@@ -53,8 +53,8 @@
 |------|:------:|:--------:|
 | Sample Curation Service | 🔴🔴🔴 | 미구현 |
 | Rule Extraction (Decision Tree → Rhai) | 🔴🔴🔴 | 미구현 |
-| Canary Deployment | 🔴🔴 | 미구현 |
-| Materialized Views | ✅ | **완료** (2026-01-09) |
+| Canary Deployment | ✅ | **완료** (2026-01-09) |
+| Materialized Views + MV 버그 수정 | ✅ | **완료** (2026-01-09) |
 | 5-tier RBAC + Data Scope Filter | 🔴🔴 | 40% |
 
 ---
@@ -776,6 +776,119 @@ curl -X POST http://localhost:8000/api/v1/tenant/modules/enable \
 ---
 
 ## 📝 작업 히스토리
+
+### 2026-01-09 (Canary Deployment 구현 완료)
+
+#### 구현 내역
+Canary 배포 시스템 전체 구현 - 새 규칙/워크플로우를 10% → 50% → 100%로 점진적 배포
+
+#### 핵심 기능
+1. **3단계 Sticky Session**: 워크플로우 인스턴스 > 세션 > 사용자 우선순위
+2. **3가지 Compensation 전략**: ignore, mark_and_reprocess, soft_delete
+3. **자동 롤백 (4가지 조건)**: 에러율 >5%, 상대 에러율 >2x, P95 레이턴시 >1.5x, 연속 실패 >=5회
+4. **Circuit Breaker**: 30초 간격 모니터링 및 자동 롤백 트리거
+
+#### 신규 파일 (11개)
+| 파일 | 설명 |
+|------|------|
+| `alembic/versions/010_canary_deployment.py` | DB 마이그레이션 |
+| `models/canary.py` | CanaryAssignment, DeploymentMetrics, CanaryExecutionLog |
+| `schemas/deployment.py` | Pydantic 스키마 |
+| `services/canary_deployment_service.py` | 트래픽 분할, Sticky Session |
+| `services/canary_assignment_service.py` | 사용자/세션 할당 관리 |
+| `services/deployment_metrics_service.py` | 메트릭 수집/비교 |
+| `services/canary_rollback_service.py` | 롤백 + Compensation |
+| `utils/canary_circuit_breaker.py` | Canary 전용 Circuit Breaker |
+| `routers/deployments.py` | REST API (16개 엔드포인트) |
+| `tasks/canary_monitor_task.py` | 백그라운드 모니터링 (30초 간격) |
+| `frontend/src/hooks/useCanaryVersion.ts` | Canary 버전 컨텍스트 훅 |
+
+#### 수정 파일 (4개)
+- `models/core.py` - RuleDeployment 확장
+- `models/__init__.py` - canary 모델 export
+- `main.py` - 라우터 등록
+- `frontend/src/services/api.ts` - 버전 헤더 추적, 캐시 무효화
+
+#### API 엔드포인트 (16개)
+```
+POST   /deployments                    # 배포 생성
+GET    /deployments                    # 배포 목록
+GET    /deployments/{id}               # 배포 조회
+PUT    /deployments/{id}               # 배포 수정
+DELETE /deployments/{id}               # 배포 삭제
+POST   /deployments/{id}/start-canary  # Canary 시작
+PUT    /deployments/{id}/traffic       # 트래픽 비율 조정
+POST   /deployments/{id}/promote       # 100% 승격
+POST   /deployments/{id}/rollback      # 롤백
+GET    /deployments/{id}/assignments   # Sticky 할당 목록
+GET    /deployments/{id}/assignments/stats  # 할당 통계
+GET    /deployments/{id}/metrics       # 메트릭 조회
+GET    /deployments/{id}/comparison    # v1 vs v2 비교
+GET    /deployments/{id}/health        # 건강 상태
+GET    /rollback-history               # 롤백 이력
+GET    /rollback-stats                 # 롤백 통계
+```
+
+#### 검증 방법
+```bash
+# 1. Python import 검증
+cd backend
+python -c "from app.routers.deployments import router; print(f'Endpoints: {len(router.routes)}')"
+# 출력: Endpoints: 16
+
+# 2. 서버 시작 테스트
+uvicorn app.main:app --reload
+# 로그에서 "Deployments router registered" 확인
+```
+
+---
+
+### 2026-01-09 (MV 버그 수정 + StatCard 복구)
+
+#### 문제 증상
+- 대시보드 StatCard가 표시되지 않음
+- "카드 추가" 버튼 클릭 시 KPI 드롭다운이 비어있음
+
+#### 근본 원인
+1. **MV 컬럼명 불일치**: `008_materialized_views.py`에서 존재하지 않는 컬럼 참조
+   - `production_quantity` → 실제: `total_qty`
+   - `good_quantity` → 실제: `good_qty`
+   - `oee`, `availability`, `performance` → 컬럼 없음
+2. **스키마 불일치**: `analytics` 스키마 대신 `bi` 스키마 사용
+3. **dim_kpi 시드 데이터 없음**: KPI 드롭다운이 비어있는 원인
+
+#### 수정 내용
+
+1. **009_fix_materialized_views.py 마이그레이션 생성**
+   - 기존 MV 삭제 후 올바른 컬럼으로 재생성
+   - OEE 계산식 직접 포함 (runtime_minutes, total_qty 기반)
+   - 10개 기본 KPI 시드 데이터 삽입
+
+2. **stat_card_service.py 스키마 수정**
+   - `analytics.` → `bi.` 스키마 변경 (6곳)
+
+#### 수정된 파일
+- `backend/alembic/versions/009_fix_materialized_views.py` (신규)
+- `backend/app/services/stat_card_service.py` (스키마 수정)
+
+#### 검증 방법
+```bash
+# 1. 마이그레이션 적용
+cd backend && alembic upgrade head
+
+# 2. MV 확인
+SELECT * FROM pg_matviews WHERE schemaname = 'bi';
+
+# 3. KPI 데이터 확인
+SELECT * FROM bi.dim_kpi LIMIT 10;
+
+# 4. 프론트엔드 확인
+npm run tauri dev
+# 대시보드 → StatCard 표시 확인
+# 카드 추가 → KPI 드롭다운에 항목 표시 확인
+```
+
+---
 
 ### 2026-01-09 (Trust System 100% 완료)
 
