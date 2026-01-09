@@ -590,6 +590,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register samples router: {e}")
 
+# Rule Extraction 라우터 (Decision Tree 기반 규칙 추출)
+try:
+    from app.routers import rule_extraction
+    app.include_router(rule_extraction.router, prefix="/api/v1", tags=["rule-extraction"])
+    logger.info("Rule extraction router registered")
+except Exception as e:
+    logger.error(f"Failed to register rule extraction router: {e}")
+
 
 # ========== 프론트엔드 정적 파일 서빙 (SPA) ==========
 # frontend/dist 폴더가 있으면 정적 파일 서빙

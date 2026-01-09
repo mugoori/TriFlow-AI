@@ -34,7 +34,7 @@
 | **RAG/Search** | 85% | ✅ | `rag_service.py` |
 | **BI/Analytics** | 80% | 🟢 | `bi_chat_service.py` |
 | **MCP ToolHub** | 90% | ✅ | `mcp_toolhub.py` |
-| **Learning Pipeline** | 60% | 🟡 | `feedback_analyzer.py`, `sample_curation_service.py` |
+| **Learning Pipeline** | 90% | ✅ | `feedback_analyzer.py`, `sample_curation_service.py`, `rule_extraction_service.py` |
 | **RBAC** | 40% | 🟡 | `rbac_service.py` |
 
 #### Frontend 구현 현황
@@ -52,7 +52,7 @@
 | 기능 | 중요도 | 현재 상태 |
 |------|:------:|:--------:|
 | Sample Curation Service | ✅ | **완료** (2026-01-09) |
-| Rule Extraction (Decision Tree → Rhai) | 🔴🔴🔴 | 미구현 |
+| Rule Extraction (Decision Tree → Rhai) | ✅ | **완료** (2026-01-09) |
 | Canary Deployment | ✅ | **완료** (2026-01-09) |
 | Materialized Views + MV 버그 수정 | ✅ | **완료** (2026-01-09) |
 | 5-tier RBAC + Data Scope Filter | 🔴🔴 | 40% |
@@ -776,6 +776,82 @@ curl -X POST http://localhost:8000/api/v1/tenant/modules/enable \
 ---
 
 ## 📝 작업 히스토리
+
+### 2026-01-09 (Rule Extraction Service 구현 완료)
+
+#### 구현 내역
+Decision Tree 기반 자동 규칙 추출 시스템 전체 구현 (LRN-FR-030 스펙)
+
+#### 핵심 기능
+1. **Decision Tree 학습**: 승인된 샘플 → scikit-learn DecisionTreeClassifier (max_depth=5)
+2. **Rhai 코드 생성**: Decision Tree → if-else 체인 Rhai 스크립트 자동 변환
+3. **성능 메트릭 계산**: coverage, precision, recall, f1_score (macro averaging)
+4. **AutoRuleCandidate 관리**: 생성된 규칙 후보 승인/거절 워크플로우 → ProposedRule
+
+#### 지원 특징
+- **10개 Feature**: temperature, pressure, humidity, defect_rate, speed, voltage, current, vibration, noise_level, cycle_time
+- **3개 Class**: NORMAL, WARNING, CRITICAL
+
+#### 신규 파일 (3개)
+| 파일 | 설명 |
+|------|------|
+| `schemas/rule_extraction.py` | Pydantic 스키마 (Request/Response 12개) |
+| `services/rule_extraction_service.py` | Decision Tree 학습 + Rhai 변환 서비스 |
+| `routers/rule_extraction.py` | REST API (8개 엔드포인트) |
+
+#### 수정 파일 (1개)
+- `main.py` - 라우터 등록
+
+#### API 엔드포인트 (8개)
+```
+# 규칙 추출
+POST   /api/v1/rule-extraction/extract           # Decision Tree 학습 및 규칙 생성
+GET    /api/v1/rule-extraction/candidates        # 후보 목록
+GET    /api/v1/rule-extraction/candidates/{id}   # 후보 상세
+DELETE /api/v1/rule-extraction/candidates/{id}   # 후보 삭제
+
+# 후보 워크플로우
+POST   /api/v1/rule-extraction/candidates/{id}/test     # 테스트 실행
+POST   /api/v1/rule-extraction/candidates/{id}/approve  # 승인 → ProposedRule
+POST   /api/v1/rule-extraction/candidates/{id}/reject   # 거절
+
+# 통계
+GET    /api/v1/rule-extraction/stats             # 추출 통계
+```
+
+#### Decision Tree → Rhai 변환 예시
+```rhai
+// Auto-generated rule from Decision Tree
+// Samples: 150, Accuracy: 0.92, Depth: 3
+
+fn check(input) {
+    if input.temperature <= 70.0 {
+        if input.pressure <= 8.0 {
+            #{ status: "NORMAL", confidence: 0.95 }
+        } else {
+            #{ status: "WARNING", confidence: 0.82 }
+        }
+    } else {
+        #{ status: "CRITICAL", confidence: 0.88 }
+    }
+}
+
+check(input)
+```
+
+#### 검증 방법
+```bash
+# 1. Python import 검증
+cd backend
+python -c "from app.routers.rule_extraction import router; print(f'Endpoints: {len(router.routes)}')"
+# 출력: Endpoints: 8
+
+# 2. 서버 시작 테스트
+uvicorn app.main:app --reload
+# 로그에서 "Rule extraction router registered" 확인
+```
+
+---
 
 ### 2026-01-09 (Sample Curation Service 구현 완료)
 
