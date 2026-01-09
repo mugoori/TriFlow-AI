@@ -191,19 +191,26 @@ class TrustService:
         """피드백 컴포넌트 계산
 
         긍정 피드백 비율 (최근 30일)
+        JudgmentExecution을 통해 해당 ruleset의 피드백을 간접 조회
         """
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)
 
-        # 최근 30일간 피드백 조회
-        positive_count = self.db.query(func.count(FeedbackLog.log_id)).filter(
-            FeedbackLog.ruleset_id == ruleset.ruleset_id,
-            FeedbackLog.feedback_type == "positive",
+        # JudgmentExecution을 통해 해당 ruleset의 피드백 조회
+        positive_count = self.db.query(func.count(FeedbackLog.feedback_id)).join(
+            JudgmentExecution,
+            FeedbackLog.execution_id == JudgmentExecution.execution_id
+        ).filter(
+            JudgmentExecution.ruleset_id == ruleset.ruleset_id,
+            FeedbackLog.feedback_type.in_(["positive", "correct", "helpful"]),
             FeedbackLog.created_at >= thirty_days_ago,
         ).scalar() or 0
 
-        negative_count = self.db.query(func.count(FeedbackLog.log_id)).filter(
-            FeedbackLog.ruleset_id == ruleset.ruleset_id,
-            FeedbackLog.feedback_type == "negative",
+        negative_count = self.db.query(func.count(FeedbackLog.feedback_id)).join(
+            JudgmentExecution,
+            FeedbackLog.execution_id == JudgmentExecution.execution_id
+        ).filter(
+            JudgmentExecution.ruleset_id == ruleset.ruleset_id,
+            FeedbackLog.feedback_type.in_(["negative", "incorrect"]),
             FeedbackLog.created_at >= thirty_days_ago,
         ).scalar() or 0
 
@@ -216,24 +223,12 @@ class TrustService:
     def _calculate_age_component(self, ruleset: Ruleset) -> Decimal:
         """운영 기간 컴포넌트 계산
 
-        - 0-7일: 0.2
-        - 8-14일: 0.4
-        - 15-30일: 0.6
-        - 31-60일: 0.8
-        - 61일 이상: 1.0
+        A-2-5 스펙: age_score = min(days_active / 90, 1.0)
+        90일 이상 운영되면 만점
         """
         days_active = (datetime.utcnow() - ruleset.created_at).days
-
-        if days_active <= 7:
-            return Decimal("0.2")
-        elif days_active <= 14:
-            return Decimal("0.4")
-        elif days_active <= 30:
-            return Decimal("0.6")
-        elif days_active <= 60:
-            return Decimal("0.8")
-        else:
-            return Decimal("1.0")
+        score = min(days_active / 90.0, 1.0)
+        return Decimal(str(round(score, 4)))
 
     def evaluate_promotion(self, ruleset_id: UUID) -> Optional[int]:
         """승격 조건 평가
@@ -306,23 +301,63 @@ class TrustService:
             logger.info(f"Demotion triggered: consecutive negative {consecutive_negative} >= {conditions['consecutive_negative']}")
             return current_level - 1
 
+        # Critical failure 체크 (A-2-5 스펙)
+        # Level 3은 최근 7일간 critical failure 0건이어야 함
+        if current_level == TrustLevel.FULL_AUTO:
+            recent_failures = self._count_recent_critical_failures(ruleset.ruleset_id, days=7)
+            if recent_failures > 0:
+                logger.info(f"Demotion triggered: {recent_failures} critical failures in last 7 days for Level 3 ruleset")
+                return current_level - 1
+
+        # Level 2는 최근 7일간 critical failure 1건까지 허용
+        if current_level == TrustLevel.LOW_RISK_AUTO:
+            recent_failures = self._count_recent_critical_failures(ruleset.ruleset_id, days=7)
+            if recent_failures > 1:
+                logger.info(f"Demotion triggered: {recent_failures} critical failures in last 7 days for Level 2 ruleset")
+                return current_level - 1
+
         return None
 
     def _get_consecutive_negative_feedback(self, ruleset_id: UUID) -> int:
-        """연속 부정 피드백 수 조회"""
-        # 최근 피드백 조회 (최신순)
-        feedbacks = self.db.query(FeedbackLog).filter(
-            FeedbackLog.ruleset_id == ruleset_id,
+        """연속 부정 피드백 수 조회
+
+        JudgmentExecution을 통해 해당 ruleset의 피드백을 간접 조회
+        """
+        # JudgmentExecution 조인을 통해 최근 피드백 조회 (최신순)
+        feedbacks = self.db.query(FeedbackLog).join(
+            JudgmentExecution,
+            FeedbackLog.execution_id == JudgmentExecution.execution_id
+        ).filter(
+            JudgmentExecution.ruleset_id == ruleset_id,
         ).order_by(FeedbackLog.created_at.desc()).limit(20).all()
 
         consecutive = 0
         for fb in feedbacks:
-            if fb.feedback_type == "negative":
+            if fb.feedback_type in ["negative", "incorrect"]:
                 consecutive += 1
             else:
-                break  # 긍정 피드백이 나오면 중단
+                break  # 긍정/중립 피드백이 나오면 중단
 
         return consecutive
+
+    def _count_recent_critical_failures(self, ruleset_id: UUID, days: int = 7) -> int:
+        """최근 N일간 critical failure 수 조회
+
+        A-2-5 스펙의 강등 조건에서 Level 3은 critical failure 0건이어야 함
+
+        Args:
+            ruleset_id: 룰셋 ID
+            days: 조회 기간 (기본 7일)
+
+        Returns:
+            critical failure 건수
+        """
+        since = datetime.utcnow() - timedelta(days=days)
+        return self.db.query(func.count(JudgmentExecution.execution_id)).filter(
+            JudgmentExecution.ruleset_id == ruleset_id,
+            JudgmentExecution.result == "critical",
+            JudgmentExecution.created_at >= since,
+        ).scalar() or 0
 
     def update_trust_level(
         self,

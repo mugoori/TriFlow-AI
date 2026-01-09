@@ -3,24 +3,27 @@ StatCard Service
 대시보드 StatCard 설정 및 값 조회 서비스
 
 데이터 소스 유형별 값 조회:
-- kpi: bi.dim_kpi + fact_daily_production에서 조회
+- kpi: bi.dim_kpi + Materialized Views에서 조회 (성능 최적화)
 - db_query: 동적 SQL 쿼리 실행
 - mcp_tool: MCPToolHub를 통한 외부 시스템 연동
+
+Materialized Views (30분마다 리프레시):
+- bi.mv_oee_daily: OEE 일일 집계
+- bi.mv_defect_trend: 결함 추이
+- bi.mv_quality_summary: 품질 요약
+- bi.mv_line_performance: 라인별 성과
 """
 
 import json
 import logging
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database import get_db_context
 from app.schemas.statcard import (
-    AggregationType,
     ColumnInfo,
     KpiInfo,
     KpiListResponse,
@@ -332,9 +335,9 @@ class StatCardService:
     # =====================================================
 
     def get_latest_data_date(self, tenant_id: UUID) -> Optional[date]:
-        """가장 최신 데이터 날짜 조회"""
+        """가장 최신 데이터 날짜 조회 (MV 활용)"""
         query = text("""
-            SELECT MAX(date) FROM bi.fact_daily_production
+            SELECT MAX(date) FROM bi.mv_oee_daily
             WHERE tenant_id = :tenant_id
         """)
         result = self.db.execute(query, {"tenant_id": str(tenant_id)}).fetchone()
@@ -460,17 +463,20 @@ class StatCardService:
 
         return value
 
+    # MV 사용 가능한 KPI 목록 (MV에서 조회 가능한 KPI)
+    MV_SUPPORTED_KPIS = {"oee", "yield_rate", "defect_rate", "availability", "performance", "quality", "throughput"}
+
     async def _fetch_kpi_value(
         self,
         config: StatCardConfig,
         tenant_id: UUID,
         period_dates: Optional[Tuple[date, date, date, date, str, str]] = None,
     ) -> StatCardValue:
-        """KPI 소스에서 값 조회"""
+        """KPI 소스에서 값 조회 (MV 활용)"""
         # dim_kpi에서 KPI 정보 조회
         kpi_query = text("""
             SELECT name, unit, green_threshold, yellow_threshold, red_threshold, higher_is_better
-            FROM bi.dim_kpi
+            FROM analytics.dim_kpi
             WHERE tenant_id = :tenant_id AND kpi_code = :kpi_code AND is_active = true
         """)
         kpi_result = self.db.execute(
@@ -504,29 +510,202 @@ class StatCardService:
                 current_start, current_end, prev_start, prev_end, period_label, comparison_label
             )
 
+        # MV 지원 KPI는 MV에서 조회 (성능 최적화)
+        if config.kpi_code in self.MV_SUPPORTED_KPIS:
+            return await self._fetch_kpi_from_mv(
+                config, tenant_id, kpi_name, unit, green_th, yellow_th, red_th, higher_is_better,
+                current_start, current_end, prev_start, prev_end, period_label, comparison_label
+            )
+
+        # MV 미지원 KPI는 fact 테이블에서 직접 조회
+        return await self._fetch_kpi_from_fact(
+            config, tenant_id, kpi_name, unit, green_th, yellow_th, red_th, higher_is_better,
+            current_start, current_end, prev_start, prev_end, period_label, comparison_label
+        )
+
+    async def _fetch_kpi_from_mv(
+        self,
+        config: StatCardConfig,
+        tenant_id: UUID,
+        kpi_name: str,
+        unit: str,
+        green_th: Optional[float],
+        yellow_th: Optional[float],
+        red_th: Optional[float],
+        higher_is_better: bool,
+        current_start: date,
+        current_end: date,
+        prev_start: date,
+        prev_end: date,
+        period_label: str,
+        comparison_label: str,
+    ) -> StatCardValue:
+        """MV에서 KPI 값 조회 (성능 최적화)"""
+        kpi_code = config.kpi_code
+
+        # KPI별 MV 쿼리 매핑
+        if kpi_code == "oee":
+            current_value = await self._query_mv_oee(tenant_id, current_start, current_end)
+            prev_value = await self._query_mv_oee(tenant_id, prev_start, prev_end)
+        elif kpi_code == "availability":
+            current_value = await self._query_mv_availability(tenant_id, current_start, current_end)
+            prev_value = await self._query_mv_availability(tenant_id, prev_start, prev_end)
+        elif kpi_code == "performance":
+            current_value = await self._query_mv_performance(tenant_id, current_start, current_end)
+            prev_value = await self._query_mv_performance(tenant_id, prev_start, prev_end)
+        elif kpi_code in ("quality", "yield_rate"):
+            current_value = await self._query_mv_quality(tenant_id, current_start, current_end)
+            prev_value = await self._query_mv_quality(tenant_id, prev_start, prev_end)
+        elif kpi_code == "defect_rate":
+            current_value = await self._query_mv_defect_rate(tenant_id, current_start, current_end)
+            prev_value = await self._query_mv_defect_rate(tenant_id, prev_start, prev_end)
+        elif kpi_code == "throughput":
+            current_value = await self._query_mv_throughput(tenant_id, current_start, current_end)
+            prev_value = await self._query_mv_throughput(tenant_id, prev_start, prev_end)
+        else:
+            current_value = 0.0
+            prev_value = None
+
+        # 상태 결정
+        status = self._determine_status(
+            current_value,
+            float(green_th) if green_th else None,
+            float(yellow_th) if yellow_th else None,
+            float(red_th) if red_th else None,
+            higher_is_better,
+        )
+
+        # 변화율 계산
+        change_percent = None
+        trend = None
+        if prev_value and prev_value != 0:
+            change_percent = ((current_value - prev_value) / prev_value) * 100
+            if abs(change_percent) < 1:
+                trend = "stable"
+            elif change_percent > 0:
+                trend = "up" if higher_is_better else "down"
+            else:
+                trend = "down" if higher_is_better else "up"
+
+        return StatCardValue(
+            config_id=config.config_id,
+            value=current_value,
+            formatted_value=self._format_value(current_value, unit),
+            previous_value=prev_value,
+            change_percent=change_percent,
+            trend=trend,
+            status=status,
+            title=config.custom_title or kpi_name,
+            icon=config.custom_icon or self._get_kpi_icon(config.kpi_code),
+            unit=config.custom_unit or unit,
+            period_start=datetime.combine(current_start, datetime.min.time()),
+            period_end=datetime.combine(current_end, datetime.min.time()),
+            period_label=period_label,
+            comparison_label=comparison_label,
+            source_type="kpi",
+            fetched_at=datetime.utcnow(),
+            is_cached=False,
+        )
+
+    async def _query_mv_oee(self, tenant_id: UUID, start_date: date, end_date: date) -> float:
+        """MV에서 OEE 평균 조회"""
+        query = text("""
+            SELECT COALESCE(AVG(avg_oee), 0)
+            FROM bi.mv_oee_daily
+            WHERE tenant_id = :tenant_id AND date >= :start_date AND date <= :end_date
+        """)
+        result = self.db.execute(query, {
+            "tenant_id": str(tenant_id), "start_date": start_date, "end_date": end_date
+        })
+        row = result.fetchone()
+        return float(row[0]) if row and row[0] else 0.0
+
+    async def _query_mv_availability(self, tenant_id: UUID, start_date: date, end_date: date) -> float:
+        """MV에서 가동률 평균 조회"""
+        query = text("""
+            SELECT COALESCE(AVG(avg_availability), 0)
+            FROM bi.mv_oee_daily
+            WHERE tenant_id = :tenant_id AND date >= :start_date AND date <= :end_date
+        """)
+        result = self.db.execute(query, {
+            "tenant_id": str(tenant_id), "start_date": start_date, "end_date": end_date
+        })
+        row = result.fetchone()
+        return float(row[0]) if row and row[0] else 0.0
+
+    async def _query_mv_performance(self, tenant_id: UUID, start_date: date, end_date: date) -> float:
+        """MV에서 성능 평균 조회"""
+        query = text("""
+            SELECT COALESCE(AVG(avg_performance), 0)
+            FROM bi.mv_oee_daily
+            WHERE tenant_id = :tenant_id AND date >= :start_date AND date <= :end_date
+        """)
+        result = self.db.execute(query, {
+            "tenant_id": str(tenant_id), "start_date": start_date, "end_date": end_date
+        })
+        row = result.fetchone()
+        return float(row[0]) if row and row[0] else 0.0
+
+    async def _query_mv_quality(self, tenant_id: UUID, start_date: date, end_date: date) -> float:
+        """MV에서 품질률 평균 조회"""
+        query = text("""
+            SELECT COALESCE(AVG(quality_rate), 0)
+            FROM bi.mv_quality_summary
+            WHERE tenant_id = :tenant_id AND date >= :start_date AND date <= :end_date
+        """)
+        result = self.db.execute(query, {
+            "tenant_id": str(tenant_id), "start_date": start_date, "end_date": end_date
+        })
+        row = result.fetchone()
+        return float(row[0]) if row and row[0] else 0.0
+
+    async def _query_mv_defect_rate(self, tenant_id: UUID, start_date: date, end_date: date) -> float:
+        """MV에서 불량률 계산 (100 - 품질률)"""
+        quality_rate = await self._query_mv_quality(tenant_id, start_date, end_date)
+        return 100.0 - quality_rate
+
+    async def _query_mv_throughput(self, tenant_id: UUID, start_date: date, end_date: date) -> float:
+        """MV에서 총 생산량 조회"""
+        query = text("""
+            SELECT COALESCE(SUM(total_production), 0)
+            FROM bi.mv_oee_daily
+            WHERE tenant_id = :tenant_id AND date >= :start_date AND date <= :end_date
+        """)
+        result = self.db.execute(query, {
+            "tenant_id": str(tenant_id), "start_date": start_date, "end_date": end_date
+        })
+        row = result.fetchone()
+        return float(row[0]) if row and row[0] else 0.0
+
+    async def _fetch_kpi_from_fact(
+        self,
+        config: StatCardConfig,
+        tenant_id: UUID,
+        kpi_name: str,
+        unit: str,
+        green_th: Optional[float],
+        yellow_th: Optional[float],
+        red_th: Optional[float],
+        higher_is_better: bool,
+        current_start: date,
+        current_end: date,
+        prev_start: date,
+        prev_end: date,
+        period_label: str,
+        comparison_label: str,
+    ) -> StatCardValue:
+        """Fact 테이블에서 KPI 값 직접 조회 (MV 미지원 KPI용)"""
         # fact 테이블에서 현재 기간 값 조회
         value_query = text("""
             SELECT
                 CASE :kpi_code
-                    WHEN 'defect_rate' THEN
-                        COALESCE(SUM(defect_qty) / NULLIF(SUM(total_qty), 0) * 100, 0)
-                    WHEN 'oee' THEN
-                        COALESCE(AVG(
-                            (runtime_minutes / NULLIF(runtime_minutes + downtime_minutes + setup_time_minutes, 0)) * 100
-                        ), 0)
-                    WHEN 'yield_rate' THEN
-                        COALESCE(SUM(good_qty) / NULLIF(SUM(total_qty), 0) * 100, 0)
                     WHEN 'downtime' THEN
                         COALESCE(AVG(downtime_minutes), 0)
-                    WHEN 'availability' THEN
-                        COALESCE(AVG(runtime_minutes / NULLIF(runtime_minutes + downtime_minutes, 0)) * 100, 0)
-                    WHEN 'throughput' THEN
-                        COALESCE(SUM(total_qty), 0)
                     WHEN 'cycle_time' THEN
                         COALESCE(AVG(cycle_time_avg), 0)
                     ELSE 0
                 END as value
-            FROM bi.fact_daily_production
+            FROM analytics.fact_daily_production
             WHERE tenant_id = :tenant_id
                 AND date >= :start_date AND date <= :end_date
         """)
@@ -543,33 +722,8 @@ class StatCardService:
         current_value = float(value_row[0]) if value_row and value_row[0] else 0.0
 
         # 이전 기간 값 조회
-        prev_query = text("""
-            SELECT
-                CASE :kpi_code
-                    WHEN 'defect_rate' THEN
-                        COALESCE(SUM(defect_qty) / NULLIF(SUM(total_qty), 0) * 100, 0)
-                    WHEN 'oee' THEN
-                        COALESCE(AVG(
-                            (runtime_minutes / NULLIF(runtime_minutes + downtime_minutes + setup_time_minutes, 0)) * 100
-                        ), 0)
-                    WHEN 'yield_rate' THEN
-                        COALESCE(SUM(good_qty) / NULLIF(SUM(total_qty), 0) * 100, 0)
-                    WHEN 'downtime' THEN
-                        COALESCE(AVG(downtime_minutes), 0)
-                    WHEN 'availability' THEN
-                        COALESCE(AVG(runtime_minutes / NULLIF(runtime_minutes + downtime_minutes, 0)) * 100, 0)
-                    WHEN 'throughput' THEN
-                        COALESCE(SUM(total_qty), 0)
-                    WHEN 'cycle_time' THEN
-                        COALESCE(AVG(cycle_time_avg), 0)
-                    ELSE 0
-                END as value
-            FROM bi.fact_daily_production
-            WHERE tenant_id = :tenant_id
-                AND date >= :start_date AND date <= :end_date
-        """)
         prev_result = self.db.execute(
-            prev_query,
+            value_query,
             {
                 "tenant_id": str(tenant_id),
                 "kpi_code": config.kpi_code,
@@ -642,7 +796,7 @@ class StatCardService:
         # 현재 기간 평균 재고일수 조회
         value_query = text("""
             SELECT COALESCE(AVG(coverage_days), 0) as value
-            FROM bi.fact_inventory_snapshot
+            FROM analytics.fact_inventory_snapshot
             WHERE tenant_id = :tenant_id
                 AND date >= :start_date AND date <= :end_date
         """)
@@ -740,7 +894,7 @@ class StatCardService:
         agg_func = agg_map.get(config.aggregation, "AVG")
 
         # 쿼리 생성 (안전하게)
-        schema_table = f"bi.{config.table_name}"
+        schema_table = f"analytics.{config.table_name}"
         query_sql = f"""
             SELECT {agg_func}({config.column_name}) as value
             FROM {schema_table}
@@ -843,7 +997,7 @@ class StatCardService:
         query = text("""
             SELECT kpi_code, name, name_en, category, unit, description,
                    higher_is_better, default_target, green_threshold, yellow_threshold, red_threshold
-            FROM bi.dim_kpi
+            FROM analytics.dim_kpi
             WHERE tenant_id = :tenant_id AND is_active = true
             ORDER BY category, kpi_code
         """)
@@ -881,7 +1035,7 @@ class StatCardService:
         """StatCard DB 쿼리에서 사용 가능한 테이블/컬럼 목록"""
         query = text("""
             SELECT schema_name, table_name, column_name, data_type, description, allowed_aggregations
-            FROM bi.allowed_stat_card_tables
+            FROM analytics.allowed_stat_card_tables
             WHERE tenant_id = :tenant_id AND is_active = true
             ORDER BY schema_name, table_name, column_name
         """)
@@ -972,7 +1126,7 @@ class StatCardService:
     ) -> bool:
         """테이블/컬럼 화이트리스트 검증"""
         query = text("""
-            SELECT 1 FROM bi.allowed_stat_card_tables
+            SELECT 1 FROM analytics.allowed_stat_card_tables
             WHERE tenant_id = :tenant_id
                 AND table_name = :table_name
                 AND column_name = :column_name

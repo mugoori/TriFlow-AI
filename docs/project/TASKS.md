@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2026-01-07
-> **현재 Phase**: MVP v0.1.0 릴리즈 완료 → V1 개발 완료 → V2 Phase 2 완료 (QA 통과) → V2 Phase 3 진행 중
+> **최종 업데이트**: 2026-01-09
+> **현재 Phase**: V2 Phase 3 진행 중 (Feature Flags & Module System)
 > **현재 브랜치**: `develop`
 
 ---
@@ -13,7 +13,49 @@
 |-----------|------|--------|----------|
 | **MVP** | PC 설치형 데스크톱 앱 (Core + Chat UI) | ✅ v0.1.0 | ██████████ 100% |
 | **V1** | Builder UI & Learning & 외부연동 & 보안 | ✅ 완료 | ██████████ 100% |
-| **V2** | Advanced Workflow & MCP 연동 | ✅ 완료 | ██████████ 100% |
+| **V2 Phase 1-2** | Advanced Workflow & MCP 연동 & QA | ✅ 완료 | ██████████ 100% |
+| **V2 Phase 3** | Feature Flags & Multi-Tenant Module | 🔄 진행중 | ██████░░░░ 60% |
+| **V2 Phase 0** | Critical Gap 해결 (Learning, RBAC, HA) | ⏳ 예정 | ░░░░░░░░░░ 0% |
+
+---
+
+## 🚧 현재 진행 중: V2 Phase 3
+
+### 구현 현황 (DEVELOPMENT_PRIORITY_GUIDE.md 기준)
+
+#### Backend 구현 현황
+| 영역 | 구현률 | 상태 | 핵심 파일 |
+|------|:------:|:----:|----------|
+| **Trust System** | 100% | ✅ | `trust_service.py` |
+| **Feature Flags** | 100% | ✅ | `feature_flag_service.py` |
+| **Agent Orchestration** | 95% | ✅ | `agent_orchestrator.py` |
+| **Judgment Engine** | 90% | ✅ | `judgment_policy.py` |
+| **Workflow Engine** | 100% | ✅ | `workflow_engine.py` |
+| **RAG/Search** | 85% | ✅ | `rag_service.py` |
+| **BI/Analytics** | 80% | 🟢 | `bi_chat_service.py` |
+| **MCP ToolHub** | 90% | ✅ | `mcp_toolhub.py` |
+| **Learning Pipeline** | 30% | 🔴 | `feedback_analyzer.py` |
+| **RBAC** | 40% | 🟡 | `rbac_service.py` |
+
+#### Frontend 구현 현황
+| 페이지 | 구현률 | V2 기능 | Learning/Feedback |
+|--------|:------:|:-------:|:-----------------:|
+| **Dashboard** | 90% | ✅ | ✅ |
+| **Workflows** | 85% | ✅ | 🟢 |
+| **Rulesets** | 85% | ✅ | ✅ |
+| **Learning** | 70% | ✅ | ✅ |
+| **Experiments** | 75% | 🟢 | 🟢 |
+| **Data** | 60% | 🟢 | ❌ |
+| **Settings** | 50% | ❌ | ❌ |
+
+### 🔴 Critical Gap (V2 Plan Phase 0 대상)
+| 기능 | 중요도 | 현재 상태 |
+|------|:------:|:--------:|
+| Sample Curation Service | 🔴🔴🔴 | 미구현 |
+| Rule Extraction (Decision Tree → Rhai) | 🔴🔴🔴 | 미구현 |
+| Canary Deployment | 🔴🔴 | 미구현 |
+| Materialized Views | ✅ | **완료** (2026-01-09) |
+| 5-tier RBAC + Data Scope Filter | 🔴🔴 | 40% |
 
 ---
 
@@ -190,7 +232,9 @@ triflow-ai/
 │   ├── app/
 │   │   ├── agents/               # AI 에이전트 (5개)
 │   │   ├── services/             # 비즈니스 로직
-│   │   │   ├── workflow_engine.py    # 워크플로우 엔진 (6,552줄)
+│   │   │   ├── workflow_engine.py    # 워크플로우 엔진
+│   │   │   ├── feature_flag_service.py  # Feature Flag (V2 Phase 3)
+│   │   │   ├── tenant_config_service.py # 테넌트 설정
 │   │   │   ├── mcp_proxy.py          # MCP HTTP 프록시
 │   │   │   ├── mcp_toolhub.py        # MCP 서버 레지스트리
 │   │   │   └── ...
@@ -199,28 +243,42 @@ triflow-ai/
 │   │   │   ├── mes_wrapper.py        # MES 래퍼
 │   │   │   └── erp_wrapper.py        # ERP 래퍼
 │   │   ├── routers/              # API 엔드포인트
-│   │   ├── models/               # Pydantic 모델
+│   │   │   ├── feature_flags.py      # Feature Flag API (V2 Phase 3)
+│   │   │   ├── tenant_config.py      # 테넌트 설정 API
+│   │   │   └── ...
+│   │   ├── models/               # SQLAlchemy/Pydantic 모델
 │   │   ├── tools/                # 에이전트 도구
 │   │   └── prompts/              # 프롬프트 템플릿
-│   └── migrations/               # DB 마이그레이션
+│   ├── alembic/versions/         # DB 마이그레이션 (Alembic)
+│   └── migrations/               # SQL 마이그레이션 (gitignore)
 │
 ├── frontend/                     # Tauri + React 프론트엔드
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── workflow/
-│   │   │   │   └── FlowEditor.tsx    # 비주얼 에디터 (3,203줄)
+│   │   │   │   └── FlowEditor.tsx    # 비주얼 에디터
 │   │   │   ├── ruleset/              # 룰셋 편집기
 │   │   │   ├── pages/                # 페이지 컴포넌트
 │   │   │   └── layout/               # 레이아웃
+│   │   ├── contexts/             # React Context (TenantConfig 등)
+│   │   ├── hooks/                # Custom Hooks
+│   │   ├── modules/              # V2 Module System
 │   │   └── services/             # API 클라이언트
 │   └── src-tauri/                # Tauri (Rust)
 │
 ├── docs/                         # 문서
-│   ├── specs/                    # 기술 명세서
-│   └── archive/                  # 아카이브
+│   ├── project/                  # 프로젝트 관리
+│   │   ├── TASKS.md              # 작업 목록 (현재 파일)
+│   │   ├── PROJECT_STATUS.md     # 프로젝트 현황
+│   │   └── QA_TEST_REPORT_*.md   # QA 테스트 보고서
+│   ├── specs/                    # 기술 명세서 (gitignore)
+│   │   └── implementation/       # 구현 계획 문서
+│   ├── guides/                   # 운영 가이드
+│   ├── archive/                  # 아카이브
+│   └── diagrams/                 # 다이어그램
 │
 ├── AI_GUIDELINES.md              # AI 개발 가이드라인
-├── TASKS.md                      # 작업 목록 (현재 파일)
+├── README.md                     # 프로젝트 소개
 └── docker-compose.yml            # Docker 환경
 ```
 
@@ -718,6 +776,141 @@ curl -X POST http://localhost:8000/api/v1/tenant/modules/enable \
 ---
 
 ## 📝 작업 히스토리
+
+### 2026-01-09 (Trust System 100% 완료)
+
+#### 완료된 작업
+
+1. **FeedbackLog 쿼리 버그 수정**
+   - `FeedbackLog.ruleset_id` 필드가 존재하지 않아 발생한 버그 수정
+   - JudgmentExecution 조인을 통해 간접적으로 ruleset_id 연결
+   - `FeedbackLog.log_id` → `FeedbackLog.feedback_id` 오타 수정
+
+2. **Age 컴포넌트 스펙 정합성 개선**
+   - 기존: 61일 이상 만점 (단계별 계산)
+   - 수정: `min(days_active / 90, 1.0)` 선형 공식 (A-2-5 스펙 준수)
+
+3. **Critical Failure 강등 조건 추가**
+   - `_count_recent_critical_failures()` 메서드 신규 추가
+   - Level 3 (FULL_AUTO): 최근 7일간 critical failure 0건
+   - Level 2 (LOW_RISK_AUTO): 최근 7일간 critical failure 1건까지 허용
+
+#### 수정된 파일
+- `backend/app/services/trust_service.py`
+  - `_calculate_feedback_component()`: JudgmentExecution 조인 적용
+  - `_get_consecutive_negative_feedback()`: JudgmentExecution 조인 적용
+  - `_calculate_age_component()`: 90일 선형 공식으로 변경
+  - `_count_recent_critical_failures()`: 신규 메서드
+  - `evaluate_demotion()`: critical failure 체크 로직 추가
+
+#### 검증 방법
+```bash
+# 1. Import 테스트
+cd backend && python -c "from app.services.trust_service import TrustService; print('OK')"
+
+# 2. 서버 시작 후 Trust API 확인
+uvicorn app.main:app --reload
+# 로그에서 "V2 Trust router registered" 확인
+
+# 3. Trust API 호출 테스트
+curl http://localhost:8000/api/v2/trust/levels
+curl http://localhost:8000/api/v2/trust/stats
+```
+
+#### Trust System 완성도
+| 항목 | Before | After |
+|------|:------:|:-----:|
+| FeedbackLog 쿼리 | ❌ 에러 | ✅ 정상 |
+| Age 컴포넌트 | 61일 만점 | 90일 만점 (스펙 준수) |
+| Critical Failure | ❌ 미체크 | ✅ 강등 조건 포함 |
+| **완성도** | **90%** | **100%** |
+
+---
+
+### 2026-01-09 (Materialized Views 구현)
+
+#### 완료된 작업
+
+1. **Materialized Views 마이그레이션 생성**
+   - `backend/alembic/versions/008_materialized_views.py`
+   - 4개 MV: `mv_defect_trend`, `mv_oee_daily`, `mv_line_performance`, `mv_quality_summary`
+   - 헬퍼 함수: `bi.refresh_all_mvs()`
+   - UNIQUE INDEX 포함 (CONCURRENTLY 리프레시 지원)
+
+2. **MV 리프레시 서비스 구현**
+   - `backend/app/services/mv_refresh_service.py` (신규)
+   - 30분마다 자동 리프레시 (CONCURRENTLY)
+   - 상태 모니터링 및 로깅
+
+3. **stat_card_service MV 연동**
+   - OEE, 불량률, 품질률 등 주요 KPI는 MV에서 조회
+   - 스키마 참조 수정 (`bi.` → `analytics.` for fact tables)
+
+4. **scheduler_service에 MV 리프레시 job 등록**
+
+#### 수정된 파일
+- `backend/alembic/versions/008_materialized_views.py` (신규)
+- `backend/app/services/mv_refresh_service.py` (신규)
+- `backend/app/services/scheduler_service.py` (수정)
+- `backend/app/services/stat_card_service.py` (수정)
+
+#### 검증 방법
+```bash
+# 1. 마이그레이션 적용
+cd backend && alembic upgrade head
+
+# 2. MV 생성 확인
+psql -c "SELECT * FROM pg_matviews WHERE schemaname = 'bi';"
+
+# 3. 서버 시작 후 스케줄러 로그 확인
+uvicorn app.main:app --reload
+# 로그에서 "Registered job: refresh_materialized_views" 확인
+
+# 4. 대시보드 로딩 시간 측정 (Before/After)
+```
+
+---
+
+### 2026-01-09 (.gitignore 보안 강화 및 V2 Phase 3 코드 커밋)
+
+#### 완료된 작업
+
+1. **.gitignore 프로젝트 정보 보호 강화**
+   - `demo/` - 데모 환경 설정 (.env 포함)
+   - `dist*/` - 빌드 결과물
+   - `scripts/build_demo*.ps1` - 내부 빌드 스크립트
+   - `backend/migrations/` - DB 스키마/시드 데이터
+   - `docs/spec-reviews/` - 내부 분석 문서
+
+2. **V2 Phase 3 개발 코드 커밋**
+   - Feature Flag API 추가 (`routers/feature_flags.py`)
+   - Feature Flag Service 추가 (`services/feature_flag_service.py`)
+   - Alembic 마이그레이션 006 (soft delete), 007 (BI 스키마 수정)
+   - StatCard 기간별 캐시 버그 수정
+   - BI Chat 서비스 개선
+   - Frontend 모듈 시스템 V2 Phase 3 업데이트
+
+3. **TASKS.md 최신화**
+   - V2 Phase 3 진행 상황 추가
+   - 구현 현황 테이블 업데이트 (DEVELOPMENT_PRIORITY_GUIDE.md 기준)
+   - Critical Gap 목록 추가
+
+#### 커밋 내역
+```
+6525d6c ✨ V2 Phase 3: Feature Flags & Module System (WIP)
+452fafa 🔒 .gitignore 업데이트: 프로젝트 정보 보호 강화
+```
+
+#### 수정된 파일
+- `.gitignore` - 보호 항목 추가
+- `backend/app/routers/feature_flags.py` (신규)
+- `backend/app/services/feature_flag_service.py` (신규)
+- `backend/alembic/versions/006_add_deleted_at_column.py` (신규)
+- `backend/alembic/versions/007_bi_schema_fixes.py` (신규)
+- `frontend/src/App.tsx`, 페이지 컴포넌트들, `agentService.ts`
+- `docs/project/TASKS.md` - 최신화
+
+---
 
 ### 2026-01-07 (문서 정리 및 AI 가이드라인 업데이트)
 

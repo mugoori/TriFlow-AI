@@ -273,6 +273,8 @@ scheduler = SchedulerService()
 
 def setup_default_jobs():
     """기본 스케줄 작업 등록"""
+    from app.services.mv_refresh_service import refresh_materialized_views
+
     # 데이터 정리 (매일 자정)
     scheduler.register_job(
         job_id="cleanup_old_data",
@@ -291,4 +293,14 @@ def setup_default_jobs():
         interval_seconds=300,  # 5분
         handler=generate_sample_sensor_data,
         enabled=False,  # 기본 비활성화
+    )
+
+    # Materialized View 리프레시 (30분마다)
+    scheduler.register_job(
+        job_id="refresh_materialized_views",
+        name="MV 리프레시",
+        description="대시보드 Materialized Views 리프레시",
+        interval_seconds=1800,  # 30분
+        handler=refresh_materialized_views,
+        enabled=True,
     )
