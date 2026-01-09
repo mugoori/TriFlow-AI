@@ -35,7 +35,7 @@
 | **BI/Analytics** | 80% | 🟢 | `bi_chat_service.py` |
 | **MCP ToolHub** | 90% | ✅ | `mcp_toolhub.py` |
 | **Learning Pipeline** | 90% | ✅ | `feedback_analyzer.py`, `sample_curation_service.py`, `rule_extraction_service.py` |
-| **RBAC** | 40% | 🟡 | `rbac_service.py` |
+| **RBAC** | 100% | ✅ | `rbac_service.py`, `data_scope_service.py` |
 
 #### Frontend 구현 현황
 | 페이지 | 구현률 | V2 기능 | Learning/Feedback |
@@ -55,7 +55,7 @@
 | Rule Extraction (Decision Tree → Rhai) | ✅ | **완료** (2026-01-09) |
 | Canary Deployment | ✅ | **완료** (2026-01-09) |
 | Materialized Views + MV 버그 수정 | ✅ | **완료** (2026-01-09) |
-| 5-tier RBAC + Data Scope Filter | 🔴🔴 | 40% |
+| 5-tier RBAC + Data Scope Filter | ✅ | **완료** (2026-01-09) |
 
 ---
 
@@ -776,6 +776,78 @@ curl -X POST http://localhost:8000/api/v1/tenant/modules/enable \
 ---
 
 ## 📝 작업 히스토리
+
+### 2026-01-09 (5-tier RBAC + Data Scope Filter 완료)
+
+#### 구현 내역
+5-Tier 역할 기반 접근 제어 및 Data Scope Filter 전체 구현 완료
+
+#### 역할 계층 (5-Tier)
+| 레벨 | 역할 | 설명 |
+|:----:|------|------|
+| 5 | admin | 테넌트 전체 관리 |
+| 4 | approver | 규칙/워크플로우 승인 |
+| 3 | operator | 일상 운영 (실행) |
+| 2 | user | 기본 생성/수정 |
+| 1 | viewer | 읽기 전용 |
+
+#### 액션 타입 (7개)
+- `create`, `read`, `update`, `delete`, `execute`, `approve`, `rollback`
+
+#### 신규 파일 (1개)
+| 파일 | 설명 |
+|------|------|
+| `services/data_scope_service.py` | Data Scope Filter (공장/라인 코드 필터링) |
+
+#### 수정 파일 (8개)
+| 파일 | 변경 내용 |
+|------|----------|
+| `services/rbac_service.py` | Role/Action Enum 확장, 5-tier 권한 매트릭스 완성 |
+| `routers/proposals.py` | 승인 권한 적용 (`proposals:approve`) |
+| `routers/deployments.py` | 배포 승인/롤백 권한 (`deployments:approve`, `deployments:rollback`) |
+| `routers/workflows.py` | 실행/승인 분리 (`workflows:execute`, `workflows:approve`) |
+| `routers/rulesets.py` | CRUD + 실행 권한 |
+| `routers/feedback.py` | 생성/조회/삭제 권한 분리 |
+| `routers/sensors.py` | Data Scope 필터 적용 (라인 코드 기반) |
+| `routers/tenants.py` | admin 전용 권한 |
+
+#### Data Scope Filter
+사용자별 접근 가능한 공장/라인 코드 제한
+```python
+# user.user_metadata 구조
+{
+    "data_scope": {
+        "factory_codes": ["F001", "F002"],
+        "line_codes": ["L001", "L002"],
+        "all_access": false
+    }
+}
+
+# 사용법
+@router.get("/data")
+async def get_sensor_data(
+    scope: DataScope = Depends(get_data_scope),
+):
+    query = apply_line_filter(query, scope, SensorData.line_code)
+```
+
+#### 검증 방법
+```bash
+# 1. Python import 검증
+cd backend
+python -c "from app.services.rbac_service import Role; print(list(Role))"
+# 출력: [Role.ADMIN, Role.APPROVER, Role.OPERATOR, Role.USER, Role.VIEWER]
+
+# 2. 서버 시작 테스트
+uvicorn app.main:app --reload
+
+# 3. 권한 테스트 (viewer로 승인 시도 → 403)
+curl -X POST http://localhost:8000/api/v1/proposals/xxx/review \
+  -H "Authorization: Bearer $VIEWER_TOKEN"
+# 응답: 403 Forbidden
+```
+
+---
 
 ### 2026-01-09 (Rule Extraction Service 구현 완료)
 

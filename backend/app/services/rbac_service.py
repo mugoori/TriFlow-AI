@@ -1,6 +1,13 @@
 """
 RBAC (Role-Based Access Control) 서비스
-역할 기반 접근 제어 로직
+5-Tier 역할 기반 접근 제어 로직
+
+역할 계층:
+- admin    (Level 5): 테넌트 전체 관리
+- approver (Level 4): 규칙/워크플로우 승인
+- operator (Level 3): 일상 운영 (실행)
+- user     (Level 2): 기본 생성/수정
+- viewer   (Level 1): 읽기 전용
 """
 import logging
 from enum import Enum
@@ -15,10 +22,22 @@ logger = logging.getLogger(__name__)
 
 
 class Role(str, Enum):
-    """사용자 역할"""
-    ADMIN = "admin"
-    USER = "user"
-    VIEWER = "viewer"
+    """사용자 역할 (5-Tier)"""
+    ADMIN = "admin"         # Level 5: 테넌트 전체 관리
+    APPROVER = "approver"   # Level 4: 승인 권한
+    OPERATOR = "operator"   # Level 3: 일상 운영
+    USER = "user"           # Level 2: 기본 생성/수정
+    VIEWER = "viewer"       # Level 1: 읽기 전용
+
+
+# 역할 계층 레벨 (상위 역할 확인용)
+ROLE_HIERARCHY = {
+    Role.ADMIN: 5,
+    Role.APPROVER: 4,
+    Role.OPERATOR: 3,
+    Role.USER: 2,
+    Role.VIEWER: 1,
+}
 
 
 class Resource(str, Enum):
@@ -33,6 +52,10 @@ class Resource(str, Enum):
     FEEDBACK = "feedback"
     PROPOSALS = "proposals"
     AGENTS = "agents"
+    DEPLOYMENTS = "deployments"
+    TENANTS = "tenants"
+    SAMPLES = "samples"
+    RULE_EXTRACTION = "rule_extraction"
 
 
 class Action(str, Enum):
@@ -42,6 +65,8 @@ class Action(str, Enum):
     UPDATE = "update"
     DELETE = "delete"
     EXECUTE = "execute"
+    APPROVE = "approve"     # 승인 권한
+    ROLLBACK = "rollback"   # 롤백 권한
 
 
 # 역할별 기본 권한 정의 (DB 없이도 동작하도록 인메모리 정의)
@@ -52,19 +77,50 @@ ROLE_PERMISSIONS: dict[str, Set[str]] = {
         for resource in Resource
         for action in Action
     },
-    Role.USER: {
-        # User: CRUD + Execute (삭제 제외, 사용자/감사 관리 제외)
-        "workflows:create", "workflows:read", "workflows:update", "workflows:execute",
-        "rulesets:create", "rulesets:read", "rulesets:update", "rulesets:execute",
+    Role.APPROVER: {
+        # Approver: 읽기, 실행, 승인 권한 (생성/삭제 제외)
+        "workflows:read", "workflows:execute", "workflows:approve",
+        "rulesets:read", "rulesets:execute",
+        "proposals:read", "proposals:approve",
+        "deployments:read", "deployments:create", "deployments:approve", "deployments:rollback",
         "sensors:read",
-        "experiments:create", "experiments:read", "experiments:update", "experiments:execute",
-        "settings:read", "settings:update",
+        "experiments:read", "experiments:execute",
         "feedback:create", "feedback:read",
-        "proposals:read", "proposals:update",
+        "settings:read",
+        "users:read",
         "agents:execute",
+        "samples:read",
+        "rule_extraction:read", "rule_extraction:execute", "rule_extraction:approve",
+    },
+    Role.OPERATOR: {
+        # Operator: 읽기, 실행, 센서 쓰기 (승인 제외)
+        "workflows:read", "workflows:execute",
+        "rulesets:read", "rulesets:execute",
+        "proposals:read",
+        "deployments:read",
+        "sensors:read", "sensors:create", "sensors:update",
+        "experiments:read", "experiments:execute",
+        "feedback:create", "feedback:read",
+        "settings:read",
+        "agents:execute",
+        "samples:read",
+        "rule_extraction:read",
+    },
+    Role.USER: {
+        # User: CRUD (삭제/승인 제외, 사용자/감사 관리 제외)
+        "workflows:create", "workflows:read", "workflows:update",
+        "rulesets:create", "rulesets:read", "rulesets:update",
+        "sensors:read",
+        "experiments:create", "experiments:read", "experiments:update",
+        "settings:read",
+        "feedback:create", "feedback:read",
+        "proposals:read", "proposals:create",
+        "agents:execute",
+        "samples:read", "samples:create",
+        "rule_extraction:read",
     },
     Role.VIEWER: {
-        # Viewer: 조회만
+        # Viewer: 조회만 + 채팅
         "workflows:read",
         "rulesets:read",
         "sensors:read",
@@ -72,7 +128,10 @@ ROLE_PERMISSIONS: dict[str, Set[str]] = {
         "settings:read",
         "feedback:read",
         "proposals:read",
+        "deployments:read",
         "agents:execute",  # 채팅은 허용
+        "samples:read",
+        "rule_extraction:read",
     },
 }
 
@@ -188,6 +247,11 @@ def get_user_permissions(user: User) -> Set[str]:
 # 편의를 위한 사전 정의된 의존성
 require_admin = require_role(Role.ADMIN)
 require_admin_or_user = require_role(Role.ADMIN, Role.USER)
+
+# 5-Tier 역할별 의존성
+require_approver = require_role(Role.ADMIN, Role.APPROVER)
+require_operator = require_role(Role.ADMIN, Role.APPROVER, Role.OPERATOR)
+require_user_or_above = require_role(Role.ADMIN, Role.APPROVER, Role.OPERATOR, Role.USER)
 
 
 class PermissionChecker:

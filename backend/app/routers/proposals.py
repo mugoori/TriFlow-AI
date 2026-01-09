@@ -1,6 +1,12 @@
 """
 Proposed Rules Router
 제안된 규칙 관리 API
+
+권한:
+- proposals:read - 모든 역할 (viewer 이상)
+- proposals:create - user 이상
+- proposals:approve - approver 이상
+- proposals:delete - admin만
 """
 from datetime import datetime
 from typing import List, Optional
@@ -12,8 +18,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.database import get_db
-from app.models import ProposedRule, Tenant
+from app.models import ProposedRule, Tenant, User
+from app.auth.dependencies import get_current_user
 from app.services.feedback_analyzer import FeedbackAnalyzer
+from app.services.rbac_service import (
+    check_permission,
+    require_admin,
+    require_user_or_above,
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -104,6 +116,7 @@ async def list_proposals(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("proposals", "read")),
 ):
     """
     제안된 규칙 목록 조회
@@ -127,6 +140,7 @@ async def list_proposals(
 @router.get("/stats", response_model=ProposalStats)
 async def get_proposal_stats(
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("proposals", "read")),
 ):
     """
     제안 통계 조회
@@ -150,6 +164,7 @@ async def get_proposal_stats(
 async def get_proposal(
     proposal_id: str,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("proposals", "read")),
 ):
     """
     제안 상세 조회
@@ -172,6 +187,8 @@ async def review_proposal(
     proposal_id: str,
     review: ProposalReviewRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("proposals", "approve")),
 ):
     """
     제안 검토 (승인/거절)
@@ -226,6 +243,7 @@ async def review_proposal(
 async def delete_proposal(
     proposal_id: str,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
     제안 삭제 (pending 상태만 가능)
@@ -254,6 +272,7 @@ async def run_analysis(
     days: int = Query(7, ge=1, le=30, description="분석 기간 (일)"),
     min_frequency: int = Query(2, ge=1, le=10, description="최소 패턴 빈도"),
     db: Session = Depends(get_db),
+    _: None = Depends(require_user_or_above),
 ):
     """
     피드백 분석 실행 및 규칙 제안 생성

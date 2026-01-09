@@ -1,6 +1,12 @@
 """
 Sensor Data Router
 센서 데이터 조회 API - PostgreSQL DB 연동 + WebSocket 실시간 스트리밍 + CSV/Excel Import
+
+권한:
+- sensors:read - 모든 역할 (viewer 이상) + Data Scope 필터
+- sensors:create - operator 이상
+- sensors:update - operator 이상
+- sensors:delete - admin만
 """
 import asyncio
 import io
@@ -18,6 +24,8 @@ from uuid import uuid4
 
 from app.database import get_db
 from app.models import SensorData, Tenant
+from app.services.rbac_service import check_permission
+from app.services.data_scope_service import DataScope, get_data_scope, apply_line_filter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -168,12 +176,14 @@ DEFAULT_SENSOR_TYPES = ["temperature", "pressure", "humidity", "vibration", "flo
 @router.get("/data", response_model=SensorDataResponse)
 async def get_sensor_data(
     db: Session = Depends(get_db),
+    scope: DataScope = Depends(get_data_scope),
     start_date: Optional[datetime] = Query(None, description="시작 날짜"),
     end_date: Optional[datetime] = Query(None, description="종료 날짜"),
     line_code: Optional[str] = Query(None, description="라인 코드"),
     sensor_type: Optional[str] = Query(None, description="센서 타입"),
     page: int = Query(1, ge=1, description="페이지 번호"),
     page_size: int = Query(50, ge=1, le=200, description="페이지 크기"),
+    _: None = Depends(check_permission("sensors", "read")),
 ):
     """
     센서 데이터 조회 (PostgreSQL)
@@ -196,6 +206,9 @@ async def get_sensor_data(
             SensorData.recorded_at >= start_date,
             SensorData.recorded_at <= end_date
         )
+
+        # Data Scope 필터 적용
+        query = apply_line_filter(query, scope, SensorData.line_code)
 
         # 필터 적용
         if line_code:
@@ -240,11 +253,16 @@ async def get_sensor_data(
 
 
 @router.get("/filters", response_model=SensorFilterOptions)
-async def get_filter_options(db: Session = Depends(get_db)):
+async def get_filter_options(
+    db: Session = Depends(get_db),
+    scope: DataScope = Depends(get_data_scope),
+    _: None = Depends(check_permission("sensors", "read")),
+):
     """
     필터 옵션 조회 (DB에서 실제 사용 가능한 값 조회)
 
     사용 가능한 라인 코드와 센서 타입 목록을 반환합니다.
+    Data Scope에 따라 접근 가능한 라인만 반환합니다.
     """
     try:
         # DB에서 distinct 값 조회
@@ -260,14 +278,21 @@ async def get_filter_options(db: Session = Depends(get_db)):
         if not sensor_type_list:
             sensor_type_list = DEFAULT_SENSOR_TYPES
 
+        # Data Scope 필터 적용 (접근 가능한 라인만)
+        if not scope.all_access and scope.line_codes:
+            line_list = [line for line in line_list if line in scope.line_codes]
+
         return SensorFilterOptions(
             lines=sorted(line_list),
             sensor_types=sorted(sensor_type_list),
         )
     except Exception:
-        # DB 연결 실패 시 기본값 반환
+        # DB 연결 실패 시 기본값 반환 (Data Scope 적용)
+        lines = DEFAULT_LINES
+        if not scope.all_access and scope.line_codes:
+            lines = [line for line in lines if line in scope.line_codes]
         return SensorFilterOptions(
-            lines=DEFAULT_LINES,
+            lines=lines,
             sensor_types=DEFAULT_SENSOR_TYPES,
         )
 
@@ -275,10 +300,13 @@ async def get_filter_options(db: Session = Depends(get_db)):
 @router.get("/summary", response_model=SensorSummaryResponse)
 async def get_sensor_summary(
     db: Session = Depends(get_db),
+    scope: DataScope = Depends(get_data_scope),
     line_code: Optional[str] = Query(None, description="라인 코드"),
+    _: None = Depends(check_permission("sensors", "read")),
 ):
     """
     센서 데이터 요약 통계 (PostgreSQL)
+    Data Scope에 따라 접근 가능한 라인만 반환합니다.
     """
     try:
         # 최근 24시간 데이터 기준
@@ -294,6 +322,9 @@ async def get_sensor_summary(
         ).filter(
             SensorData.recorded_at >= since
         )
+
+        # Data Scope 필터 적용
+        query = apply_line_filter(query, scope, SensorData.line_code)
 
         if line_code:
             query = query.filter(SensorData.line_code == line_code)
@@ -513,9 +544,10 @@ class ImportResult(BaseModel):
 async def import_sensor_data(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("sensors", "create")),
 ):
     """
-    CSV/Excel 파일에서 센서 데이터 Import
+    CSV/Excel 파일에서 센서 데이터 Import (operator 이상)
 
     지원 파일 형식:
     - CSV (.csv)

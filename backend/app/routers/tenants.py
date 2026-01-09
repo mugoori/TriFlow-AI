@@ -1,6 +1,9 @@
 """
 Tenant API Router
 테넌트 관리 엔드포인트
+
+권한:
+- tenants:* - admin만 (테넌트 전체 관리)
 """
 from typing import List
 from uuid import UUID
@@ -11,8 +14,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.core import Tenant
 from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse
+from app.services.rbac_service import require_admin
 
-router = APIRouter()
+router = APIRouter(tags=["tenants"])
 
 
 @router.get("/", response_model=List[TenantResponse])
@@ -20,9 +24,10 @@ def list_tenants(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
-    테넌트 목록 조회
+    테넌트 목록 조회 (admin만)
 
     Args:
         skip: 건너뛸 레코드 수
@@ -37,9 +42,10 @@ def list_tenants(
 def get_tenant(
     tenant_id: UUID,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
-    테넌트 상세 조회
+    테넌트 상세 조회 (admin만)
 
     Args:
         tenant_id: 테넌트 ID
@@ -60,9 +66,10 @@ def get_tenant(
 def create_tenant(
     tenant_data: TenantCreate,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
-    테넌트 생성
+    테넌트 생성 (admin만)
 
     Args:
         tenant_data: 테넌트 생성 데이터
@@ -90,9 +97,10 @@ def update_tenant(
     tenant_id: UUID,
     tenant_data: TenantUpdate,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
-    테넌트 업데이트
+    테넌트 업데이트 (admin만)
 
     Args:
         tenant_id: 테넌트 ID
@@ -122,9 +130,10 @@ def update_tenant(
 def delete_tenant(
     tenant_id: UUID,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
-    테넌트 삭제
+    테넌트 삭제 (admin만)
 
     Args:
         tenant_id: 테넌트 ID

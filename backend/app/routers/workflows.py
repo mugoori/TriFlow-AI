@@ -1,6 +1,14 @@
 """
 Workflow Router
 워크플로우 CRUD 및 실행 API - PostgreSQL DB 연동
+
+권한:
+- workflows:read - 모든 역할 (viewer 이상)
+- workflows:create - user 이상
+- workflows:update - user 이상
+- workflows:execute - operator 이상
+- workflows:approve - approver 이상
+- workflows:delete - admin만
 """
 import copy
 from datetime import datetime
@@ -14,6 +22,10 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.database import get_db
 from app.models import Workflow, WorkflowInstance
+from app.services.rbac_service import (
+    check_permission,
+    require_admin,
+)
 
 router = APIRouter()
 
@@ -301,9 +313,10 @@ async def list_workflows(
     db: Session = Depends(get_db),
     is_active: Optional[bool] = Query(None, description="활성 상태 필터"),
     search: Optional[str] = Query(None, description="이름/설명 검색"),
+    _: None = Depends(check_permission("workflows", "read")),
 ):
     """
-    워크플로우 목록 조회 (PostgreSQL)
+    워크플로우 목록 조회 (PostgreSQL, viewer 이상)
     """
     try:
         query = db.query(Workflow)
@@ -562,9 +575,10 @@ async def approve_workflow(
     approval_id: UUID,
     body: ApprovalDecision,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("workflows", "approve")),
 ):
     """
-    워크플로우 승인
+    워크플로우 승인 (approver 이상)
 
     승인 요청을 승인합니다. 승인 상태가 'pending'인 경우에만 가능합니다.
     """
@@ -644,9 +658,10 @@ async def reject_workflow(
     approval_id: UUID,
     body: ApprovalDecision,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("workflows", "approve")),
 ):
     """
-    워크플로우 거부
+    워크플로우 거부 (approver 이상)
 
     승인 요청을 거부합니다. 승인 상태가 'pending'인 경우에만 가능합니다.
     """
@@ -830,9 +845,10 @@ async def get_workflow(
 async def create_workflow(
     workflow: WorkflowCreate,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("workflows", "create")),
 ):
     """
-    새 워크플로우 생성 (PostgreSQL)
+    새 워크플로우 생성 (PostgreSQL, user 이상)
     """
     # tenant 확인 또는 생성 (MVP: default tenant)
     from app.models import Tenant
@@ -881,9 +897,10 @@ async def update_workflow(
     workflow_id: str,
     update_data: WorkflowUpdate,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("workflows", "update")),
 ):
     """
-    워크플로우 수정 (PostgreSQL)
+    워크플로우 수정 (PostgreSQL, user 이상)
     - name, description, is_active: 기본 정보 수정
     - dsl_definition: 워크플로우 DSL 전체 수정
     """
@@ -932,9 +949,10 @@ async def update_workflow(
 async def delete_workflow(
     workflow_id: str,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
-    워크플로우 삭제 (PostgreSQL)
+    워크플로우 삭제 (PostgreSQL, admin만)
     """
     try:
         wf_uuid = UUID(workflow_id)
@@ -1009,9 +1027,10 @@ async def execute_workflow(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("workflows", "execute")),
 ):
     """
-    워크플로우 수동 실행 (테스트용)
+    워크플로우 수동 실행 (테스트용, operator 이상)
 
     트리거 조건과 관계없이 워크플로우를 즉시 실행합니다.
     테스트 데이터를 context로 전달하여 실행 결과를 확인할 수 있습니다.
@@ -1119,9 +1138,10 @@ async def run_workflow(
     workflow_id: str,
     request: Optional[WorkflowRunRequest] = None,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("workflows", "execute")),
 ):
     """
-    워크플로우 실행 (PostgreSQL + WorkflowEngine)
+    워크플로우 실행 (PostgreSQL + WorkflowEngine, operator 이상)
 
     조건 노드를 평가하고, 액션을 실행합니다.
     시뮬레이션 데이터를 사용하거나 직접 데이터를 전달할 수 있습니다.
@@ -1574,7 +1594,6 @@ async def resume_workflow_instance(
         workflow_engine,
         workflow_state_machine,
         checkpoint_manager,
-        WorkflowState,
     )
 
     # 1. 현재 상태 확인

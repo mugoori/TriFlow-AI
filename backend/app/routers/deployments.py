@@ -16,6 +16,13 @@ Canary 배포 관리 API.
 - GET    /deployments/{id}/metrics       # 메트릭 조회
 - GET    /deployments/{id}/comparison    # v1 vs v2 비교
 - GET    /deployments/{id}/health        # 건강 상태
+
+권한:
+- deployments:read - 모든 역할 (viewer 이상)
+- deployments:create - approver 이상
+- deployments:approve - approver 이상 (start-canary, promote)
+- deployments:rollback - approver 이상
+- deployments:delete - admin만
 """
 import logging
 from typing import Optional
@@ -32,6 +39,10 @@ from app.services.canary_assignment_service import CanaryAssignmentService
 from app.services.canary_rollback_service import CanaryRollbackService
 from app.services.deployment_metrics_service import DeploymentMetricsService
 from app.utils.canary_circuit_breaker import CanaryCircuitBreaker
+from app.services.rbac_service import (
+    check_permission,
+    require_admin,
+)
 from app.schemas.deployment import (
     DeploymentCreate,
     DeploymentUpdate,
@@ -41,8 +52,6 @@ from app.schemas.deployment import (
     RollbackRequest,
     AssignmentListResponse,
     AssignmentResponse,
-    MetricsComparison,
-    HealthStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,8 +68,9 @@ async def create_deployment(
     request: DeploymentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "create")),
 ):
-    """배포 생성"""
+    """배포 생성 (approver 이상)"""
     service = CanaryDeploymentService(db)
     try:
         deployment = service.create_deployment(
@@ -81,8 +91,9 @@ async def list_deployments(
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "read")),
 ):
-    """배포 목록 조회"""
+    """배포 목록 조회 (viewer 이상)"""
     service = CanaryDeploymentService(db)
     deployments, _ = service.list_deployments(
         tenant_id=current_user.tenant_id,
@@ -99,8 +110,9 @@ async def get_deployment(
     deployment_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "read")),
 ):
-    """배포 조회"""
+    """배포 조회 (viewer 이상)"""
     service = CanaryDeploymentService(db)
     deployment = service.get_deployment(deployment_id)
     if not deployment or deployment.tenant_id != current_user.tenant_id:
@@ -114,8 +126,9 @@ async def update_deployment(
     request: DeploymentUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "create")),
 ):
-    """배포 수정 (draft 상태에서만)"""
+    """배포 수정 (draft 상태에서만, approver 이상)"""
     service = CanaryDeploymentService(db)
     deployment = service.get_deployment(deployment_id)
     if not deployment or deployment.tenant_id != current_user.tenant_id:
@@ -133,8 +146,9 @@ async def delete_deployment(
     deployment_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_admin),
 ):
-    """배포 삭제"""
+    """배포 삭제 (admin만)"""
     service = CanaryDeploymentService(db)
     deployment = service.get_deployment(deployment_id)
     if not deployment or deployment.tenant_id != current_user.tenant_id:
@@ -157,8 +171,9 @@ async def start_canary(
     request: StartCanaryRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "approve")),
 ):
-    """Canary 배포 시작"""
+    """Canary 배포 시작 (approver 이상)"""
     service = CanaryDeploymentService(db)
     deployment = service.get_deployment(deployment_id)
     if not deployment or deployment.tenant_id != current_user.tenant_id:
@@ -182,8 +197,9 @@ async def update_traffic(
     request: UpdateTrafficRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "approve")),
 ):
-    """트래픽 비율 조정"""
+    """트래픽 비율 조정 (approver 이상)"""
     service = CanaryDeploymentService(db)
     deployment = service.get_deployment(deployment_id)
     if not deployment or deployment.tenant_id != current_user.tenant_id:
@@ -201,8 +217,9 @@ async def promote_deployment(
     deployment_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "approve")),
 ):
-    """Canary를 100% 승격"""
+    """Canary를 100% 승격 (approver 이상)"""
     service = CanaryDeploymentService(db)
     deployment = service.get_deployment(deployment_id)
     if not deployment or deployment.tenant_id != current_user.tenant_id:
@@ -221,8 +238,9 @@ async def rollback_deployment(
     request: RollbackRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "rollback")),
 ):
-    """롤백"""
+    """롤백 (approver 이상)"""
     service = CanaryRollbackService(db)
 
     # 권한 확인

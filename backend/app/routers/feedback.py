@@ -1,6 +1,11 @@
 """
 Feedback Router
 사용자 피드백 수집 API
+
+권한:
+- feedback:read - 모든 역할 (viewer 이상)
+- feedback:create - operator 이상 (피드백 작성)
+- feedback:delete - admin만
 """
 from datetime import datetime
 from typing import List, Optional
@@ -13,6 +18,10 @@ from sqlalchemy import desc
 
 from app.database import get_db
 from app.models import FeedbackLog, Tenant
+from app.services.rbac_service import (
+    check_permission,
+    require_admin,
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -94,9 +103,10 @@ def _feedback_to_response(feedback: FeedbackLog) -> FeedbackResponse:
 async def create_feedback(
     feedback_data: FeedbackCreate,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("feedback", "create")),
 ):
     """
-    피드백 생성
+    피드백 생성 (operator 이상)
     - feedback_type: positive, negative, correction
     """
     # 유효한 feedback_type 검증
@@ -144,9 +154,10 @@ async def list_feedback(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("feedback", "read")),
 ):
     """
-    피드백 목록 조회
+    피드백 목록 조회 (viewer 이상)
     """
     query = db.query(FeedbackLog)
 
@@ -232,9 +243,10 @@ async def mark_as_processed(
 async def delete_feedback(
     feedback_id: str,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
-    피드백 삭제
+    피드백 삭제 (admin만)
     """
     try:
         fb_uuid = UUID(feedback_id)

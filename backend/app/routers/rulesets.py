@@ -2,6 +2,13 @@
 Ruleset Router
 룰셋 CRUD 및 실행 API - PostgreSQL DB 연동
 Rhai 스크립트 기반 규칙 관리
+
+권한:
+- rulesets:read - 모든 역할 (viewer 이상)
+- rulesets:create - user 이상
+- rulesets:update - user 이상
+- rulesets:execute - operator 이상
+- rulesets:delete - admin만
 """
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -13,6 +20,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Ruleset, RulesetVersion, Tenant
+from app.services.rbac_service import (
+    check_permission,
+    require_admin,
+)
 
 router = APIRouter()
 
@@ -332,9 +343,10 @@ async def list_rulesets(
     db: Session = Depends(get_db),
     is_active: Optional[bool] = Query(None, description="활성 상태 필터"),
     search: Optional[str] = Query(None, description="이름/설명 검색"),
+    _: None = Depends(check_permission("rulesets", "read")),
 ):
     """
-    룰셋 목록 조회
+    룰셋 목록 조회 (viewer 이상)
     """
     try:
         query = db.query(Ruleset)
@@ -387,9 +399,10 @@ async def get_sample_scripts():
 async def get_ruleset(
     ruleset_id: str,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("rulesets", "read")),
 ):
     """
-    룰셋 상세 조회
+    룰셋 상세 조회 (viewer 이상)
     """
     try:
         rs_uuid = UUID(ruleset_id)
@@ -408,9 +421,10 @@ async def get_ruleset(
 async def create_ruleset(
     ruleset: RulesetCreate,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("rulesets", "create")),
 ):
     """
-    새 룰셋 생성
+    새 룰셋 생성 (user 이상)
     """
     tenant = _get_or_create_tenant(db)
 
@@ -435,9 +449,10 @@ async def update_ruleset(
     ruleset_id: str,
     update_data: RulesetUpdate,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("rulesets", "update")),
 ):
     """
-    룰셋 수정
+    룰셋 수정 (user 이상)
     """
     try:
         rs_uuid = UUID(ruleset_id)
@@ -474,9 +489,10 @@ async def update_ruleset(
 async def delete_ruleset(
     ruleset_id: str,
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
 ):
     """
-    룰셋 삭제
+    룰셋 삭제 (admin만)
     """
     try:
         rs_uuid = UUID(ruleset_id)
@@ -499,9 +515,10 @@ async def execute_ruleset(
     ruleset_id: str,
     request: RulesetExecuteRequest,
     db: Session = Depends(get_db),
+    _: None = Depends(check_permission("rulesets", "execute")),
 ):
     """
-    룰셋 실행 (MVP: Mock 실행 - 실제 Rhai 엔진 연동 전)
+    룰셋 실행 (MVP: Mock 실행 - 실제 Rhai 엔진 연동 전, operator 이상)
 
     입력 데이터를 받아 룰셋을 실행하고 결과를 반환합니다.
     MVP 단계에서는 실행 이력을 DB에 저장하지 않습니다.
