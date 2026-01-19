@@ -31,6 +31,18 @@ class DataScopeUpdateRequest(BaseModel):
         default_factory=list,
         description="접근 가능한 라인 코드 목록",
     )
+    product_families: List[str] = Field(
+        default_factory=list,
+        description="접근 가능한 제품군 목록",
+    )
+    shift_codes: List[str] = Field(
+        default_factory=list,
+        description="접근 가능한 시프트 코드 목록",
+    )
+    equipment_ids: List[str] = Field(
+        default_factory=list,
+        description="접근 가능한 설비 ID 목록",
+    )
     all_access: bool = Field(
         default=False,
         description="전체 접근 권한 (admin 전용)",
@@ -44,6 +56,9 @@ class DataScopeResponse(BaseModel):
     """Data Scope 응답"""
     factory_codes: List[str] = Field(default_factory=list)
     line_codes: List[str] = Field(default_factory=list)
+    product_families: List[str] = Field(default_factory=list)
+    shift_codes: List[str] = Field(default_factory=list)
+    equipment_ids: List[str] = Field(default_factory=list)
     all_access: bool = False
 
 
@@ -89,6 +104,9 @@ class UserDetailResponse(BaseModel):
             data_scope=DataScopeResponse(
                 factory_codes=data_scope_config.get("factory_codes", []),
                 line_codes=data_scope_config.get("line_codes", []),
+                product_families=data_scope_config.get("product_families", []),
+                shift_codes=data_scope_config.get("shift_codes", []),
+                equipment_ids=data_scope_config.get("equipment_ids", []),
                 all_access=data_scope_config.get("all_access", False),
             ),
             oauth_provider=user.oauth_provider,
