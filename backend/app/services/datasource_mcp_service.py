@@ -47,14 +47,14 @@ class DataSourceMCPService:
         return self.db.query(DataSource).filter(
             DataSource.source_id == source_id,
             DataSource.tenant_id == tenant_id,
-            DataSource.is_active == True
+            DataSource.is_active is True
         ).first()
 
     def get_active_sources(self, tenant_id: UUID, source_type: Optional[str] = None) -> List[DataSource]:
         """활성화된 DataSource 목록 조회"""
         query = self.db.query(DataSource).filter(
             DataSource.tenant_id == tenant_id,
-            DataSource.is_active == True
+            DataSource.is_active is True
         )
         if source_type:
             query = query.filter(DataSource.source_type == source_type)
@@ -149,7 +149,7 @@ class DataSourceMCPService:
     def invalidate_cache(self, source_id: UUID):
         """래퍼 캐시 무효화 (설정 변경 시)"""
         if source_id in self._wrapper_cache:
-            wrapper = self._wrapper_cache.pop(source_id)
+            self._wrapper_cache.pop(source_id)
             # 비동기 클라이언트 정리는 별도 처리 필요
             logger.info(f"Invalidated wrapper cache for source_id: {source_id}")
 

@@ -368,7 +368,7 @@ class TestGetAsyncSession:
         from app.database import get_async_session
 
         with pytest.raises(ValueError):
-            async with get_async_session() as session:
+            async with get_async_session():
                 # 의도적인 에러
                 raise ValueError("Test error")
 

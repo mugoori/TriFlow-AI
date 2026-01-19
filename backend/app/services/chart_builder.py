@@ -389,7 +389,7 @@ class ChartBuilder:
         **kwargs
     ) -> ChartConfig:
         """파이 차트 생성"""
-        is_donut = kwargs.get("donut", False)
+        kwargs.get("donut", False)
 
         series = [SeriesConfig(
             name=value_field,
@@ -447,7 +447,7 @@ class ChartBuilder:
             ))
 
         # 버블 차트 지원 (세 번째 필드가 크기)
-        size_field = kwargs.get("size_field")
+        kwargs.get("size_field")
 
         x_axis = AxisConfig(
             field=x_field,

@@ -80,15 +80,15 @@ class CorrelationAnalyzer:
         triggers = []
 
         # 달성률 기준값
-        ach_green = thresholds.get("achievement_rate", {}).get("green", 95.0)
+        thresholds.get("achievement_rate", {}).get("green", 95.0)
         ach_yellow = thresholds.get("achievement_rate", {}).get("yellow", 80.0)
 
         # 불량률 기준값
-        def_green = thresholds.get("defect_rate", {}).get("green", 2.0)
+        thresholds.get("defect_rate", {}).get("green", 2.0)
         def_yellow = thresholds.get("defect_rate", {}).get("yellow", 3.0)
 
         # 비가동 기준값 (분)
-        dt_green = thresholds.get("downtime_minutes", {}).get("green", 30.0)
+        thresholds.get("downtime_minutes", {}).get("green", 30.0)
         dt_yellow = thresholds.get("downtime_minutes", {}).get("yellow", 60.0)
 
         for line in production_data:

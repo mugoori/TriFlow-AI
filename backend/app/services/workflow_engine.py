@@ -787,7 +787,7 @@ class ActionExecutor:
 
         data = params.get("data", [])
         value_key = params.get("value_key", "value")
-        timestamp_key = params.get("timestamp_key", "timestamp")
+        params.get("timestamp_key", "timestamp")
         window_size = params.get("window_size", 5)
         sensor_type = params.get("sensor_type", "sensor")
         hours = params.get("hours", 24)
@@ -1054,7 +1054,7 @@ class ActionExecutor:
 
         query = params.get("query", "")
         query_params = params.get("params", {})
-        timeout = params.get("timeout", 30)
+        params.get("timeout", 30)
         workflow_id = context.get("workflow_id")
 
         if not query or not query.strip():
@@ -1580,7 +1580,7 @@ class ActionExecutor:
         metric_type = params.get("metric_type", "custom")
         numerator = params.get("numerator", 0)
         denominator = params.get("denominator", 1)
-        formula = params.get("formula", "")
+        params.get("formula", "")
         data = params.get("data", {})
 
         result_value = 0.0
@@ -2664,7 +2664,7 @@ class WorkflowEngine:
         from sqlalchemy import text
 
         source_type = config.get("source_type", "database")
-        output_variable = config.get("output_variable", "data_result")
+        config.get("output_variable", "data_result")
         limit = config.get("limit", 100)
 
         try:
@@ -2700,7 +2700,7 @@ class WorkflowEngine:
             elif source_type == "sensor":
                 # 센서 데이터 조회 (core.sensor_data 테이블)
                 sensor_ids = config.get("sensor_ids", [])
-                time_range = config.get("time_range", {})
+                config.get("time_range", {})
 
                 with get_db_context() as db:
                     if sensor_ids:
@@ -4923,7 +4923,7 @@ result = {
         metrics = analysis_config.get("metrics", [])
         dimensions = analysis_config.get("dimensions", [])
         time_range = analysis_config.get("time_range", "7d")
-        filters = analysis_config.get("filters", [])
+        analysis_config.get("filters", [])
 
         # Retry/Circuit Breaker 설정
         retry_config = config.get("retry", {})

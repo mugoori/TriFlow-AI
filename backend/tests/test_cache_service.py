@@ -220,7 +220,7 @@ class TestCachedDecorator:
 
     def test_cached_decorator_hit(self):
         """캐시 히트 시 캐시된 값 반환"""
-        with patch.object(CacheService, 'get', return_value="cached_result") as mock_get:
+        with patch.object(CacheService, 'get', return_value="cached_result"):
             with patch.object(CacheService, 'set') as mock_set:
                 call_count = 0
 

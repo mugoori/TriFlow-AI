@@ -182,7 +182,7 @@ async def get_feedback_stats(
     positive = db.query(FeedbackLog).filter(FeedbackLog.feedback_type == "positive").count()
     negative = db.query(FeedbackLog).filter(FeedbackLog.feedback_type == "negative").count()
     correction = db.query(FeedbackLog).filter(FeedbackLog.feedback_type == "correction").count()
-    unprocessed = db.query(FeedbackLog).filter(FeedbackLog.is_processed == False).count()
+    unprocessed = db.query(FeedbackLog).filter(FeedbackLog.is_processed is False).count()
 
     return FeedbackStats(
         total=total,

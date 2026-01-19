@@ -473,7 +473,7 @@ class TestRAGServiceSearch:
             mock_ctx.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
-            result = await service.search(
+            await service.search(
                 tenant_id=tenant_id,
                 query="test query",
                 top_k=5,

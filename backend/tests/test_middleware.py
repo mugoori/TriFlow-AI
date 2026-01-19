@@ -345,7 +345,7 @@ class TestAuditMiddleware:
         async def call_next(request):
             return Response(content=b'{"result": "ok"}', status_code=200)
 
-        with patch("app.middleware.audit.SessionLocal") as mock_session, \
+        with patch("app.middleware.audit.SessionLocal"), \
              patch("app.middleware.audit.create_audit_log") as mock_create_log:
 
             mock_create_log.side_effect = Exception("DB Error")

@@ -468,11 +468,11 @@ class TestIntentClassifier:
         classifier = V7IntentClassifier()
 
         # 명확한 요청
-        question = classifier.should_clarify("LINE_A 온도 상태 판단해줘")
+        classifier.should_clarify("LINE_A 온도 상태 판단해줘")
         # 명확화 필요 없으면 None
 
         # 애매한 요청
-        question2 = classifier.should_clarify("알림")
+        classifier.should_clarify("알림")
         # 명확화 필요하면 질문 문자열
 
     def test_get_classification_debug(self):

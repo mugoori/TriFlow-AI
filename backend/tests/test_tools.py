@@ -288,8 +288,8 @@ class TestRhaiEnginePool:
 
         # 3번 호출하면 다시 첫 번째로 돌아와야 함
         engine1 = pool.get_engine()
-        engine2 = pool.get_engine()
-        engine3 = pool.get_engine()
+        pool.get_engine()
+        pool.get_engine()
         engine4 = pool.get_engine()
 
         assert engine1 is engine4  # 다시 첫 번째

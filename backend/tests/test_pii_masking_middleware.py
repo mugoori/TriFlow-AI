@@ -653,7 +653,7 @@ class TestLoggingFilterSetup:
         from app.middleware.pii_masking import PIIMaskingMiddleware, PIIMaskingFilter
 
         app = MagicMock()
-        middleware = PIIMaskingMiddleware(app)
+        PIIMaskingMiddleware(app)
 
         # 루트 로거에 필터가 추가되었는지 확인
         root_logger = logging.getLogger()

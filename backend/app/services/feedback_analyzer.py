@@ -91,7 +91,7 @@ class FeedbackAnalyzer:
         feedbacks = self.db.query(FeedbackLog).filter(
             FeedbackLog.created_at >= since,
             FeedbackLog.feedback_type.in_(["negative", "correction"]),
-            FeedbackLog.is_processed == False,
+            FeedbackLog.is_processed is False,
         ).order_by(desc(FeedbackLog.created_at)).all()
 
         if not feedbacks:
@@ -324,7 +324,6 @@ if input.sensor_type == sensor_type {{
         tenant_id: UUID,
     ) -> Optional[ProposedRule]:
         """에이전트 개선 규칙 제안 생성"""
-        agent_type = "unknown"
         for sample in pattern.sample_feedbacks:
             # context에서 agent_type 추출 시도
             pass  # 실제로는 원본 피드백에서 추출

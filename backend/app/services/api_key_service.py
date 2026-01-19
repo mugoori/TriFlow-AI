@@ -131,7 +131,7 @@ def validate_api_key(
     # DB 조회
     db_key = db.query(ApiKey).filter(
         ApiKey.key_hash == key_hash,
-        ApiKey.is_active == True,
+        ApiKey.is_active is True,
         ApiKey.revoked_at.is_(None),
     ).first()
 
@@ -177,7 +177,7 @@ def rotate_api_key(
     old_key = db.query(ApiKey).filter(
         ApiKey.key_id == key_id,
         ApiKey.tenant_id == user.tenant_id,
-        ApiKey.is_active == True,
+        ApiKey.is_active is True,
     ).first()
 
     if not old_key:
@@ -280,7 +280,7 @@ def get_api_key_stats(db: Session, user: User) -> dict:
 
     active = db.query(func.count(ApiKey.key_id)).filter(
         ApiKey.tenant_id == tenant_id,
-        ApiKey.is_active == True,
+        ApiKey.is_active is True,
         ApiKey.revoked_at.is_(None),
         (ApiKey.expires_at.is_(None) | (ApiKey.expires_at > now)),
     ).scalar()

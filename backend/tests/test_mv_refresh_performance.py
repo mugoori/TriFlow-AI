@@ -60,7 +60,7 @@ class TestMVRefreshPerformance:
         times = []
         for _ in range(5):
             start_time = time.time()
-            result = await service.get_card_values(
+            await service.get_card_values(
                 tenant_id=test_user.tenant_id,
                 user_id=test_user.user_id,
                 period="7days"

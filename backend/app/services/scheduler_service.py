@@ -285,7 +285,7 @@ async def auto_extract_samples_from_feedback():
 
         # 활성 테넌트 조회
         from app.models import Tenant
-        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        tenants = db.query(Tenant).filter(Tenant.is_active is True).all()
 
         total_extracted = 0
         for tenant in tenants:
@@ -325,7 +325,7 @@ async def auto_update_golden_sets():
         # 활성 골든셋 조회
         from app.models import GoldenSampleSet
         active_sets = db.query(GoldenSampleSet).filter(
-            GoldenSampleSet.is_active == True
+            GoldenSampleSet.is_active is True
         ).all()
 
         total_updated = 0

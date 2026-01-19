@@ -46,7 +46,7 @@ class TestExperimentCRUD:
         tenant_id = uuid4()
         user_id = uuid4()
 
-        result = service.create_experiment(
+        service.create_experiment(
             tenant_id=tenant_id,
             name="New Experiment",
             description="Test description",
@@ -207,7 +207,7 @@ class TestVariantManagement:
         """변형 추가 성공"""
         mock_db.query.return_value.filter.return_value.first.return_value = sample_experiment
 
-        result = service.add_variant(
+        service.add_variant(
             experiment_id=sample_experiment.experiment_id,
             name="Control",
             is_control=True,
@@ -578,7 +578,7 @@ class TestAssignmentLogic:
         mock_db.query.return_value.filter.return_value.first.return_value = running_experiment
         mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
 
-        result = service.assign_user_to_variant(
+        service.assign_user_to_variant(
             running_experiment.experiment_id,
             session_id="test-session-123",
         )
@@ -628,7 +628,7 @@ class TestMetrics:
         exp_id = uuid4()
         variant_id = uuid4()
 
-        result = service.record_metric(
+        service.record_metric(
             experiment_id=exp_id,
             variant_id=variant_id,
             metric_name="conversion_rate",

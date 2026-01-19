@@ -544,7 +544,7 @@ class TestHTTPMCPProxyContextManager:
         proxy = HTTPMCPProxy()
 
         async with proxy:
-            client = proxy._http_client
+            pass
 
         # Client should be closed but may still exist
         # We just verify no exception is raised

@@ -764,7 +764,6 @@ class WorkflowPlannerAgent(BaseAgent):
         """
         try:
             # Placeholder 검증 - LLM이 추론한 placeholder 값 거부
-            placeholder_patterns = ["<UNKNOWN>", "<unknown>", "UNKNOWN", "???", "TBD", "<TBD>"]
 
             def is_placeholder(val: str | None) -> bool:
                 if not val:

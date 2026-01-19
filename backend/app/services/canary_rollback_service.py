@@ -183,7 +183,7 @@ class CanaryRollbackService:
         affected = self.db.query(CanaryExecutionLog).filter(
             CanaryExecutionLog.deployment_id == deployment_id,
             CanaryExecutionLog.canary_version == "v2",
-            CanaryExecutionLog.needs_reprocess == False,
+            CanaryExecutionLog.needs_reprocess is False,
         ).update({
             "needs_reprocess": True,
         })
@@ -271,7 +271,7 @@ class CanaryRollbackService:
         """재처리가 필요한 로그 조회"""
         return self.db.query(CanaryExecutionLog).filter(
             CanaryExecutionLog.deployment_id == deployment_id,
-            CanaryExecutionLog.needs_reprocess == True,
+            CanaryExecutionLog.needs_reprocess is True,
             CanaryExecutionLog.reprocessed_at.is_(None),
         ).limit(limit).all()
 

@@ -393,7 +393,7 @@ class TestRevokeApiKey:
         mock_key.is_active = True
         mock_db.query.return_value.filter.return_value.first.return_value = mock_key
 
-        result = revoke_api_key(mock_db, uuid4(), mock_user)
+        revoke_api_key(mock_db, uuid4(), mock_user)
 
         assert mock_key.revoked_reason == "Revoked by user"
 

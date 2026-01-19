@@ -332,7 +332,7 @@ class TestCircuitBreaker:
     async def test_context_manager_success(self, circuit_breaker):
         """컨텍스트 매니저 성공 케이스"""
         async with circuit_breaker:
-            result = "success"
+            pass
 
         assert circuit_breaker.stats.successful_calls == 1
 

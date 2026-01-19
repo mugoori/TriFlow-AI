@@ -891,7 +891,7 @@ class TestDashboardEndpointsMock:
         mock_db.commit = MagicMock()
         mock_db.refresh = MagicMock()
 
-        result = await create_dashboard(
+        await create_dashboard(
             data=data,
             db=mock_db,
             current_user=mock_user
@@ -919,7 +919,7 @@ class TestDashboardEndpointsMock:
 
         data = DashboardUpdate(name="새 이름")
 
-        result = await update_dashboard(
+        await update_dashboard(
             dashboard_id=dashboard_id,
             data=data,
             db=mock_db,

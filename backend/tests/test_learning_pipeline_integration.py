@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from app.services.sample_curation_service import SampleCurationService
 from app.services.rule_extraction_service import RuleExtractionService
 from app.services.golden_sample_set_service import GoldenSampleSetService
-from app.models import FeedbackLog, JudgmentExecution, Sample, AutoRuleCandidate, ProposedRule
+from app.models import FeedbackLog, JudgmentExecution
 from app.schemas.sample import SampleExtractRequest, GoldenSetCreate, GoldenSetAutoUpdateRequest
 from app.schemas.rule_extraction import RuleExtractionRequest, TestRequest, ApproveRequest
 

@@ -316,7 +316,7 @@ class BIChatService:
             )
 
         # 3. 사용자 메시지 저장
-        user_message_id = await self._save_message(
+        await self._save_message(
             session_id=session.session_id,
             role="user",
             content=request.message,
@@ -1024,7 +1024,7 @@ class BIChatService:
             return None
 
         from app.services.insight_service import get_insight_service
-        insight_service = get_insight_service()
+        get_insight_service()
 
         try:
             # Facts 파싱

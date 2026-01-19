@@ -316,7 +316,6 @@ class TestStatCardThresholdLogic:
         value = 90
         green_threshold = 80
         yellow_threshold = 60
-        red_threshold = 40
         higher_is_better = True
 
         if higher_is_better:
@@ -341,7 +340,6 @@ class TestStatCardThresholdLogic:
         value = 70
         green_threshold = 80
         yellow_threshold = 60
-        red_threshold = 40
         higher_is_better = True
 
         if higher_is_better:
@@ -366,7 +364,6 @@ class TestStatCardThresholdLogic:
         value = 50
         green_threshold = 80
         yellow_threshold = 60
-        red_threshold = 40
         higher_is_better = True
 
         if higher_is_better:
@@ -391,7 +388,6 @@ class TestStatCardThresholdLogic:
         value = 1.0
         green_threshold = 2.0
         yellow_threshold = 5.0
-        red_threshold = 10.0
         higher_is_better = False
 
         if higher_is_better:
@@ -416,7 +412,6 @@ class TestStatCardThresholdLogic:
         value = 15.0
         green_threshold = 2.0
         yellow_threshold = 5.0
-        red_threshold = 10.0
         higher_is_better = False
 
         if higher_is_better:
@@ -864,7 +859,7 @@ class TestStatCardServiceMethods:
         from app.services.stat_card_service import StatCardService
 
         mock_db = MagicMock()
-        service = StatCardService(db=mock_db)
+        StatCardService(db=mock_db)
 
         tenant_id = uuid4()
         config_id = uuid4()
@@ -1657,7 +1652,7 @@ class TestStatCardServiceReorderConfigs:
         service = StatCardService(db=mock_db)
 
         card_ids = [uuid4(), uuid4(), uuid4()]
-        results = service.reorder_configs(uuid4(), uuid4(), card_ids)
+        service.reorder_configs(uuid4(), uuid4(), card_ids)
 
         assert mock_db.execute.called
         assert mock_db.commit.called

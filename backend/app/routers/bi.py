@@ -231,7 +231,7 @@ async def list_dashboards(
 
     if include_public:
         query = query.filter(
-            (BiDashboard.owner_id == current_user.user_id) | (BiDashboard.is_public == True)
+            (BiDashboard.owner_id == current_user.user_id) | (BiDashboard.is_public is True)
         )
     else:
         query = query.filter(BiDashboard.owner_id == current_user.user_id)
@@ -913,7 +913,7 @@ async def get_lines(
     query = db.query(DimLine).filter(DimLine.tenant_id == current_user.tenant_id)
 
     if is_active:
-        query = query.filter(DimLine.is_active == True)
+        query = query.filter(DimLine.is_active is True)
 
     lines = query.order_by(DimLine.line_code).all()
 
@@ -940,7 +940,7 @@ async def get_products(
     query = db.query(DimProduct).filter(DimProduct.tenant_id == current_user.tenant_id)
 
     if is_active:
-        query = query.filter(DimProduct.is_active == True)
+        query = query.filter(DimProduct.is_active is True)
     if category:
         query = query.filter(DimProduct.category == category)
 
@@ -969,7 +969,7 @@ async def get_kpis(
     """KPI 정의 목록 조회"""
     query = db.query(DimKpi).filter(
         DimKpi.tenant_id == current_user.tenant_id,
-        DimKpi.is_active == True,
+        DimKpi.is_active is True,
     )
 
     if category:
@@ -1242,7 +1242,7 @@ def _get_oee_chart_data(
 
     data = []
     for r in results:
-        planned = float(r.planned_time or 0)
+        float(r.planned_time or 0)
         actual = float(r.actual_time or 0)
         downtime = float(r.downtime or 0)
         total = float(r.total_qty or 0)

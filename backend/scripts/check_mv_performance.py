@@ -93,7 +93,7 @@ async def check_scheduler_status():
     mv_job = next((j for j in jobs if j["job_id"] == "refresh_materialized_views"), None)
 
     if mv_job:
-        print(f"\nMV Refresh Job:")
+        print("\nMV Refresh Job:")
         print(f"  Enabled: {mv_job['enabled']}")
         print(f"  Status: {mv_job['status']}")
         print(f"  Interval: {mv_job['interval_seconds']}s ({mv_job['interval_seconds'] // 60}min)")
@@ -130,7 +130,7 @@ async def check_mv_health():
 
         # Get service status
         service_status = mv_refresh_service.status
-        print(f"\nService Status:")
+        print("\nService Status:")
         print(f"  Last Refresh: {service_status['last_refresh'] or 'Never'}")
         print(f"  Refresh Count: {service_status['refresh_count']}")
         if service_status['last_error']:
