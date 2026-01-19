@@ -487,6 +487,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register experiments router: {e}")
 
+# Alerts 라우터 (Prometheus AlertManager Webhook)
+try:
+    from app.routers import alerts
+    app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
+    logger.info("Alerts router registered")
+except Exception as e:
+    logger.error(f"Failed to register alerts router: {e}")
+
 # Audit 라우터 (감사 로그)
 try:
     from app.routers import audit
