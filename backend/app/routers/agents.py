@@ -9,12 +9,14 @@ import logging
 from functools import partial
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 
 from app.services.agent_orchestrator import orchestrator
 from app.schemas.agent import AgentRequest, AgentResponse, JudgmentRequest
 from app.utils.errors import classify_error, format_error_response
+from app.auth.dependencies import get_optional_user
+from app.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +27,17 @@ _executor = ThreadPoolExecutor(max_workers=4)
 
 
 @router.post("/chat", response_model=AgentResponse)
-async def chat_with_agent(request: AgentRequest):
+async def chat_with_agent(
+    request: AgentRequest,
+    current_user: User = Depends(get_optional_user)
+):
     """
     Meta Router를 통한 채팅
     사용자 메시지를 분석하여 적절한 Sub-Agent로 라우팅
 
     Args:
         request: AgentRequest (message, context, tenant_id, conversation_history)
+        current_user: 인증된 사용자 (선택적)
 
     Returns:
         AgentResponse
@@ -48,6 +54,14 @@ async def chat_with_agent(request: AgentRequest):
             ]
             logger.info(f"Including {len(context['conversation_history'])} messages from conversation history")
 
+        # 사용자 역할 정보 전달 (인증된 경우)
+        user_role = None
+        if current_user:
+            user_role = current_user.role
+            context["user_id"] = str(current_user.user_id)
+            context["user_email"] = current_user.email
+            logger.info(f"Authenticated user: {current_user.email} (role: {user_role})")
+
         # AgentOrchestrator를 통한 자동 라우팅 및 실행
         # run_in_executor로 동기 함수를 비동기로 실행 (이벤트 루프 블로킹 방지)
         loop = asyncio.get_event_loop()
@@ -58,6 +72,7 @@ async def chat_with_agent(request: AgentRequest):
                 message=request.message,
                 context=context,
                 tenant_id=request.tenant_id,
+                user_role=user_role,
             )
         )
 
@@ -168,6 +183,7 @@ async def stream_chat_response(
     context: dict,
     tenant_id: str = None,
     conversation_history: list = None,
+    user_role: str = None,
 ) -> AsyncGenerator[str, None]:
     """
     채팅 응답을 스트리밍으로 생성
@@ -197,6 +213,7 @@ async def stream_chat_response(
                 message=message,
                 context=merged_context,
                 tenant_id=tenant_id,
+                user_role=user_role,
             )
         )
 
@@ -271,7 +288,10 @@ async def stream_chat_response(
 
 
 @router.post("/chat/stream")
-async def chat_stream(request: AgentRequest):
+async def chat_stream(
+    request: AgentRequest,
+    current_user: User = Depends(get_optional_user)
+):
     """
     스트리밍 채팅 엔드포인트 (SSE)
 
@@ -301,12 +321,18 @@ async def chat_stream(request: AgentRequest):
     if request.conversation_history:
         history = [msg.model_dump() for msg in request.conversation_history]
 
+    # 사용자 역할 정보
+    user_role = current_user.role if current_user else None
+    if current_user:
+        logger.info(f"Stream authenticated user: {current_user.email} (role: {user_role})")
+
     return StreamingResponse(
         stream_chat_response(
             message=request.message,
             context=request.context or {},
             tenant_id=request.tenant_id,
             conversation_history=history,
+            user_role=user_role,
         ),
         media_type="text/event-stream",
         headers={

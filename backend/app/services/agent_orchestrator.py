@@ -69,6 +69,7 @@ class AgentOrchestrator:
         message: str,
         context: Optional[Dict[str, Any]] = None,
         tenant_id: Optional[str] = None,
+        user_role: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         사용자 요청 처리 (전체 파이프라인)
@@ -77,6 +78,7 @@ class AgentOrchestrator:
             message: 사용자 메시지
             context: 추가 컨텍스트 (선택)
             tenant_id: 테넌트 ID (선택)
+            user_role: 사용자 역할 (권한 체크용, 선택)
 
         Returns:
             {
@@ -94,7 +96,7 @@ class AgentOrchestrator:
         logger.info(f"[Orchestrator] Processing: {message[:100]}...")
 
         # Step 1: 하이브리드 라우팅 (규칙 기반 우선 → LLM fallback)
-        routing_info = self._route_hybrid(message, context)
+        routing_info = self._route_hybrid(message, context, user_role)
         target_agent = routing_info.get("target_agent", "general")
 
         logger.info(
@@ -102,7 +104,17 @@ class AgentOrchestrator:
             f"(source: {routing_info.get('context', {}).get('classification_source', 'unknown')})"
         )
 
-        # Step 2: Sub-Agent 실행
+        # Step 2: 권한 에러 처리
+        if target_agent == "error":
+            error_msg = routing_info.get("error", "권한이 부족합니다.")
+            logger.warning(f"[Orchestrator] Permission denied: {error_msg}")
+            return self._format_response(
+                result={"response": error_msg},
+                agent_name="MetaRouterAgent",
+                routing_info=routing_info,
+            )
+
+        # Step 3: Sub-Agent 실행
         if target_agent in self.agents:
             return self._execute_sub_agent(
                 target_agent=target_agent,
@@ -112,7 +124,7 @@ class AgentOrchestrator:
                 original_message=message,
             )
 
-        # Step 3: general인 경우 기본 응답 생성
+        # Step 4: general인 경우 기본 응답 생성
         general_response = self._generate_general_response(message, routing_info)
         return self._format_response(
             result={"response": general_response},
@@ -124,42 +136,51 @@ class AgentOrchestrator:
         self,
         message: str,
         context: Dict[str, Any],
+        user_role: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         하이브리드 라우팅 (규칙 기반 우선 → LLM fallback)
 
         1차: 규칙 기반 분류 시도 (IntentClassifier)
         2차: 규칙 매칭 실패 시 LLM 분류 (MetaRouter)
+
+        Args:
+            message: 사용자 메시지
+            context: 컨텍스트
+            user_role: 사용자 역할 (권한 체크용)
+
+        Returns:
+            라우팅 정보 (권한 부족 시 error 필드 포함)
         """
-        # 1차: 규칙 기반 분류 시도
-        rule_result = self.meta_router.classify_with_rules(message)
+        # Role을 Enum으로 변환 (user_role이 문자열인 경우)
+        from app.services.rbac_service import Role
 
-        if rule_result and rule_result.confidence >= 0.9:
-            # 규칙 기반 분류 성공
-            logger.info(
-                f"[Orchestrator] Rule-based routing: {message[:30]}... → {rule_result.intent}"
-            )
-            return {
-                "target_agent": rule_result.intent,
-                "processed_request": message,
-                "context": {
-                    "classification_source": "rule_engine",
-                    "matched_pattern": rule_result.matched_pattern,
-                    "confidence": rule_result.confidence,
-                },
-                "intent": rule_result.intent,
-                "slots": {},
-            }
+        role_enum = None
+        if user_role:
+            try:
+                role_enum = Role(user_role)
+            except ValueError:
+                logger.warning(f"Invalid user_role: {user_role}, defaulting to None")
 
-        # 2차: LLM 분류 (규칙 매칭 실패)
-        logger.info(f"[Orchestrator] LLM routing fallback for: {message[:30]}...")
-        llm_result = self.meta_router.run(
-            user_message=message,
-            context=context,
+        # MetaRouter의 route_with_hybrid 사용 (권한 체크 포함)
+        routing_info = self.meta_router.route_with_hybrid(
+            user_input=message,
+            llm_result=None,
+            user_role=role_enum,
         )
-        routing_info = self.meta_router.parse_routing_result(llm_result)
-        routing_info["context"] = routing_info.get("context", {})
-        routing_info["context"]["classification_source"] = "llm"
+
+        # LLM fallback이 필요한 경우 (규칙 매칭 실패)
+        if not routing_info.get("v7_intent") and routing_info.get("context", {}).get("classification_source") == "fallback":
+            logger.info(f"[Orchestrator] LLM routing fallback for: {message[:30]}...")
+            llm_result = self.meta_router.run(
+                user_message=message,
+                context=context,
+            )
+            routing_info = self.meta_router.route_with_hybrid(
+                user_input=message,
+                llm_result=llm_result,
+                user_role=role_enum,
+            )
 
         return routing_info
 
