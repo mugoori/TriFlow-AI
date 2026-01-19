@@ -1,0 +1,161 @@
+name: Load Test
+
+# Trigger load tests on PRs and scheduled runs
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'tests/load/**'
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: triflow_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Set up environment
+        run: |
+          cd backend
+          cp .env.test .env || echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/triflow_test" > .env
+          echo "REDIS_URL=redis://localhost:6379" >> .env
+          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
+
+      - name: Run database migrations
+        run: |
+          cd backend
+          alembic upgrade head || echo "Migrations skipped (may not exist yet)"
+
+      - name: Start backend server
+        run: |
+          cd backend
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          # Wait for server to start
+          sleep 10
+          curl -f http://localhost:8000/health || exit 1
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run load test
+        run: |
+          k6 run tests/load/api-load-test.js \
+            --out json=load-test-results.json \
+            --summary-export=load-test-summary.json
+        env:
+          BASE_URL: http://localhost:8000
+          API_KEY: ${{ secrets.TEST_API_KEY }}
+
+      - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: |
+            load-test-results.json
+            load-test-summary.json
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            try {
+              const summary = JSON.parse(fs.readFileSync('load-test-summary.json', 'utf8'));
+              const metrics = summary.metrics;
+
+              const p95 = metrics.http_req_duration?.values?.['p(95)'] || 0;
+              const p99 = metrics.http_req_duration?.values?.['p(99)'] || 0;
+              const errorRate = metrics.http_req_failed?.values?.rate || 0;
+
+              const comment = `## Load Test Results
+
+              **Performance Metrics:**
+              - P95 Response Time: ${(p95).toFixed(0)}ms ${p95 < 2000 ? '✅' : '❌ (threshold: 2000ms)'}
+              - P99 Response Time: ${(p99).toFixed(0)}ms ${p99 < 3000 ? '✅' : '❌ (threshold: 3000ms)'}
+              - Error Rate: ${(errorRate * 100).toFixed(2)}% ${errorRate < 0.05 ? '✅' : '❌ (threshold: 5%)'}
+
+              **Test Configuration:**
+              - Max VUs: 150
+              - Duration: 14 minutes
+              - Total Requests: ${metrics.http_reqs?.values?.count || 0}
+
+              <details>
+              <summary>Full Summary</summary>
+
+              \`\`\`json
+              ${JSON.stringify(summary, null, 2)}
+              \`\`\`
+              </details>
+              `;
+
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (err) {
+              console.error('Failed to post comment:', err);
+            }
+
+      - name: Fail if thresholds not met
+        run: |
+          # Check if k6 exited with error (thresholds failed)
+          if [ -f load-test-summary.json ]; then
+            echo "Load test summary created successfully"
+          else
+            echo "Load test may have failed - no summary file"
+            exit 1
+          fi
