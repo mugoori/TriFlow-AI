@@ -1,0 +1,143 @@
+# Prometheus Alert Rules
+# TriFlow AI 운영 모니터링 알람 규칙
+
+groups:
+  - name: http_alerts
+    interval: 30s
+    rules:
+      # 1. High Error Rate
+      - alert: HighHTTPErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "높은 HTTP 에러율 감지"
+          description: "지난 5분간 에러율이 5%를 초과했습니다. 현재 {{ $value | humanizePercentage }}"
+
+      # 2. Slow Response Time (P95)
+      - alert: SlowAPIResponse
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)
+          ) > 3.0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API 응답 시간 느림 (P95 > 3초)"
+          description: "{{ $labels.endpoint }} 엔드포인트의 P95 응답시간이 {{ $value }}초입니다"
+
+  - name: llm_alerts
+    interval: 60s
+    rules:
+      # 3. High LLM Cost
+      - alert: HighLLMCost
+        expr: |
+          sum(increase(llm_token_cost_total[1h])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM 비용 급증"
+          description: "지난 1시간 동안 LLM 비용이 ${{ $value }}로 급증했습니다"
+
+      # 4. Slow Agent Response
+      - alert: SlowAgentResponse
+        expr: |
+          agent_response_duration_seconds{quantile="0.95"} > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent 응답 느림"
+          description: "{{ $labels.agent_type }} 에이전트의 P95 응답시간이 {{ $value }}초입니다"
+
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # 5. Database Query Slow
+      - alert: SlowDatabaseQuery
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(database_query_duration_seconds_bucket[5m])) by (le, operation)
+          ) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB 쿼리 느림"
+          description: "{{ $labels.operation }} 쿼리의 P95가 {{ $value }}초입니다"
+
+      # 6. Database Connection Pool Exhaustion
+      - alert: DatabaseConnectionPoolNearLimit
+        expr: |
+          (database_pool_connections_current / database_pool_connections_max) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB 커넥션 풀 부족"
+          description: "DB 커넥션 풀 사용률이 {{ $value | humanizePercentage }}입니다"
+
+  - name: cache_alerts
+    interval: 30s
+    rules:
+      # 7. Low Cache Hit Rate
+      - alert: LowCacheHitRate
+        expr: |
+          (
+            sum(rate(cache_hits_total[10m]))
+            /
+            sum(rate(cache_operations_total[10m]))
+          ) < 0.5
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "캐시 적중률 낮음"
+          description: "캐시 적중률이 {{ $value | humanizePercentage }}로 낮습니다"
+
+  - name: mv_alerts
+    interval: 60s
+    rules:
+      # 8. MV Refresh Failure
+      - alert: MaterializedViewRefreshFailed
+        expr: |
+          increase(mv_refresh_total{status="failed"}[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MV 리프레시 실패"
+          description: "{{ $labels.mv_name }} Materialized View 리프레시가 실패했습니다"
+
+      # 9. MV Refresh Too Slow
+      - alert: SlowMVRefresh
+        expr: |
+          mv_refresh_duration_seconds{status="success"} > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MV 리프레시 느림"
+          description: "{{ $labels.mv_name }} 리프레시가 {{ $value }}초 소요되었습니다 (목표: 60초 미만)"
+
+  - name: system_alerts
+    interval: 30s
+    rules:
+      # 10. High Active Connections
+      - alert: HighActiveConnections
+        expr: |
+          http_active_connections > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "활성 연결 수 높음"
+          description: "현재 {{ $value }}개의 활성 HTTP 연결이 있습니다 (임계값: 100)"
