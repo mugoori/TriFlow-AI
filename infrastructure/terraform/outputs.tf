@@ -109,6 +109,22 @@ output "rds_security_group_id" {
   value       = aws_security_group.rds.id
 }
 
+# ElastiCache Outputs
+output "redis_primary_endpoint" {
+  description = "ElastiCache Redis primary endpoint"
+  value       = aws_elasticache_replication_group.main.primary_endpoint_address
+}
+
+output "redis_reader_endpoint" {
+  description = "ElastiCache Redis reader endpoint"
+  value       = aws_elasticache_replication_group.main.reader_endpoint_address
+}
+
+output "redis_port" {
+  description = "ElastiCache Redis port"
+  value       = aws_elasticache_replication_group.main.port
+}
+
 # Environment Variables for .env file
 output "env_variables" {
   description = "Environment variables for .env file"
@@ -126,6 +142,12 @@ RDS_PORT=${aws_db_instance.main.port}
 RDS_DATABASE=${aws_db_instance.main.db_name}
 RDS_USERNAME=${var.db_username}
 DATABASE_URL=postgresql://${var.db_username}:REPLACE_WITH_PASSWORD@${aws_db_instance.main.address}:${aws_db_instance.main.port}/${aws_db_instance.main.db_name}
+
+# ElastiCache Redis
+ELASTICACHE_ENDPOINT=${aws_elasticache_replication_group.main.primary_endpoint_address}
+ELASTICACHE_READER_ENDPOINT=${aws_elasticache_replication_group.main.reader_endpoint_address}
+ELASTICACHE_PORT=${aws_elasticache_replication_group.main.port}
+REDIS_URL=redis://:REPLACE_WITH_AUTH_TOKEN@${aws_elasticache_replication_group.main.primary_endpoint_address}:${aws_elasticache_replication_group.main.port}
 
 # S3
 S3_BUCKET_NAME=${aws_s3_bucket.main.id}

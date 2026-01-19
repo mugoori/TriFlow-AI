@@ -104,6 +104,32 @@ variable "ecs_max_count" {
   default     = 5
 }
 
+# ElastiCache Redis Configuration
+variable "redis_node_type" {
+  description = "ElastiCache node type"
+  type        = string
+  default     = "cache.t4g.small"
+}
+
+variable "redis_num_cache_clusters" {
+  description = "Number of cache clusters (Primary + Replicas)"
+  type        = number
+  default     = 2
+}
+
+variable "redis_auth_token" {
+  description = "Redis authentication token (password)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "redis_snapshot_retention_limit" {
+  description = "Number of days to retain Redis snapshots"
+  type        = number
+  default     = 5
+}
+
 # S3 Configuration
 variable "s3_bucket_name" {
   description = "S3 bucket name"
