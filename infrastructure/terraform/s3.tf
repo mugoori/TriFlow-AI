@@ -25,7 +25,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "main" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"  # SSE-S3 (무료)
+      sse_algorithm = "AES256" # SSE-S3 (무료)
     }
   }
 }
@@ -93,6 +93,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "main" {
     id     = "abort-multipart-uploads"
     status = "Enabled"
 
+    filter {}  # 빈 filter로 모든 객체에 적용
+
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -124,11 +126,11 @@ resource "aws_s3_bucket_policy" "main" {
         ]
       },
       {
-        Sid    = "DenyUnencryptedObjectUploads"
-        Effect = "Deny"
+        Sid       = "DenyUnencryptedObjectUploads"
+        Effect    = "Deny"
         Principal = "*"
-        Action = "s3:PutObject"
-        Resource = "${aws_s3_bucket.main.arn}/*"
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.main.arn}/*"
         Condition = {
           StringNotEquals = {
             "s3:x-amz-server-side-encryption" = "AES256"

@@ -6,8 +6,8 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
 
-  enable_deletion_protection = true  # 실수로 삭제 방지
-  enable_http2               = true
+  enable_deletion_protection       = true # 실수로 삭제 방지
+  enable_http2                     = true
   enable_cross_zone_load_balancing = true
 
   tags = merge(
@@ -24,7 +24,7 @@ resource "aws_lb_target_group" "ecs" {
   port        = 8000
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
-  target_type = "ip"  # Fargate는 IP 타입
+  target_type = "ip" # Fargate는 IP 타입
 
   health_check {
     enabled             = true
@@ -38,12 +38,12 @@ resource "aws_lb_target_group" "ecs" {
     matcher             = "200"
   }
 
-  deregistration_delay = 30  # 종료 전 연결 대기 시간
+  deregistration_delay = 30 # 종료 전 연결 대기 시간
 
   stickiness {
     enabled         = true
     type            = "lb_cookie"
-    cookie_duration = 3600  # 1시간
+    cookie_duration = 3600 # 1시간
     cookie_name     = "TRIFLOW_LB_COOKIE"
   }
 
@@ -100,7 +100,7 @@ resource "aws_acm_certificate" "main" {
   validation_method = "DNS"
 
   subject_alternative_names = [
-    "*.${var.domain_name}"  # 와일드카드
+    "*.${var.domain_name}" # 와일드카드
   ]
 
   lifecycle {
@@ -131,9 +131,9 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx_high" {
   evaluation_periods  = 1
   metric_name         = "HTTPCode_Target_5XX_Count"
   namespace           = "AWS/ApplicationELB"
-  period              = 60  # 1분
+  period              = 60 # 1분
   statistic           = "Sum"
-  threshold           = 10  # 1분에 10개 이상
+  threshold           = 10 # 1분에 10개 이상
   alarm_description   = "ALB 5xx errors exceed 10 per minute"
   alarm_actions       = [aws_sns_topic.alarms.arn]
   treat_missing_data  = "notBreaching"
@@ -153,9 +153,9 @@ resource "aws_cloudwatch_metric_alarm" "alb_latency_high" {
   evaluation_periods  = 2
   metric_name         = "TargetResponseTime"
   namespace           = "AWS/ApplicationELB"
-  period              = 300  # 5분
+  period              = 300 # 5분
   extended_statistic  = "p95"
-  threshold           = 2.0  # 2초
+  threshold           = 2.0 # 2초
   alarm_description   = "ALB P95 latency exceeds 2 seconds"
   alarm_actions       = [aws_sns_topic.alarms.arn]
 
@@ -175,7 +175,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
   namespace           = "AWS/ApplicationELB"
   period              = 60
   statistic           = "Average"
-  threshold           = 1  # 최소 1개 이상 healthy
+  threshold           = 1 # 최소 1개 이상 healthy
   alarm_description   = "No healthy targets available"
   alarm_actions       = [aws_sns_topic.alarms.arn]
 

@@ -77,13 +77,13 @@ variable "db_backup_retention_period" {
 variable "ecs_task_cpu" {
   description = "ECS task CPU units (1024 = 1 vCPU)"
   type        = number
-  default     = 1024  # 1 vCPU
+  default     = 1024 # 1 vCPU
 }
 
 variable "ecs_task_memory" {
   description = "ECS task memory in MB"
   type        = number
-  default     = 2048  # 2 GB
+  default     = 2048 # 2 GB
 }
 
 variable "ecs_desired_count" {

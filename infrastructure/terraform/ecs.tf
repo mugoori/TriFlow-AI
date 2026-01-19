@@ -4,7 +4,7 @@ resource "aws_ecs_cluster" "main" {
 
   setting {
     name  = "containerInsights"
-    value = "enabled"  # Container Insights for monitoring
+    value = "enabled" # Container Insights for monitoring
   }
 
   tags = local.common_tags
@@ -31,7 +31,7 @@ resource "aws_ecs_task_definition" "backend" {
   container_definitions = jsonencode([
     {
       name  = "backend"
-      image = "${aws_ecr_repository.backend.repository_url}:latest"  # 초기 이미지, 배포 시 업데이트됨
+      image = "${aws_ecr_repository.backend.repository_url}:latest" # 초기 이미지, 배포 시 업데이트됨
 
       essential = true
 
@@ -114,7 +114,7 @@ resource "aws_ecs_service" "backend" {
   network_configuration {
     subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = false  # Private Subnet이므로 false
+    assign_public_ip = false # Private Subnet이므로 false
   }
 
   load_balancer {
@@ -123,10 +123,8 @@ resource "aws_ecs_service" "backend" {
     container_port   = 8000
   }
 
-  deployment_configuration {
-    maximum_percent         = 200  # Rolling update: 2배까지 증가 가능
-    minimum_healthy_percent = 100  # 최소 100% 유지 (무중단 배포)
-  }
+  deployment_maximum_percent         = 200  # Rolling update: 2배까지 증가 가능
+  deployment_minimum_healthy_percent = 100  # 최소 100% 유지 (무중단 배포)
 
   deployment_circuit_breaker {
     enable   = true
@@ -164,9 +162,9 @@ resource "aws_appautoscaling_policy" "ecs_scale_out" {
     predefined_metric_specification {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
-    target_value       = 70.0  # CPU 70% 목표
-    scale_in_cooldown  = 300   # Scale in 후 5분 대기
-    scale_out_cooldown = 60    # Scale out 후 1분 대기
+    target_value       = 70.0 # CPU 70% 목표
+    scale_in_cooldown  = 300  # Scale in 후 5분 대기
+    scale_out_cooldown = 60   # Scale out 후 1분 대기
   }
 }
 
@@ -177,7 +175,7 @@ resource "aws_cloudwatch_metric_alarm" "ecs_memory_high" {
   evaluation_periods  = 2
   metric_name         = "MemoryUtilization"
   namespace           = "AWS/ECS"
-  period              = 180  # 3분
+  period              = 180 # 3분
   statistic           = "Average"
   threshold           = 90
   alarm_description   = "ECS memory utilization exceeds 90%"

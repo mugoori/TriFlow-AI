@@ -24,12 +24,12 @@ resource "aws_db_parameter_group" "main" {
 
   parameter {
     name  = "log_statement"
-    value = "mod"  # DML/DDL 로그
+    value = "mod" # DML/DDL 로그
   }
 
   parameter {
     name  = "log_min_duration_statement"
-    value = "1000"  # 1초 이상 쿼리만 로그
+    value = "1000" # 1초 이상 쿼리만 로그
   }
 
   parameter {
@@ -54,7 +54,7 @@ resource "aws_db_instance" "main" {
   max_allocated_storage = var.db_max_allocated_storage
   storage_type          = "gp3"
   storage_encrypted     = true
-  iops                  = 3000  # gp3 기본값
+  iops                  = 3000 # gp3 기본값
 
   # Database
   db_name  = var.db_name
@@ -70,22 +70,22 @@ resource "aws_db_instance" "main" {
 
   # Backup
   backup_retention_period = var.db_backup_retention_period
-  backup_window           = "18:00-19:00"  # UTC (한국 03:00-04:00)
-  maintenance_window      = "mon-19:00-mon-20:00"  # UTC (한국 월 04:00-05:00)
-  skip_final_snapshot     = false
+  backup_window           = "18:00-19:00"      # UTC (한국 03:00-04:00)
+  maintenance_window      = "mon:19:00-mon:20:00"  # UTC (한국 월 04:00-05:00), 형식: ddd:hh24:mi-ddd:hh24:mi
+  skip_final_snapshot       = false
   final_snapshot_identifier = "${local.name_prefix}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
 
   # Monitoring
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  monitoring_interval             = 60  # Enhanced Monitoring (1분 간격)
+  monitoring_interval             = 60 # Enhanced Monitoring (1분 간격)
   monitoring_role_arn             = aws_iam_role.rds_monitoring.arn
 
   # Performance Insights
-  performance_insights_enabled    = true
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
 
   # Protection
-  deletion_protection = true
+  deletion_protection   = true
   copy_tags_to_snapshot = true
 
   # Auto Minor Version Upgrade
@@ -100,7 +100,7 @@ resource "aws_db_instance" "main" {
 
   lifecycle {
     ignore_changes = [
-      final_snapshot_identifier  # 매번 timestamp 변경 무시
+      final_snapshot_identifier # 매번 timestamp 변경 무시
     ]
   }
 }
@@ -137,7 +137,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_cpu_high" {
   evaluation_periods  = 2
   metric_name         = "CPUUtilization"
   namespace           = "AWS/RDS"
-  period              = 300  # 5분
+  period              = 300 # 5분
   statistic           = "Average"
   threshold           = 80
   alarm_description   = "RDS CPU exceeds 80%"
@@ -159,7 +159,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_storage_low" {
   namespace           = "AWS/RDS"
   period              = 60
   statistic           = "Average"
-  threshold           = 10737418240  # 10 GB in bytes
+  threshold           = 10737418240 # 10 GB in bytes
   alarm_description   = "RDS free storage less than 10GB"
   alarm_actions       = [aws_sns_topic.alarms.arn]
 

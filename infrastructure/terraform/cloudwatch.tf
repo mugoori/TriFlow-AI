@@ -9,7 +9,7 @@ resource "aws_sns_topic" "alarms" {
 resource "aws_sns_topic_subscription" "email" {
   topic_arn = aws_sns_topic.alarms.arn
   protocol  = "email"
-  endpoint  = "tech-lead@company.com"  # TODO: 실제 이메일로 변경
+  endpoint  = "tech-lead@company.com" # TODO: 실제 이메일로 변경
 
   # 주의: Email subscription은 수동 승인 필요
 }
@@ -101,7 +101,7 @@ resource "aws_cloudwatch_metric_alarm" "app_5xx_errors" {
   namespace           = "TriFlow/${title(var.environment)}"
   period              = 60
   statistic           = "Sum"
-  threshold           = 5  # 1분에 5개 이상
+  threshold           = 5 # 1분에 5개 이상
   alarm_description   = "Application 5xx errors exceed 5 per minute"
   alarm_actions       = [aws_sns_topic.alarms.arn]
   treat_missing_data  = "notBreaching"
@@ -116,9 +116,9 @@ resource "aws_cloudwatch_metric_alarm" "billing_high" {
   evaluation_periods  = 1
   metric_name         = "EstimatedCharges"
   namespace           = "AWS/Billing"
-  period              = 21600  # 6시간
+  period              = 21600 # 6시간
   statistic           = "Maximum"
-  threshold           = 500  # $500 (₩650,000)
+  threshold           = 500 # $500 (₩650,000)
   alarm_description   = "AWS billing exceeds $500"
   alarm_actions       = [aws_sns_topic.alarms.arn]
 

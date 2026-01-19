@@ -156,7 +156,7 @@ resource "aws_vpc_endpoint" "s3" {
   )
 }
 
-# Security Group for ALB
+# Security Group for ALB (Ingress only, Egress 별도)
 resource "aws_security_group" "alb" {
   name        = "${local.name_prefix}-alb-sg"
   description = "Security group for Application Load Balancer"
@@ -178,14 +178,6 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  egress {
-    description     = "To ECS tasks"
-    from_port       = 8000
-    to_port         = 8000
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs.id]
-  }
-
   tags = merge(
     local.common_tags,
     {
@@ -194,27 +186,11 @@ resource "aws_security_group" "alb" {
   )
 }
 
-# Security Group for ECS Tasks
+# Security Group for ECS Tasks (Egress only, Ingress 별도)
 resource "aws_security_group" "ecs" {
   name        = "${local.name_prefix}-ecs-sg"
   description = "Security group for ECS Fargate tasks"
   vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description     = "HTTP from ALB"
-    from_port       = 8000
-    to_port         = 8000
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  egress {
-    description     = "To RDS"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.rds.id]
-  }
 
   egress {
     description = "To Internet (S3, ECR, Anthropic API)"
@@ -246,18 +222,56 @@ resource "aws_security_group" "rds" {
   description = "Security group for RDS PostgreSQL"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description     = "PostgreSQL from ECS"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs.id]
-  }
-
   tags = merge(
     local.common_tags,
     {
       Name = "${local.name_prefix}-rds-sg"
     }
   )
+}
+
+# Security Group Rules (별도 리소스로 순환 참조 해결)
+
+# ALB → ECS Egress Rule
+resource "aws_security_group_rule" "alb_to_ecs" {
+  type                     = "egress"
+  from_port                = 8000
+  to_port                  = 8000
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.alb.id
+  source_security_group_id = aws_security_group.ecs.id
+  description              = "To ECS tasks"
+}
+
+# ECS ← ALB Ingress Rule
+resource "aws_security_group_rule" "ecs_from_alb" {
+  type                     = "ingress"
+  from_port                = 8000
+  to_port                  = 8000
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs.id
+  source_security_group_id = aws_security_group.alb.id
+  description              = "HTTP from ALB"
+}
+
+# ECS → RDS Egress Rule
+resource "aws_security_group_rule" "ecs_to_rds" {
+  type                     = "egress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs.id
+  source_security_group_id = aws_security_group.rds.id
+  description              = "To RDS"
+}
+
+# RDS ← ECS Ingress Rule
+resource "aws_security_group_rule" "rds_from_ecs" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds.id
+  source_security_group_id = aws_security_group.ecs.id
+  description              = "PostgreSQL from ECS"
 }
