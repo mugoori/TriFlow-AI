@@ -18,6 +18,7 @@ BI Analytics API Router
 - GET /api/v1/bi/analytics/production: 생산 실적
 """
 import logging
+import time
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -26,6 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
+from prometheus_client import Histogram
 
 from app.database import get_db
 from app.models.bi import (
@@ -45,6 +47,14 @@ from app.models import User
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Prometheus Metrics for Dashboard Performance
+dashboard_response_time = Histogram(
+    'dashboard_statcard_response_seconds',
+    'Dashboard StatCard API response time',
+    ['period', 'card_count'],
+    buckets=[0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0]
+)
 
 
 # ========== Pydantic Models ==========
@@ -2093,6 +2103,8 @@ async def get_stat_cards(
     if period not in valid_periods:
         period = "auto"
 
+    start_time = time.time()
+
     try:
         service = StatCardService(db)
         result = await service.get_card_values(
@@ -2100,6 +2112,20 @@ async def get_stat_cards(
             user_id=current_user.user_id,
             period=period,  # type: ignore
         )
+
+        # 응답 시간 측정
+        elapsed = time.time() - start_time
+        dashboard_response_time.labels(
+            period=period,
+            card_count=str(len(result.cards))
+        ).observe(elapsed)
+
+        # 느린 응답 경고
+        if elapsed > 2.0:
+            logger.warning(
+                f"Slow dashboard response: {elapsed:.2f}s "
+                f"(period={period}, cards={len(result.cards)})"
+            )
 
         return {
             "cards": [
@@ -2663,3 +2689,67 @@ async def seed_sample_production_data(
         db.rollback()
         logger.error(f"Failed to seed sample data: {e}")
         raise HTTPException(status_code=500, detail=f"샘플 데이터 생성 실패: {str(e)}")
+
+
+# ========== Materialized Views Management ==========
+
+
+@router.get("/mv-status")
+async def get_mv_status(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Materialized View 상태 조회
+
+    Returns:
+        MV 리프레시 상태, 헬스 정보
+    """
+    from app.services.mv_refresh_service import mv_refresh_service
+    from app.database import async_session_factory
+
+    try:
+        async with async_session_factory() as db:
+            mv_info = await mv_refresh_service.get_mv_info(db)
+            service_status = mv_refresh_service.status
+
+            return {
+                "service_status": service_status,
+                "views": mv_info,
+                "health": {
+                    "all_populated": all(v["is_populated"] for v in mv_info),
+                    "all_indexed": all(v["has_indexes"] for v in mv_info),
+                }
+            }
+    except Exception as e:
+        logger.error(f"Failed to get MV status: {e}")
+        raise HTTPException(status_code=500, detail=f"MV 상태 조회 실패: {str(e)}")
+
+
+@router.post("/mv-refresh")
+async def trigger_mv_refresh(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    MV 수동 리프레시 (Admin 전용)
+
+    긴급 상황 시 MV를 즉시 리프레시합니다.
+
+    Requires:
+        Admin 권한
+    """
+    from app.services.mv_refresh_service import mv_refresh_service
+    from app.services.rbac_service import Role
+    from app.database import async_session_factory
+
+    # Admin 권한 체크
+    if current_user.role not in [Role.ADMIN.value, "admin"]:
+        raise HTTPException(status_code=403, detail="Admin 권한이 필요합니다")
+
+    try:
+        async with async_session_factory() as db:
+            logger.info(f"Manual MV refresh triggered by user {current_user.user_id}")
+            result = await mv_refresh_service.refresh_all(db)
+            return result
+    except Exception as e:
+        logger.error(f"Failed to refresh MVs: {e}")
+        raise HTTPException(status_code=500, detail=f"MV 리프레시 실패: {str(e)}")

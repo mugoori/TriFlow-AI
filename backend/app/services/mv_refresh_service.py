@@ -15,8 +15,28 @@ from typing import Optional, Dict, Any, List
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from prometheus_client import Counter, Histogram, Gauge
 
 logger = logging.getLogger(__name__)
+
+# Prometheus Metrics
+mv_refresh_duration_seconds = Histogram(
+    'mv_refresh_duration_seconds',
+    'Duration of MV refresh in seconds',
+    ['mv_name', 'status']
+)
+
+mv_refresh_total = Counter(
+    'mv_refresh_total',
+    'Total number of MV refreshes',
+    ['mv_name', 'status']
+)
+
+mv_row_count = Gauge(
+    'mv_row_count',
+    'Number of rows in MV after refresh',
+    ['mv_name']
+)
 
 
 class MVRefreshService:
@@ -68,22 +88,33 @@ class MVRefreshService:
         for mv_name in self.MATERIALIZED_VIEWS:
             try:
                 start_time = datetime.utcnow()
-                await self._refresh_mv(db, mv_name)
+                row_count = await self._refresh_mv(db, mv_name)
                 elapsed = (datetime.utcnow() - start_time).total_seconds()
+
+                # Prometheus 메트릭
+                mv_refresh_duration_seconds.labels(mv_name=mv_name, status='success').observe(elapsed)
+                mv_refresh_total.labels(mv_name=mv_name, status='success').inc()
+                mv_row_count.labels(mv_name=mv_name).set(row_count)
 
                 results["views"][mv_name] = {
                     "status": "success",
                     "elapsed_seconds": elapsed,
+                    "row_count": row_count,
                 }
                 self._mv_status[mv_name] = {
                     "last_refresh": datetime.utcnow().isoformat(),
                     "status": "success",
                     "elapsed_seconds": elapsed,
+                    "row_count": row_count,
                 }
-                logger.info(f"Refreshed {mv_name} in {elapsed:.2f}s")
+                logger.info(f"Refreshed {mv_name} in {elapsed:.2f}s ({row_count} rows)")
 
             except Exception as e:
                 error_msg = str(e)
+
+                # Prometheus 메트릭 (실패)
+                mv_refresh_total.labels(mv_name=mv_name, status='failed').inc()
+
                 results["views"][mv_name] = {
                     "status": "failed",
                     "error": error_msg,
@@ -106,17 +137,25 @@ class MVRefreshService:
 
         return results
 
-    async def _refresh_mv(self, db: AsyncSession, mv_name: str) -> None:
+    async def _refresh_mv(self, db: AsyncSession, mv_name: str) -> int:
         """
         단일 MV 리프레시 (CONCURRENTLY)
 
         CONCURRENTLY 옵션:
         - 리프레시 중에도 SELECT 쿼리 가능
         - UNIQUE INDEX가 필요함 (마이그레이션에서 생성됨)
+
+        Returns:
+            int: 리프레시 후 행 개수
         """
         query = text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv_name}")
         await db.execute(query)
         await db.commit()
+
+        # 행 개수 조회
+        count_query = text(f"SELECT COUNT(*) FROM {mv_name}")
+        result = await db.execute(count_query)
+        return result.scalar() or 0
 
     async def refresh_single(self, db: AsyncSession, mv_name: str) -> Dict[str, Any]:
         """

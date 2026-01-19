@@ -120,6 +120,21 @@ async def lifespan(app: FastAPI):
     await warmup_agents()
     logger.info("Agents warmed up successfully")
 
+    # Materialized Views 워밍업 (첫 대시보드 쿼리 성능 향상)
+    try:
+        from app.services.mv_refresh_service import mv_refresh_service
+        from app.database import async_session_factory
+
+        logger.info("Warming up Materialized Views...")
+        async with async_session_factory() as db:
+            result = await mv_refresh_service.refresh_all(db)
+            if result["success"]:
+                logger.info(f"MV warm-up completed: {len(result['views'])} views refreshed")
+            else:
+                logger.warning(f"MV warm-up completed with errors: {result['errors']}")
+    except Exception as e:
+        logger.warning(f"MV warm-up failed (non-critical): {e}")
+
     # Canary 모니터 태스크 시작
     try:
         from app.tasks.canary_monitor_task import start_monitor
@@ -128,10 +143,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Canary monitor task failed to start: {e}")
 
+    # 스케줄러 시작 (MV 리프레시 포함)
+    try:
+        from app.services.scheduler_service import scheduler
+        await scheduler.start()
+        logger.info("Scheduler started successfully")
+    except Exception as e:
+        logger.error(f"Scheduler failed to start: {e}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down TriFlow AI Backend...")
+
+    # 스케줄러 중지
+    try:
+        from app.services.scheduler_service import scheduler
+        await scheduler.stop()
+        logger.info("Scheduler stopped successfully")
+    except Exception as e:
+        logger.warning(f"Scheduler failed to stop: {e}")
 
     # Canary 모니터 태스크 중지
     try:
@@ -597,6 +628,14 @@ try:
     logger.info("Rule extraction router registered")
 except Exception as e:
     logger.error(f"Failed to register rule extraction router: {e}")
+
+# Users 라우터 (RBAC 및 Data Scope 관리)
+try:
+    from app.routers import users
+    app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+    logger.info("Users router registered")
+except Exception as e:
+    logger.error(f"Failed to register users router: {e}")
 
 
 # ========== 프론트엔드 정적 파일 서빙 (SPA) ==========
