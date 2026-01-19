@@ -1,6 +1,6 @@
 /**
  * LearningPage - 학습 대시보드
- * 피드백 통계, AI 제안 목록, A/B 테스트 요약을 통합 표시
+ * 피드백 통계, AI 제안 목록, A/B 테스트, 샘플 관리, 규칙 추출을 통합 표시
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -18,6 +18,8 @@ import {
   RefreshCw,
   Play,
   Pause,
+  Database,
+  GitBranch,
 } from 'lucide-react';
 import {
   getFeedbackStats,
@@ -36,6 +38,14 @@ import {
   listExperiments,
   Experiment,
 } from '@/services/experimentService';
+import { Sample } from '@/services/sampleService';
+import { RuleCandidate } from '@/services/ruleExtractionService';
+import { SampleStatsCard } from '@/components/learning/SampleStatsCard';
+import { SampleListCard } from '@/components/learning/SampleListCard';
+import { SampleDetailModal } from '@/components/learning/SampleDetailModal';
+import { RuleExtractionStatsCard } from '@/components/learning/RuleExtractionStatsCard';
+import { RuleCandidateListCard } from '@/components/learning/RuleCandidateListCard';
+import { RuleCandidateDetailModal } from '@/components/learning/RuleCandidateDetailModal';
 
 export function LearningPage() {
   const { isAuthenticated } = useAuth();
@@ -53,6 +63,12 @@ export function LearningPage() {
   // Experiment State
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [experimentLoading, setExperimentLoading] = useState(true);
+
+  // Sample/Rule Extraction State
+  const [selectedSample, setSelectedSample] = useState<Sample | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<RuleCandidate | null>(null);
+  const [sampleRefreshKey, setSampleRefreshKey] = useState(0);
+  const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
 
   // Error State
   const [error, setError] = useState<string | null>(null);
@@ -482,6 +498,61 @@ export function LearningPage() {
           </div>
         )}
       </section>
+
+      {/* Sample Curation Section */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <Database className="w-5 h-5" />
+          학습 샘플 관리
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SampleStatsCard
+            key={`sample-stats-${sampleRefreshKey}`}
+            onRefresh={() => setSampleRefreshKey((k) => k + 1)}
+          />
+          <SampleListCard
+            key={`sample-list-${sampleRefreshKey}`}
+            onSelectSample={setSelectedSample}
+            onRefresh={() => setSampleRefreshKey((k) => k + 1)}
+          />
+        </div>
+      </section>
+
+      {/* Rule Extraction Section */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <GitBranch className="w-5 h-5" />
+          규칙 추출
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <RuleExtractionStatsCard
+            key={`rule-stats-${ruleRefreshKey}`}
+            onRefresh={() => setRuleRefreshKey((k) => k + 1)}
+          />
+          <RuleCandidateListCard
+            key={`rule-list-${ruleRefreshKey}`}
+            onSelectCandidate={setSelectedCandidate}
+            onRefresh={() => setRuleRefreshKey((k) => k + 1)}
+          />
+        </div>
+      </section>
+
+      {/* Modals */}
+      {selectedSample && (
+        <SampleDetailModal
+          sample={selectedSample}
+          onClose={() => setSelectedSample(null)}
+          onUpdate={() => setSampleRefreshKey((k) => k + 1)}
+        />
+      )}
+
+      {selectedCandidate && (
+        <RuleCandidateDetailModal
+          candidate={selectedCandidate}
+          onClose={() => setSelectedCandidate(null)}
+          onUpdate={() => setRuleRefreshKey((k) => k + 1)}
+        />
+      )}
     </div>
   );
 }

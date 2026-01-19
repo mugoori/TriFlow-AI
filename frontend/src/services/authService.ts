@@ -72,32 +72,38 @@ export async function login(
   email: string,
   password: string
 ): Promise<LoginResponse> {
-  const response = await fetch(`${AUTH_API_URL}/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ email, password }),
-  });
+  try {
+    const response = await fetch(`${AUTH_API_URL}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `HTTP ${response.status}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `HTTP ${response.status}`);
+    }
+
+    const data: LoginResponse = await response.json();
+
+    // 토큰 및 사용자 정보 저장
+    // 백엔드가 { user, tokens: { access_token, refresh_token } } 형식으로 응답
+    const accessToken = data.tokens?.access_token || data.access_token;
+    const refreshToken = data.tokens?.refresh_token || data.refresh_token;
+
+    if (accessToken && refreshToken) {
+      saveTokens(accessToken, refreshToken);
+    }
+    saveUser(data.user);
+
+    return data;
+  } catch (error) {
+    // 네트워크 오류 또는 서버 오류 로그
+    console.error('Login failed:', error);
+    throw error;
   }
-
-  const data: LoginResponse = await response.json();
-
-  // 토큰 및 사용자 정보 저장
-  // 백엔드가 { user, tokens: { access_token, refresh_token } } 형식으로 응답
-  const accessToken = data.tokens?.access_token || data.access_token;
-  const refreshToken = data.tokens?.refresh_token || data.refresh_token;
-
-  if (accessToken && refreshToken) {
-    saveTokens(accessToken, refreshToken);
-  }
-  saveUser(data.user);
-
-  return data;
 }
 
 /**
@@ -158,7 +164,9 @@ export async function getMe(accessToken: string): Promise<User | null> {
     }
 
     return await response.json();
-  } catch {
+  } catch (error) {
+    // 네트워크 오류 시 로그 출력
+    console.error('Failed to fetch user info:', error);
     return null;
   }
 }

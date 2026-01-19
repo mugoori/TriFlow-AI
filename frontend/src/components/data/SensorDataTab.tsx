@@ -26,6 +26,7 @@ import {
   Wind,
   Download,
   Upload,
+  Shield,
 } from 'lucide-react';
 import {
   sensorService,
@@ -33,6 +34,8 @@ import {
   type SensorFilterOptions,
   type SensorDataParams,
 } from '@/services/sensorService';
+import { userService } from '@/services/userService';
+import type { DataScope } from '@/types/rbac';
 import { FileUploadZone } from '@/components/ui/FileUploadZone';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -63,6 +66,7 @@ export function SensorDataTab() {
   const [error, setError] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<SensorFilterOptions | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [dataScope, setDataScope] = useState<DataScope | null>(null);
 
   // 페이지네이션
   const [page, setPage] = useState(1);
@@ -81,7 +85,7 @@ export function SensorDataTab() {
   const [selectedLine, setSelectedLine] = useState<string>('');
   const [selectedSensorType, setSelectedSensorType] = useState<string>('');
 
-  // 필터 옵션 로드
+  // 필터 옵션 및 Data Scope 로드
   useEffect(() => {
     const loadFilterOptions = async () => {
       try {
@@ -91,7 +95,18 @@ export function SensorDataTab() {
         console.error('Failed to load filter options:', err);
       }
     };
+
+    const loadDataScope = async () => {
+      try {
+        const scope = await userService.getMyDataScope();
+        setDataScope(scope);
+      } catch (err) {
+        console.error('Failed to load data scope:', err);
+      }
+    };
+
     loadFilterOptions();
+    loadDataScope();
   }, []);
 
   // 데이터 로드
@@ -197,8 +212,39 @@ export function SensorDataTab() {
   // 페이지 수 계산
   const totalPages = Math.ceil(total / pageSize);
 
+  // Data Scope 표시 텍스트 생성
+  const getDataScopeLabel = () => {
+    if (!dataScope) return null;
+    if (dataScope.all_access) return '전체 접근';
+
+    const parts: string[] = [];
+    if (dataScope.factory_codes.length > 0) {
+      parts.push(`공장: ${dataScope.factory_codes.join(', ')}`);
+    }
+    if (dataScope.line_codes.length > 0) {
+      parts.push(`라인: ${dataScope.line_codes.join(', ')}`);
+    }
+
+    return parts.length > 0 ? parts.join(' | ') : '접근 권한 없음';
+  };
+
   return (
     <div className="space-y-6">
+      {/* Data Scope 표시 (전체 접근이 아닌 경우에만) */}
+      {dataScope && !dataScope.all_access && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              데이터 접근 범위 제한됨
+            </p>
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              {getDataScopeLabel()}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 업로드 토글 버튼 */}
       <div className="flex justify-end">
         <button

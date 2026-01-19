@@ -42,49 +42,55 @@ export function AuthProvider({ children }: AuthProviderProps) {
    * 자동 로그인 시도 (앱 시작 시)
    */
   const tryAutoLogin = useCallback(async () => {
-    const storedAccessToken = authService.getAccessToken();
-    const storedRefreshToken = authService.getRefreshToken();
+    try {
+      const storedAccessToken = authService.getAccessToken();
+      const storedRefreshToken = authService.getRefreshToken();
 
-    if (!storedAccessToken || !storedRefreshToken) {
-      setIsLoading(false);
-      return;
-    }
-
-    // 저장된 토큰으로 사용자 정보 확인
-    const userInfo = await authService.getMe(storedAccessToken);
-
-    if (userInfo) {
-      // 토큰 유효 - 로그인 상태 복원
-      setUser(userInfo);
-      setAccessToken(storedAccessToken);
-      setRefreshToken(storedRefreshToken);
-      authService.saveUser(userInfo);
-    } else {
-      // Access Token 만료 - Refresh 시도
-      const newToken = await authService.refreshAccessToken();
-
-      if (newToken) {
-        // Refresh 성공 - 새 토큰으로 사용자 정보 조회
-        const refreshedUser = await authService.getMe(newToken.access_token);
-
-        if (refreshedUser) {
-          setUser(refreshedUser);
-          setAccessToken(newToken.access_token);
-          setRefreshToken(storedRefreshToken);
-          authService.saveUser(refreshedUser);
-        } else {
-          // 여전히 실패 - 로그아웃
-          logout();
-        }
-      } else {
-        // Refresh 실패 - 로그아웃 (authService에서 이미 clearAuth 호출됨)
-        setUser(null);
-        setAccessToken(null);
-        setRefreshToken(null);
+      if (!storedAccessToken || !storedRefreshToken) {
+        setIsLoading(false);
+        return;
       }
-    }
 
-    setIsLoading(false);
+      // 저장된 토큰으로 사용자 정보 확인
+      const userInfo = await authService.getMe(storedAccessToken);
+
+      if (userInfo) {
+        // 토큰 유효 - 로그인 상태 복원
+        setUser(userInfo);
+        setAccessToken(storedAccessToken);
+        setRefreshToken(storedRefreshToken);
+        authService.saveUser(userInfo);
+      } else {
+        // Access Token 만료 - Refresh 시도
+        const newToken = await authService.refreshAccessToken();
+
+        if (newToken) {
+          // Refresh 성공 - 새 토큰으로 사용자 정보 조회
+          const refreshedUser = await authService.getMe(newToken.access_token);
+
+          if (refreshedUser) {
+            setUser(refreshedUser);
+            setAccessToken(newToken.access_token);
+            setRefreshToken(storedRefreshToken);
+            authService.saveUser(refreshedUser);
+          } else {
+            // 여전히 실패 - 로그아웃
+            logout();
+          }
+        } else {
+          // Refresh 실패 - 로그아웃 (authService에서 이미 clearAuth 호출됨)
+          setUser(null);
+          setAccessToken(null);
+          setRefreshToken(null);
+        }
+      }
+    } catch (error) {
+      // 네트워크 오류 등 예외 발생 시 - 로그아웃 처리
+      console.error('Auto-login failed:', error);
+      logout();
+    } finally {
+      setIsLoading(false);
+    }
   }, [logout]);
 
   /**
