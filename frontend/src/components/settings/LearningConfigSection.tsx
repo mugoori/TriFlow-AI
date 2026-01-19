@@ -49,10 +49,10 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
         settingsMap[s.key] = s.value || '';
       });
 
-      setSettings((prev) => ({
+      setSettings({
         ...DEFAULT_SETTINGS,
         ...settingsMap,
-      }));
+      });
     } catch (err) {
       console.error('Failed to load learning settings:', err);
       setError('학습 설정을 불러오는데 실패했습니다');
