@@ -1223,6 +1223,13 @@ class PromptTemplate(Base):
     is_active = Column(Boolean, default=False, nullable=False)
     a_b_test_group = Column(String(20), nullable=True)  # control, variant_a, variant_b
 
+    # Performance metrics (aggregated from LlmCall)
+    avg_tokens_per_call = Column(Integer, nullable=True)
+    avg_latency_ms = Column(Integer, nullable=True)
+    success_rate = Column(Numeric(5, 4), nullable=True)  # 0.0000 - 1.0000
+    validation_error_rate = Column(Numeric(5, 4), nullable=True)  # 0.0000 - 1.0000
+    last_performance_update = Column(DateTime, nullable=True)
+
     created_by = Column(PGUUID(as_uuid=True), ForeignKey("core.users.user_id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
