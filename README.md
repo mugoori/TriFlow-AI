@@ -44,45 +44,117 @@ triflow-ai/
 └── docs/                 # 문서
 ```
 
-## 시작하기
+## 시작하기 전에
 
-### 요구 사항
+### 필수 요구사항
 
-- Node.js 20+
-- Python 3.11+
-- Rust (Tauri용)
-- Docker & Docker Compose
+- **Docker Desktop 4.20+** (Windows/Mac) 또는 **Docker Engine 24+** (Linux)
+- **Git 2.30+**
+- (선택) Node.js 20+ / Python 3.11+ (로컬 개발 시)
 
-### 설치
+### 시스템 요구사항
+
+- **RAM**: 최소 8GB (권장 16GB)
+- **Disk**: 10GB 여유 공간
+- **포트**: 5432, 6379, 8000, 9000, 9090, 3001 사용 가능
+
+---
+
+## ⚡ 5분 Quick Start
+
+### 1. 저장소 클론 및 환경 설정
 
 ```bash
-# 저장소 클론
 git clone https://github.com/mugoori/TriFlow-AI.git
 cd triflow-ai
-
-# 백엔드 의존성 설치
-cd backend
-pip install -r requirements.txt
-
-# 프론트엔드 의존성 설치
-cd ../frontend
-npm install
+cp .env.example backend/.env
 ```
 
-### 개발 서버 실행
+### 2. Anthropic API 키 설정
+
+1. https://console.anthropic.com 에서 API 키 발급
+2. `backend/.env` 파일 열기
+3. `ANTHROPIC_API_KEY=sk-ant-...` 값 입력
+
+### 3. Docker로 전체 시스템 실행
 
 ```bash
-# Docker로 DB 실행
 docker-compose up -d
-
-# 백엔드 실행
-cd backend
-uvicorn app.main:app --reload
-
-# 프론트엔드 실행 (별도 터미널)
-cd frontend
-npm run tauri dev
 ```
+
+### 4. 서비스 상태 확인 (2분 대기)
+
+```bash
+docker-compose ps          # 모든 서비스 "healthy" 확인
+docker-compose logs -f --tail=20  # 로그 실시간 확인 (Ctrl+C로 종료)
+```
+
+### 5. 접속
+
+- **Backend API**: http://localhost:8000
+- **Swagger UI**: http://localhost:8000/docs
+- **Grafana**: http://localhost:3001 (admin / triflow_grafana_password)
+- **Prometheus**: http://localhost:9090
+
+**첫 로그인**:
+- Username: `admin`
+- Password: `admin123!` (초기 비밀번호)
+
+---
+
+## 🔧 자주 발생하는 문제
+
+### "Port already in use" 오류
+
+```bash
+# 사용 중인 포트 확인
+docker ps
+netstat -ano | findstr :5432  # Windows
+lsof -i :5432                  # Mac/Linux
+
+# 충돌하는 컨테이너 중지
+docker stop <container-name>
+```
+
+### "Cannot connect to database" 오류
+
+```bash
+# 서비스 건강 상태 확인
+docker-compose ps
+
+# 로그 확인
+docker-compose logs postgres
+
+# 재시작
+docker-compose restart postgres
+```
+
+### 전체 리셋 (데이터 삭제 주의!)
+
+```bash
+docker-compose down -v  # 볼륨 포함 삭제
+docker-compose up -d    # 재시작
+```
+
+---
+
+## 📚 더 알아보기
+
+### 로컬 개발 (Docker 없이)
+
+자세한 가이드: [docs/guides/LOCAL_DEVELOPMENT.md](docs/guides/LOCAL_DEVELOPMENT.md)
+
+### 프로덕션 배포
+
+자세한 가이드: [docs/guides/DEPLOYMENT.md](docs/guides/DEPLOYMENT.md)
+
+### 문제 해결
+
+자세한 가이드: [docs/guides/TROUBLESHOOTING.md](docs/guides/TROUBLESHOOTING.md)
+
+### Windows 사용자
+
+자세한 가이드: [docs/guides/WINDOWS_SETUP.md](docs/guides/WINDOWS_SETUP.md)
 
 ## 문서
 
