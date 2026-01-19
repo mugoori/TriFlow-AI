@@ -13,7 +13,7 @@ V7 Intent 체계와 5-tier RBAC를 연결합니다.
 import logging
 from typing import Optional
 
-from app.services.rbac_service import Role
+from app.services.rbac_service import Role, ROLE_HIERARCHY
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +67,16 @@ def check_intent_permission(intent: str, user_role: Role) -> bool:
     """
     required_role = INTENT_ROLE_MATRIX.get(intent, Role.ADMIN)
 
-    # Role enum의 value는 숫자 (VIEWER=1, USER=2, ..., ADMIN=5)
-    # 사용자 역할 값이 필요 역할 값 이상이면 권한 있음
-    has_permission = user_role.value >= required_role.value
+    # ROLE_HIERARCHY를 사용하여 계층 비교 (VIEWER=1, USER=2, ..., ADMIN=5)
+    # 사용자 역할 레벨이 필요 역할 레벨 이상이면 권한 있음
+    user_level = ROLE_HIERARCHY.get(user_role, 0)
+    required_level = ROLE_HIERARCHY.get(required_role, 5)
+    has_permission = user_level >= required_level
 
     if not has_permission:
         logger.warning(
-            f"Permission denied: intent={intent} requires {required_role.name}, "
-            f"user has {user_role.name}"
+            f"Permission denied: intent={intent} requires {required_role.name} (level {required_level}), "
+            f"user has {user_role.name} (level {user_level})"
         )
 
     return has_permission
@@ -108,9 +110,11 @@ def get_intents_for_role(user_role: Role) -> list[str]:
         ['CHECK', 'TREND', 'COMPARE', 'CONTINUE', 'CLARIFY', 'STOP']
     """
     allowed_intents = []
+    user_level = ROLE_HIERARCHY.get(user_role, 0)
 
     for intent, required_role in INTENT_ROLE_MATRIX.items():
-        if user_role.value >= required_role.value:
+        required_level = ROLE_HIERARCHY.get(required_role, 5)
+        if user_level >= required_level:
             allowed_intents.append(intent)
 
     return allowed_intents

@@ -21,6 +21,8 @@ from .routing_rules import (
     RouteTarget,
     get_all_v7_intents,
 )
+from app.services.intent_role_mapper import check_intent_permission, get_required_role
+from app.services.rbac_service import Role
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +290,8 @@ class MetaRouterAgent(BaseAgent):
     def route_with_hybrid(
         self,
         user_input: str,
-        llm_result: Optional[Dict[str, Any]] = None
+        llm_result: Optional[Dict[str, Any]] = None,
+        user_role: Optional[Role] = None
     ) -> Dict[str, Any]:
         """
         하이브리드 라우팅 (V7 규칙 우선, LLM fallback)
@@ -296,9 +299,11 @@ class MetaRouterAgent(BaseAgent):
         Args:
             user_input: 사용자 입력 텍스트
             llm_result: LLM 분류 결과 (이미 호출한 경우)
+            user_role: 사용자 역할 (권한 체크용, None이면 체크 생략)
 
         Returns:
             라우팅 정보 딕셔너리 (V7 Intent 포함)
+            권한 부족 시 error 필드 포함
         """
         # 1차: V7 규칙 기반 분류 시도
         rule_result = self.classify_with_rules(user_input)
@@ -308,6 +313,35 @@ class MetaRouterAgent(BaseAgent):
                 f"[V7 Hybrid Router] Rule-based: '{user_input[:30]}...' → {rule_result.v7_intent} "
                 f"(route: {rule_result.route_to}, confidence: {rule_result.confidence})"
             )
+
+            # 권한 체크 (user_role이 제공된 경우)
+            if user_role and not check_intent_permission(rule_result.v7_intent, user_role):
+                required_role = get_required_role(rule_result.v7_intent)
+                error_msg = (
+                    f"권한 부족: '{rule_result.v7_intent}' Intent는 "
+                    f"{required_role.name} 이상의 권한이 필요합니다."
+                )
+                logger.warning(
+                    f"[V7 Hybrid Router] Permission denied: user_role={user_role.name}, "
+                    f"intent={rule_result.v7_intent}, required={required_role.name}"
+                )
+                return {
+                    "target_agent": "error",
+                    "processed_request": user_input,
+                    "context": {
+                        "classification_source": "v7_rule_engine",
+                        "permission_denied": True,
+                    },
+                    "v7_intent": rule_result.v7_intent,
+                    "route_to": rule_result.route_to,
+                    "legacy_intent": rule_result.legacy_intent,
+                    "intent": rule_result.legacy_intent,
+                    "slots": rule_result.slots,
+                    "error": error_msg,
+                    "required_role": required_role.name,
+                    "user_role": user_role.name,
+                }
+
             return {
                 "target_agent": rule_result.legacy_intent,
                 "processed_request": user_input,
@@ -350,6 +384,26 @@ class MetaRouterAgent(BaseAgent):
                 f"[V7 Hybrid Router] LLM-based: '{user_input[:30]}...' → "
                 f"v7={routing_info.get('v7_intent')}, legacy={routing_info['target_agent']}"
             )
+
+            # 권한 체크 (user_role이 제공되고 v7_intent가 있는 경우)
+            if user_role and routing_info.get("v7_intent"):
+                v7_intent = routing_info["v7_intent"]
+                if not check_intent_permission(v7_intent, user_role):
+                    required_role = get_required_role(v7_intent)
+                    error_msg = (
+                        f"권한 부족: '{v7_intent}' Intent는 "
+                        f"{required_role.name} 이상의 권한이 필요합니다."
+                    )
+                    logger.warning(
+                        f"[V7 Hybrid Router] Permission denied (LLM): user_role={user_role.name}, "
+                        f"intent={v7_intent}, required={required_role.name}"
+                    )
+                    routing_info["target_agent"] = "error"
+                    routing_info["error"] = error_msg
+                    routing_info["required_role"] = required_role.name
+                    routing_info["user_role"] = user_role.name
+                    routing_info["context"]["permission_denied"] = True
+
             return routing_info
 
         # LLM 결과가 없으면 기본값 반환
