@@ -1,0 +1,46 @@
+# AWS Configuration
+aws_region  = "ap-northeast-2"
+environment = "production"
+
+# Project
+project_name = "triflow-ai"
+
+# VPC
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["ap-northeast-2a", "ap-northeast-2c"]
+
+# RDS PostgreSQL
+db_instance_class           = "db.t4g.medium"
+db_allocated_storage        = 100
+db_max_allocated_storage    = 200
+db_name                     = "triflow"
+db_username                 = "triflow_admin"
+db_password                 = "CHANGE_ME_STRONG_PASSWORD"  # TODO: 변경 필수!
+db_backup_retention_period  = 7
+
+# ECS Fargate
+ecs_task_cpu       = 1024  # 1 vCPU
+ecs_task_memory    = 2048  # 2 GB
+ecs_desired_count  = 2
+ecs_min_count      = 2
+ecs_max_count      = 5
+
+# S3
+s3_bucket_name             = "triflow-ai-prod"
+s3_lifecycle_glacier_days  = 90
+
+# ALB & Domain (선택사항)
+domain_name         = ""  # 예: "triflow-ai.com" (Route 53 사용 시)
+alb_certificate_arn = ""  # ACM 인증서 ARN (기존 인증서 사용 시)
+
+# CloudWatch
+cloudwatch_log_retention_days = 15
+
+# Slack (선택사항)
+slack_webhook_url = ""  # Slack Incoming Webhook URL
+
+# Additional Tags
+additional_tags = {
+  Team    = "DevOps"
+  Contact = "devops@company.com"
+}

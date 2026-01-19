@@ -1,0 +1,204 @@
+name: Deploy to AWS ECS
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      image_tag:
+        description: 'Image tag to deploy'
+        required: false
+        default: 'latest'
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: triflow-ai-backend
+
+jobs:
+  deploy:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set environment variables
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "ENVIRONMENT=production" >> $GITHUB_ENV
+            echo "IMAGE_TAG=${{ github.event.inputs.image_tag || github.sha }}" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "IMAGE_TAG=staging-${{ github.sha }}" >> $GITHUB_ENV
+          fi
+
+      - name: Build Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          echo "🏗️ Building Docker image..."
+          docker build \
+            --platform linux/amd64 \
+            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            --build-arg VCS_REF=${{ github.sha }} \
+            --build-arg VERSION=${{ env.IMAGE_TAG }} \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }} \
+            -f backend/Dockerfile \
+            ./backend
+
+          echo "IMAGE_FULL_NAME=$ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}" >> $GITHUB_ENV
+
+      - name: Push image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          echo "⬆️ Pushing to ECR..."
+          docker push ${{ env.IMAGE_FULL_NAME }}
+
+          # latest 태그도 추가 (main 브랜치만)
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            docker tag ${{ env.IMAGE_FULL_NAME }} $ECR_REGISTRY/$ECR_REPOSITORY:latest
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          fi
+
+      - name: Download task definition
+        run: |
+          echo "📝 Downloading current task definition..."
+          aws ecs describe-task-definition \
+            --task-definition triflow-ai-${{ env.ENVIRONMENT }}-backend \
+            --query taskDefinition > task-definition.json
+
+      - name: Update task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: backend
+          image: ${{ env.IMAGE_FULL_NAME }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: triflow-ai-${{ env.ENVIRONMENT }}-backend-service
+          cluster: triflow-ai-${{ env.ENVIRONMENT }}-cluster
+          wait-for-service-stability: true
+          wait-for-minutes: 10
+
+      - name: Get deployment info
+        id: deployment-info
+        run: |
+          # Service 정보 조회
+          SERVICE_INFO=$(aws ecs describe-services \
+            --cluster triflow-ai-${{ env.ENVIRONMENT }}-cluster \
+            --services triflow-ai-${{ env.ENVIRONMENT }}-backend-service \
+            --query 'services[0]')
+
+          RUNNING_COUNT=$(echo $SERVICE_INFO | jq -r '.runningCount')
+          DESIRED_COUNT=$(echo $SERVICE_INFO | jq -r '.desiredCount')
+
+          echo "running_count=$RUNNING_COUNT" >> $GITHUB_OUTPUT
+          echo "desired_count=$DESIRED_COUNT" >> $GITHUB_OUTPUT
+
+          # ALB DNS 이름
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --query "LoadBalancers[?contains(Tags[?Key=='Environment'].Value, '${{ env.ENVIRONMENT }}')].DNSName | [0]" \
+            --output text || echo "")
+
+          echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
+
+      - name: Verify deployment
+        run: |
+          echo "🏥 Verifying deployment..."
+
+          ALB_DNS="${{ steps.deployment-info.outputs.alb_dns }}"
+
+          if [ -n "$ALB_DNS" ]; then
+            # Health check (최대 5회 재시도)
+            for i in {1..5}; do
+              if curl -f -s https://${ALB_DNS}/health > /dev/null; then
+                echo "✅ Health check passed!"
+                break
+              else
+                echo "⏳ Waiting for health check (attempt $i/5)..."
+                sleep 10
+              fi
+            done
+          fi
+
+      - name: Send Slack notification (Success)
+        if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST $SLACK_WEBHOOK_URL \
+              -H 'Content-Type: application/json' \
+              -d '{
+                "text": ":rocket: TriFlow AI Deployment Success",
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "*Deployment Complete* :white_check_mark:\n*Environment:* `${{ env.ENVIRONMENT }}`\n*Image:* `${{ env.IMAGE_TAG }}`\n*Tasks:* ${{ steps.deployment-info.outputs.running_count }}/${{ steps.deployment-info.outputs.desired_count }}\n*Deployed by:* ${{ github.actor }}\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                    }
+                  },
+                  {
+                    "type": "context",
+                    "elements": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "ALB: https://${{ steps.deployment-info.outputs.alb_dns }}"
+                      }
+                    ]
+                  }
+                ]
+              }'
+          fi
+
+      - name: Send Slack notification (Failure)
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST $SLACK_WEBHOOK_URL \
+              -H 'Content-Type: application/json' \
+              -d '{
+                "text": ":x: TriFlow AI Deployment Failed",
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "*Deployment Failed* :x:\n*Environment:* `${{ env.ENVIRONMENT }}`\n*Image:* `${{ env.IMAGE_TAG }}`\n*Deployed by:* ${{ github.actor }}\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                    }
+                  }
+                ]
+              }'
+          fi
