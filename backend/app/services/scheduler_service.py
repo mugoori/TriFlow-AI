@@ -267,6 +267,90 @@ async def generate_sample_sensor_data():
         db.close()
 
 
+async def auto_extract_samples_from_feedback():
+    """피드백에서 샘플 자동 추출 (설정된 주기마다)"""
+    from app.database import SessionLocal
+    from app.services.sample_curation_service import SampleCurationService
+    from app.services.settings_service import settings_service
+
+    try:
+        # 설정 확인
+        enabled = settings_service.get_setting("learning_auto_extract_enabled")
+        if enabled != "true":
+            logger.debug("Auto sample extraction is disabled")
+            return
+
+        db = SessionLocal()
+        service = SampleCurationService(db)
+
+        # 활성 테넌트 조회
+        from app.models import Tenant
+        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+
+        total_extracted = 0
+        for tenant in tenants:
+            try:
+                samples, _ = service.extract_samples_from_feedback(
+                    tenant_id=tenant.tenant_id,
+                    request={"days": 1, "dry_run": False}
+                )
+                total_extracted += len(samples)
+                logger.info(f"Extracted {len(samples)} samples for tenant {tenant.tenant_id}")
+            except Exception as e:
+                logger.error(f"Failed to extract samples for tenant {tenant.tenant_id}: {e}")
+
+        logger.info(f"Auto-extracted {total_extracted} samples across all tenants")
+    except Exception as e:
+        logger.error(f"Failed to auto-extract samples: {e}")
+    finally:
+        db.close()
+
+
+async def auto_update_golden_sets():
+    """골든 샘플셋 자동 업데이트"""
+    from app.database import SessionLocal
+    from app.services.golden_sample_set_service import GoldenSampleSetService
+    from app.services.settings_service import settings_service
+
+    try:
+        # 설정 확인
+        enabled = settings_service.get_setting("learning_golden_set_auto_update")
+        if enabled != "true":
+            logger.debug("Golden set auto-update is disabled")
+            return
+
+        db = SessionLocal()
+        service = GoldenSampleSetService(db)
+
+        # 활성 골든셋 조회
+        from app.models import GoldenSampleSet
+        active_sets = db.query(GoldenSampleSet).filter(
+            GoldenSampleSet.is_active == True
+        ).all()
+
+        total_updated = 0
+        for sample_set in active_sets:
+            try:
+                result = service.auto_update_set(
+                    set_id=sample_set.set_id,
+                    request=None  # Use defaults
+                )
+                if result["added_count"] > 0 or result["removed_count"] > 0:
+                    total_updated += 1
+                    logger.info(
+                        f"Updated golden set {sample_set.set_id}: "
+                        f"+{result['added_count']}, -{result['removed_count']}"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to update golden set {sample_set.set_id}: {e}")
+
+        logger.info(f"Auto-updated {total_updated} golden sets")
+    except Exception as e:
+        logger.error(f"Failed to auto-update golden sets: {e}")
+    finally:
+        db.close()
+
+
 # 싱글톤 인스턴스
 scheduler = SchedulerService()
 
@@ -303,4 +387,24 @@ def setup_default_jobs():
         interval_seconds=1800,  # 30분
         handler=refresh_materialized_views,
         enabled=True,
+    )
+
+    # Sample auto-extraction (6시간 간격)
+    scheduler.register_job(
+        job_id="auto_extract_samples",
+        name="샘플 자동 추출",
+        description="피드백에서 학습 샘플 자동 추출",
+        interval_seconds=21600,  # 6 hours
+        handler=auto_extract_samples_from_feedback,
+        enabled=False,  # 설정에서 활성화
+    )
+
+    # Golden set auto-update (24시간 간격)
+    scheduler.register_job(
+        job_id="auto_update_golden_sets",
+        name="골든셋 자동 업데이트",
+        description="골든 샘플셋 자동 업데이트",
+        interval_seconds=86400,  # 24 hours
+        handler=auto_update_golden_sets,
+        enabled=False,  # 설정에서 활성화
     )

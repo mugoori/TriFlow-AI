@@ -1,10 +1,14 @@
 /**
  * Settings Page
- * 일반 설정, Backend 연결, AI 모델, 알림 설정, 앱 정보
+ * 일반 설정, Backend 연결, AI 모델, 알림 설정, 앱 정보, 사용자 관리
  */
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePermission } from '../../hooks/usePermission';
 import { settingsService, NotificationTestResult } from '../../services/settingsService';
+import UserManagementSection from '../settings/UserManagementSection';
+import RolePermissionsCard from '../settings/RolePermissionsCard';
+import LearningConfigSection from '../settings/LearningConfigSection';
 
 type Theme = 'system' | 'light' | 'dark';
 type Language = 'ko' | 'en';
@@ -81,6 +85,7 @@ function getInitialSettings(): Settings {
 
 export default function SettingsPage() {
   const { isAuthenticated } = useAuth();
+  const { isAdmin, canViewUsers } = usePermission();
 
   // 초기 상태를 localStorage에서 동기적으로 로드 (깜빡임 방지)
   const [settings, setSettings] = useState<Settings>(getInitialSettings);
@@ -886,6 +891,44 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
+
+        {/* Learning Pipeline Configuration (admin, approver만 표시) */}
+        {canViewUsers() && (
+          <>
+            <div className="mt-8 mb-4">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">학습 파이프라인 설정</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                자동 학습 및 규칙 추출 설정 {isAdmin() ? '(관리자)' : '(조회 전용)'}
+              </p>
+            </div>
+
+            <LearningConfigSection isAdmin={isAdmin()} />
+          </>
+        )}
+
+        {/* 사용자 및 권한 관리 섹션 (admin, approver만 표시) */}
+        {canViewUsers() && (
+          <>
+            <div className="mt-8 mb-4">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">사용자 및 권한 관리</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                테넌트 내 사용자 관리 및 RBAC 설정 {isAdmin() ? '(관리자)' : '(조회 전용)'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* 사용자 관리 테이블 */}
+              <div className="lg:col-span-2">
+                <UserManagementSection isAdmin={isAdmin()} />
+              </div>
+
+              {/* 역할별 권한 카드 */}
+              <div className="lg:col-span-2">
+                <RolePermissionsCard />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

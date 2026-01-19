@@ -96,6 +96,14 @@ SETTING_DEFINITIONS = {
     "s3_bucket_name": {"category": "storage", "sensitive": False, "label": "S3 버킷명"},
     # AI
     "anthropic_api_key": {"category": "ai", "sensitive": True, "label": "Anthropic API Key"},
+    # Learning Pipeline
+    "learning_min_quality_score": {"category": "learning", "sensitive": False, "label": "최소 품질 점수"},
+    "learning_auto_extract_enabled": {"category": "learning", "sensitive": False, "label": "자동 추출 활성화"},
+    "learning_auto_extract_interval_hours": {"category": "learning", "sensitive": False, "label": "추출 주기(시간)"},
+    "learning_max_tree_depth": {"category": "learning", "sensitive": False, "label": "최대 트리 깊이"},
+    "learning_min_samples_split": {"category": "learning", "sensitive": False, "label": "최소 분할 샘플"},
+    "learning_golden_set_auto_update": {"category": "learning", "sensitive": False, "label": "골든셋 자동 업데이트"},
+    "learning_golden_set_threshold": {"category": "learning", "sensitive": False, "label": "골든셋 임계값"},
 }
 
 

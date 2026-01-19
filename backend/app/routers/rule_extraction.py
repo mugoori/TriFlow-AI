@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models import User
 from app.services.rule_extraction_service import RuleExtractionService
+from app.services.rbac_service import Role, require_role
 from app.schemas.rule_extraction import (
     RuleExtractionRequest,
     RuleExtractionResponse,
@@ -50,6 +51,7 @@ async def extract_rules(
     request: RuleExtractionRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.APPROVER, Role.ADMIN)),
 ):
     """규칙 추출 API"""
     try:
@@ -196,6 +198,7 @@ async def delete_candidate(
     candidate_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.ADMIN)),
 ):
     """후보 삭제"""
     service = RuleExtractionService(db)
@@ -284,6 +287,7 @@ async def approve_candidate(
     request: ApproveRequest = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.APPROVER, Role.ADMIN)),
 ):
     """후보 승인 → ProposedRule 생성"""
     service = RuleExtractionService(db)
@@ -336,6 +340,7 @@ async def reject_candidate(
     request: RejectRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.APPROVER, Role.ADMIN)),
 ):
     """후보 거절"""
     service = RuleExtractionService(db)

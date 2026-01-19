@@ -41,6 +41,7 @@ from app.auth.dependencies import get_current_user
 from app.models import User
 from app.services.sample_curation_service import SampleCurationService
 from app.services.golden_sample_set_service import GoldenSampleSetService
+from app.services.rbac_service import Role, require_role
 from app.schemas.sample import (
     # Sample
     SampleCreate,
@@ -78,6 +79,7 @@ async def create_sample(
     request: SampleCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.USER, Role.OPERATOR, Role.APPROVER, Role.ADMIN)),
 ):
     """샘플 생성 (수동)"""
     service = SampleCurationService(db)
@@ -136,6 +138,7 @@ async def extract_samples(
     request: SampleExtractRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.OPERATOR, Role.APPROVER, Role.ADMIN)),
 ):
     """피드백에서 샘플 자동 추출"""
     service = SampleCurationService(db)
@@ -190,6 +193,7 @@ async def delete_sample(
     sample_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.ADMIN)),
 ):
     """샘플 삭제"""
     service = SampleCurationService(db)
@@ -206,6 +210,7 @@ async def approve_sample(
     sample_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.APPROVER, Role.ADMIN)),
 ):
     """샘플 승인"""
     service = SampleCurationService(db)
@@ -249,6 +254,7 @@ async def create_golden_set(
     request: GoldenSetCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.APPROVER, Role.ADMIN)),
 ):
     """골든 샘플셋 생성"""
     service = GoldenSampleSetService(db)
@@ -401,6 +407,7 @@ async def auto_update_golden_set(
     request: Optional[GoldenSetAutoUpdateRequest] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(require_role(Role.APPROVER, Role.ADMIN)),
 ):
     """골든 샘플셋 자동 업데이트"""
     service = GoldenSampleSetService(db)
