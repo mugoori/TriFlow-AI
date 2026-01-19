@@ -572,6 +572,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register tenant-config router: {e}")
 
+# Prompts 라우터 (Prompt Template 관리)
+try:
+    from app.routers import prompts
+    app.include_router(prompts.router, prefix="/api/v1/prompts", tags=["prompts"])
+    logger.info("Prompts router registered")
+except Exception as e:
+    logger.error(f"Failed to register prompts router: {e}")
+
 # ========== 플러그인 모듈 로딩 ==========
 # modules/ 디렉토리의 매니페스트 기반 동적 라우터 로딩
 try:
