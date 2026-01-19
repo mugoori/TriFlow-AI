@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { settingsService } from '../../services/settingsService';
 import { Database, RefreshCw, AlertCircle, CheckCircle, Sliders } from 'lucide-react';
+import { useToast } from '../ui/Toast';
 
 interface LearningConfigSectionProps {
   isAdmin: boolean;
@@ -38,6 +39,8 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const toast = useToast();
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -65,9 +68,51 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
     loadSettings();
   }, [loadSettings]);
 
+  const validateSettings = (settings: LearningSettings): Record<string, string> => {
+    const errors: Record<string, string> = {};
+
+    // Min Quality Score: 0-1
+    const qualityScore = parseFloat(settings.learning_min_quality_score);
+    if (isNaN(qualityScore) || qualityScore < 0 || qualityScore > 1) {
+      errors.learning_min_quality_score = '품질 점수는 0과 1 사이여야 합니다';
+    }
+
+    // Auto Extract Interval: 1-24
+    const interval = parseInt(settings.learning_auto_extract_interval_hours);
+    if (isNaN(interval) || interval < 1 || interval > 24) {
+      errors.learning_auto_extract_interval_hours = '추출 주기는 1~24시간 사이여야 합니다';
+    }
+
+    // Max Tree Depth: 3-10
+    const treeDepth = parseInt(settings.learning_max_tree_depth);
+    if (isNaN(treeDepth) || treeDepth < 3 || treeDepth > 10) {
+      errors.learning_max_tree_depth = '트리 깊이는 3~10 사이여야 합니다';
+    }
+
+    // Min Samples Split: 10-100
+    const minSamples = parseInt(settings.learning_min_samples_split);
+    if (isNaN(minSamples) || minSamples < 10 || minSamples > 100) {
+      errors.learning_min_samples_split = '최소 샘플은 10~100 사이여야 합니다';
+    }
+
+    // Golden Set Threshold: 10-100
+    const threshold = parseInt(settings.learning_golden_set_threshold);
+    if (isNaN(threshold) || threshold < 10 || threshold > 100) {
+      errors.learning_golden_set_threshold = '임계값은 10~100 사이여야 합니다';
+    }
+
+    return errors;
+  };
+
   const handleChange = (key: keyof LearningSettings, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     setSaveStatus('idle');
+    // Clear validation error for this field
+    setValidationErrors((prev) => {
+      const newErrors = { ...prev };
+      delete newErrors[key];
+      return newErrors;
+    });
   };
 
   const handleToggle = (key: keyof LearningSettings) => {
@@ -78,11 +123,23 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
   const handleSave = async () => {
     if (!isAdmin) {
       setError('관리자만 설정을 변경할 수 있습니다');
+      toast.error('관리자만 설정을 변경할 수 있습니다');
+      return;
+    }
+
+    // Validation check
+    const errors = validateSettings(settings);
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      const firstError = Object.values(errors)[0];
+      toast.error(`입력 오류: ${firstError}`);
+      setSaveStatus('error');
       return;
     }
 
     setSaveStatus('saving');
     setError(null);
+    setValidationErrors({});
 
     try {
       // 빈 값이거나 마스킹된 값은 제외하고 저장
@@ -95,10 +152,18 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
 
       await settingsService.updateSettings(settingsToSave);
       setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
+      toast.success('학습 설정이 성공적으로 저장되었습니다');
+
+      // Reload settings to confirm save
+      setTimeout(async () => {
+        await loadSettings();
+        setSaveStatus('idle');
+      }, 1500);
     } catch (err) {
       console.error('Failed to save learning settings:', err);
-      setError('설정 저장에 실패했습니다');
+      const errorMsg = '설정 저장에 실패했습니다';
+      setError(errorMsg);
+      toast.error(errorMsg);
       setSaveStatus('error');
     }
   };
@@ -200,11 +265,21 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
                 value={settings.learning_auto_extract_interval_hours}
                 onChange={(e) => handleChange('learning_auto_extract_interval_hours', e.target.value)}
                 disabled={!isAdmin || settings.learning_auto_extract_enabled !== 'true'}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  validationErrors.learning_auto_extract_interval_hours
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-slate-300 dark:border-slate-600 focus:ring-blue-500'
+                }`}
               />
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                1-24시간 (기본값: 6시간)
-              </p>
+              {validationErrors.learning_auto_extract_interval_hours ? (
+                <p className="text-xs text-red-500 mt-1">
+                  {validationErrors.learning_auto_extract_interval_hours}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  1-24시간 (기본값: 6시간)
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -236,11 +311,21 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
                 value={settings.learning_max_tree_depth}
                 onChange={(e) => handleChange('learning_max_tree_depth', e.target.value)}
                 disabled={!isAdmin}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  validationErrors.learning_max_tree_depth
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-slate-300 dark:border-slate-600 focus:ring-blue-500'
+                }`}
               />
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                3-10 (기본값: 5) - 높을수록 복잡한 규칙 생성
-              </p>
+              {validationErrors.learning_max_tree_depth ? (
+                <p className="text-xs text-red-500 mt-1">
+                  {validationErrors.learning_max_tree_depth}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  3-10 (기본값: 5) - 높을수록 복잡한 규칙 생성
+                </p>
+              )}
             </div>
 
             {/* Min Samples Split */}
@@ -256,11 +341,21 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
                 value={settings.learning_min_samples_split}
                 onChange={(e) => handleChange('learning_min_samples_split', e.target.value)}
                 disabled={!isAdmin}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  validationErrors.learning_min_samples_split
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-slate-300 dark:border-slate-600 focus:ring-blue-500'
+                }`}
               />
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                10-100 (기본값: 20) - 노드 분할에 필요한 최소 샘플 수
-              </p>
+              {validationErrors.learning_min_samples_split ? (
+                <p className="text-xs text-red-500 mt-1">
+                  {validationErrors.learning_min_samples_split}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  10-100 (기본값: 20) - 노드 분할에 필요한 최소 샘플 수
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -318,11 +413,21 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
                 value={settings.learning_golden_set_threshold}
                 onChange={(e) => handleChange('learning_golden_set_threshold', e.target.value)}
                 disabled={!isAdmin || settings.learning_golden_set_auto_update !== 'true'}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  validationErrors.learning_golden_set_threshold
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-slate-300 dark:border-slate-600 focus:ring-blue-500'
+                }`}
               />
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                10-100 (기본값: 50) - 승인된 샘플이 이 수에 도달하면 자동 업데이트
-              </p>
+              {validationErrors.learning_golden_set_threshold ? (
+                <p className="text-xs text-red-500 mt-1">
+                  {validationErrors.learning_golden_set_threshold}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  10-100 (기본값: 50) - 승인된 샘플이 이 수에 도달하면 자동 업데이트
+                </p>
+              )}
             </div>
           </div>
         </div>
