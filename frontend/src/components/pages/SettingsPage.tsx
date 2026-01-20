@@ -9,6 +9,7 @@ import { settingsService, NotificationTestResult } from '../../services/settings
 import UserManagementSection from '../settings/UserManagementSection';
 import RolePermissionsCard from '../settings/RolePermissionsCard';
 import LearningConfigSection from '../settings/LearningConfigSection';
+import ModuleManagerSection from '../settings/ModuleManagerSection';
 
 type Theme = 'system' | 'light' | 'dark';
 type Language = 'ko' | 'en';
@@ -858,6 +859,18 @@ export default function SettingsPage() {
             {notificationSaveStatus === 'saving' ? '저장 중...' : '알림 설정 저장'}
           </button>
         </div>
+
+        {/* Module Manager 섹션 (Admin 전용) */}
+        {isAdmin() && (
+          <>
+            <div className="mt-8 mb-4">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">모듈 관리</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">외부 모듈 설치 및 관리 (관리자 전용)</p>
+            </div>
+
+            <ModuleManagerSection />
+          </>
+        )}
 
         {/* 저장 버튼 영역 */}
         <div className="mt-6 flex items-center justify-between p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">

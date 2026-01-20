@@ -6,6 +6,42 @@ import { useState, useEffect } from 'react';
 import { userService } from '../../services/userService';
 import type { RoleInfo } from '../../types/rbac';
 
+// 권한 한글 매핑
+const PERMISSION_LABELS: Record<string, Record<string, string>> = {
+  // 리소스 한글명
+  resources: {
+    'agents': '에이전트',
+    'audit': '감사 로그',
+    'deployments': '배포',
+    'experiments': '실험',
+    'feedback': '피드백',
+    'proposals': '제안',
+    'rule_extraction': '규칙 추출',
+    'rulesets': '규칙셋',
+    'samples': '샘플',
+    'sensors': '센서',
+    'settings': '설정',
+    'tenants': '테넌트',
+    'users': '사용자',
+    'workflows': '워크플로우',
+    '워크플로우': '워크플로우',
+    '규칙셋': '규칙셋',
+  },
+  // 액션 한글명
+  actions: {
+    'read': '조회',
+    'create': '생성',
+    'update': '수정',
+    'delete': '삭제',
+    'execute': '실행',
+    'approve': '승인',
+    'rollback': '롤백',
+  }
+};
+
+// 모든 액션 타입 (테이블 헤더용)
+const ALL_ACTIONS = ['read', 'create', 'update', 'delete', 'execute', 'approve', 'rollback'] as const;
+
 export default function RolePermissionsCard() {
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
@@ -152,42 +188,72 @@ export default function RolePermissionsCard() {
               </div>
             </button>
 
-            {/* 권한 목록 (확장 시) */}
+            {/* 권한 목록 (확장 시) - 테이블 형식 */}
             {expandedRole === role.role && (
-              <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg">
+              <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg overflow-x-auto">
                 {permissions[role.role] ? (
                   permissions[role.role].length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {permissions[role.role].map((perm) => {
+                    (() => {
+                      // 권한을 리소스별로 그룹화
+                      const groupedPermissions = permissions[role.role].reduce((acc, perm) => {
                         const [resource, action] = perm.split(':');
-                        return (
-                          <span
-                            key={perm}
-                            className="inline-flex items-center px-2 py-1 rounded text-xs"
-                          >
-                            <span className="font-medium text-slate-700 dark:text-slate-300">
-                              {resource}
-                            </span>
-                            <span className="mx-1 text-slate-400">:</span>
-                            <span
-                              className={`font-medium ${
-                                action === 'delete'
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : action === 'approve'
-                                  ? 'text-purple-600 dark:text-purple-400'
-                                  : action === 'execute'
-                                  ? 'text-blue-600 dark:text-blue-400'
-                                  : action === 'create' || action === 'update'
-                                  ? 'text-green-600 dark:text-green-400'
-                                  : 'text-slate-600 dark:text-slate-400'
-                              }`}
-                            >
-                              {action}
-                            </span>
-                          </span>
-                        );
-                      })}
-                    </div>
+                        if (!acc[resource]) acc[resource] = [];
+                        acc[resource].push(action);
+                        return acc;
+                      }, {} as Record<string, string[]>);
+
+                      return (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 dark:border-slate-700">
+                              <th className="text-left py-2 px-3 font-medium text-slate-700 dark:text-slate-300">
+                                리소스
+                              </th>
+                              {ALL_ACTIONS.map(action => (
+                                <th key={action} className="text-center py-2 px-2 font-medium text-slate-600 dark:text-slate-400">
+                                  {PERMISSION_LABELS.actions[action]}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(groupedPermissions)
+                              .sort(([a], [b]) => {
+                                const labelA = PERMISSION_LABELS.resources[a] || a;
+                                const labelB = PERMISSION_LABELS.resources[b] || b;
+                                return labelA.localeCompare(labelB, 'ko');
+                              })
+                              .map(([resource, actions]) => {
+                                const resourceLabel = PERMISSION_LABELS.resources[resource] || resource;
+                                return (
+                                  <tr key={resource} className="border-b border-slate-100 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800">
+                                    <td className="py-2 px-3 font-medium text-slate-700 dark:text-slate-300">
+                                      {resourceLabel}
+                                    </td>
+                                    {ALL_ACTIONS.map(action => (
+                                      <td key={action} className="text-center py-2 px-2">
+                                        {actions.includes(action) ? (
+                                          <span className={`font-bold ${
+                                            action === 'delete' ? 'text-red-600 dark:text-red-400' :
+                                            action === 'approve' ? 'text-purple-600 dark:text-purple-400' :
+                                            action === 'execute' ? 'text-blue-600 dark:text-blue-400' :
+                                            action === 'rollback' ? 'text-orange-600 dark:text-orange-400' :
+                                            'text-green-600 dark:text-green-400'
+                                          }`}>
+                                            ✓
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-300 dark:text-slate-600">-</span>
+                                        )}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      );
+                    })()
                   ) : (
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                       할당된 권한이 없습니다

@@ -90,21 +90,21 @@ export const tenantService = {
    * 로그인 후 호출하여 동적 UI 렌더링에 사용
    */
   async getConfig(): Promise<TenantConfig> {
-    return apiClient.get<TenantConfig>('/api/v1/tenant/config');
+    return apiClient.get<TenantConfig>('/api/v1/tenant-config/tenant/config');
   },
 
   /**
    * 테넌트의 모든 모듈 목록 조회
    */
   async getModules(): Promise<ModuleInfo[]> {
-    return apiClient.get<ModuleInfo[]>('/api/v1/tenant/modules');
+    return apiClient.get<ModuleInfo[]>('/api/v1/tenant-config/tenant/modules');
   },
 
   /**
    * 모듈 활성화 (Admin 전용)
    */
   async enableModule(moduleCode: string, config?: Record<string, unknown>): Promise<void> {
-    await apiClient.post('/api/v1/tenant/modules/enable', {
+    await apiClient.post('/api/v1/tenant-config/tenant/modules/enable', {
       module_code: moduleCode,
       config,
     });
@@ -114,7 +114,7 @@ export const tenantService = {
    * 모듈 비활성화 (Admin 전용)
    */
   async disableModule(moduleCode: string): Promise<void> {
-    await apiClient.post('/api/v1/tenant/modules/disable', {
+    await apiClient.post('/api/v1/tenant-config/tenant/modules/disable', {
       module_code: moduleCode,
     });
   },
