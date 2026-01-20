@@ -1,0 +1,116 @@
+/* 한국바이오팜 모듈 스타일 - Tailwind inline 버전 */
+
+/* 전역 스타일은 불필요 - Tailwind가 자동 처리 */
+
+/* 버튼 스타일 */
+.btn-primary {
+  background-color: rgb(37 99 235);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: rgb(29 78 216);
+}
+
+.btn-secondary {
+  background-color: rgb(241 245 249);
+  color: rgb(51 65 85);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+  background-color: rgb(226 232 240);
+}
+
+/* Input 필드 */
+.input-field {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background-color: white;
+  color: rgb(15 23 42);
+  border: 1px solid rgb(203 213 225);
+  border-radius: 0.5rem;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.input-field:focus {
+  border-color: rgb(59 130 246);
+  ring: 2px;
+  ring-color: rgb(59 130 246);
+}
+
+/* 카드 */
+.card {
+  background-color: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  border: 1px solid rgb(241 245 249);
+  padding: 1.5rem;
+}
+
+.card-header {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: rgb(15 23 42);
+  margin-bottom: 1rem;
+}
+
+/* 배지 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.badge-green {
+  background-color: rgb(220 252 231);
+  color: rgb(22 101 52);
+}
+
+.badge-blue {
+  background-color: rgb(219 234 254);
+  color: rgb(30 64 175);
+}
+
+.badge-purple {
+  background-color: rgb(243 232 255);
+  color: rgb(107 33 168);
+}
+
+/* 다크모드 지원 */
+@media (prefers-color-scheme: dark) {
+  .input-field {
+    background-color: rgb(30 41 59);
+    color: rgb(248 250 252);
+    border-color: rgb(71 85 105);
+  }
+
+  .card {
+    background-color: rgb(30 41 59);
+    border-color: rgb(51 65 85);
+  }
+
+  .card-header {
+    color: rgb(248 250 252);
+  }
+
+  .btn-secondary {
+    background-color: rgb(51 65 85);
+    color: rgb(203 213 225);
+  }
+
+  .btn-secondary:hover {
+    background-color: rgb(71 85 105);
+  }
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar, ViewType } from "./components/layout/Sidebar";
 import { ChatContainer } from "./components/ChatContainer";
@@ -17,6 +17,7 @@ import { TenantConfigProvider } from "./contexts/TenantConfigContext";
 import { StatCardProvider } from "./contexts/StatCardContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ToastProvider } from "./components/ui/Toast";
+import { getPageComponent } from "./modules/_imports";
 
 const PAGE_INFO: Record<ViewType, { title: string; description: string }> = {
   chat: { title: 'AI Chat', description: '에이전트와 대화하기' },
@@ -27,6 +28,7 @@ const PAGE_INFO: Record<ViewType, { title: string; description: string }> = {
   learning: { title: 'Learning', description: '피드백 분석 및 AI 제안 검토' },
   data: { title: 'Data', description: '센서 및 생산 데이터 조회' },
   settings: { title: 'Settings', description: '앱 설정 관리' },
+  korea_biopharm: { title: '한국바이오팜', description: '바이오 제약 배합 관리' },
 };
 
 const getPageTitle = (view: ViewType) => PAGE_INFO[view]?.title || view;
@@ -83,8 +85,18 @@ function MainLayout() {
         return <DataPage />;
       case 'settings':
         return <SettingsPage />;
-      default:
+      default: {
+        // 동적 모듈 페이지 로드
+        const DynamicPage = getPageComponent(currentView);
+        if (DynamicPage) {
+          return (
+            <Suspense fallback={<div className="p-6">Loading...</div>}>
+              <DynamicPage />
+            </Suspense>
+          );
+        }
         return <ChatContainer />;
+      }
     }
   };
 

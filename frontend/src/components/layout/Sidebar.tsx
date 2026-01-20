@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenantConfig } from '../../contexts/TenantConfigContext';
 
-export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings';
+export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings' | 'korea_biopharm';
 
 interface SidebarProps {
   currentView: ViewType;
@@ -78,6 +78,13 @@ const navItems: NavItem[] = [
     icon: Settings,
     description: '설정',
     moduleCode: 'settings',
+  },
+  {
+    id: 'korea_biopharm',
+    label: '한국바이오팜',
+    icon: FlaskConical,
+    description: '바이오 제약 배합 관리',
+    moduleCode: 'korea_biopharm',
   },
 ];
 
