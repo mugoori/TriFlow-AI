@@ -101,6 +101,11 @@ backend/coverage_report.txt
 # Test data files
 test_*.csv
 test_*.txt
+test_*.py
+test_module/
+test_module.zip
+test_medium/
+test_medium_10mb.zip
 
 # Export temp folder
 exports/
@@ -119,3 +124,14 @@ backend/migrations/
 
 # Spec reviews (internal analysis)
 docs/spec-reviews/
+
+# Temporary files
+temp_*/
+NUL
+nul
+*.zip.tmp
+*.zip
+clean_module/
+find_upload_logs.py
+*openapi.json
+temp_log.txt
