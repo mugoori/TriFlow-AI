@@ -191,12 +191,15 @@ async def stream_chat_response(
     SSE (Server-Sent Events) 형식으로 응답을 스트리밍합니다.
     각 이벤트는 JSON 형식으로 전송됩니다.
     """
+    logger.info(f"[SSE] Stream started - message: '{message[:50]}...', tenant_id: {tenant_id}, user_role: {user_role}")
     try:
         # Step 1: 시작 이벤트
+        logger.debug("[SSE] Yielding start event")
         yield f"data: {json.dumps({'type': 'start', 'message': 'Processing request...'})}\n\n"
         await asyncio.sleep(0.1)
 
         # Step 2: Meta Router로 Intent 분류
+        logger.debug("[SSE] Yielding routing event")
         yield f"data: {json.dumps({'type': 'routing', 'message': 'Classifying intent...'})}\n\n"
 
         # 대화 이력을 context에 포함
@@ -205,6 +208,7 @@ async def stream_chat_response(
             merged_context["conversation_history"] = conversation_history[-10:]
 
         # orchestrator.process()를 run_in_executor로 비동기 실행
+        logger.debug(f"[SSE] Calling orchestrator.process() with message: '{message[:50]}...'")
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             _executor,
@@ -216,6 +220,7 @@ async def stream_chat_response(
                 user_role=user_role,
             )
         )
+        logger.debug(f"[SSE] Orchestrator returned: agent={result.get('agent_name')}, response_length={len(result.get('response', ''))}")
 
         target_agent_name = result.get("agent_name", "MetaRouterAgent")
         routing_info = result.get("routing_info", {})
@@ -278,13 +283,17 @@ async def stream_chat_response(
         yield "data: [DONE]\n\n"
 
     except Exception as e:
-        logger.error(f"Streaming error: {e}", exc_info=True)
+        logger.error(f"[SSE] Streaming error: {e}", exc_info=True)
+        logger.error(f"[SSE] Error type: {type(e).__name__}, Error details: {str(e)}")
 
         # 사용자 친화적 에러 메시지 생성
-        user_error = classify_error(e)
-        error_response = format_error_response(user_error, lang="ko")
-
-        yield f"data: {json.dumps({'type': 'error', 'message': error_response['message'], 'suggestion': error_response.get('suggestion'), 'retryable': user_error.retryable})}\n\n"
+        try:
+            user_error = classify_error(e)
+            error_response = format_error_response(user_error, lang="ko")
+            yield f"data: {json.dumps({'type': 'error', 'message': error_response['message'], 'suggestion': error_response.get('suggestion'), 'retryable': user_error.retryable})}\n\n"
+        except Exception as inner_e:
+            logger.error(f"[SSE] Error formatting error response: {inner_e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Internal error: {str(e)}', 'retryable': False})}\n\n"
 
 
 @router.post("/chat/stream")
@@ -316,6 +325,8 @@ async def chat_stream(
             }
         };
     """
+    logger.info(f"[SSE Endpoint] Received request - message: '{request.message[:50]}...', tenant_id: {request.tenant_id}")
+
     # 대화 이력 변환
     history = None
     if request.conversation_history:
@@ -324,7 +335,9 @@ async def chat_stream(
     # 사용자 역할 정보
     user_role = current_user.role if current_user else None
     if current_user:
-        logger.info(f"Stream authenticated user: {current_user.email} (role: {user_role})")
+        logger.info(f"[SSE Endpoint] Stream authenticated user: {current_user.email} (role: {user_role})")
+    else:
+        logger.warning("[SSE Endpoint] No authenticated user (anonymous request)")
 
     return StreamingResponse(
         stream_chat_response(
