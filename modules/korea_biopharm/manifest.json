@@ -1,0 +1,22 @@
+{
+  "module_code": "korea_biopharm",
+  "version": "1.0.0",
+  "name": "한국바이오팜",
+  "description": "바이오 제약 배합 관리 모듈",
+  "category": "industry",
+  "icon": "FlaskConical",
+  "default_enabled": false,
+  "requires_subscription": null,
+  "depends_on": [],
+  "display_order": 100,
+  "backend": {
+    "router_path": "modules.korea_biopharm.backend.router",
+    "api_prefix": "/api/v1/korea-biopharm",
+    "tags": ["korea-biopharm"]
+  },
+  "frontend": {
+    "page_component": "KoreaBiopharmPage",
+    "admin_only": false,
+    "hide_from_nav": false
+  }
+}

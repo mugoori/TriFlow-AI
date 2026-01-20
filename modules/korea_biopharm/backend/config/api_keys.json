@@ -1,0 +1,25 @@
+{
+  "공공데이터포털": {
+    "name": "식품의약품안전처_건강기능식품정보",
+    "api_key": "19938665bd7e9a8b520d6f181f1fdd4eadc35f9d23d12ecb6fa125405b898f10",
+    "base_url": "https://apis.data.go.kr/1471000/HtfsInfoService03",
+    "endpoints": {
+      "목록조회": "/getHtfsList01",
+      "상세조회": "/getHtfsItem01"
+    }
+  },
+  "식품안전나라": {
+    "name": "건강기능식품 품목제조 신고사항 현황(I0030)",
+    "api_key": "a32eb4183d2a4c76803f",
+    "base_url": "http://openapi.foodsafetykorea.go.kr/api",
+    "service_code": "I0030"
+  },
+  "이카운트ERP": {
+    "name": "이카운트 ERP API",
+    "api_key": "0e19016d661fa493490a233bbefd993351",
+    "발급ID": "KBCL0218",
+    "유효기간": "2025.09.23 ~ 2026.09.22",
+    "COM_CODE": "172016",
+    "base_url": "https://oapi.ecounterp.com/v2"
+  }
+}
