@@ -85,6 +85,10 @@ class V7IntentClassifier:
         self._compiled_patterns: Dict[str, List[re.Pattern]] = {}
         self._compile_patterns()
 
+        # 도메인 레지스트리 추가
+        from app.services.domain_registry import get_domain_registry
+        self.domain_registry = get_domain_registry()
+
     def _compile_patterns(self) -> None:
         """정규식 패턴 사전 컴파일 (V7 규칙)"""
         for intent, rule in self.v7_rules.items():
@@ -99,6 +103,11 @@ class V7IntentClassifier:
         """
         텍스트를 V7 Intent로 분류
 
+        우선순위:
+        1. 도메인 키워드 매칭 (최우선, 모듈 기반)
+        2. V7 규칙 기반 분류
+        3. None (LLM fallback 필요)
+
         Args:
             text: 사용자 입력 텍스트
 
@@ -110,6 +119,32 @@ class V7IntentClassifier:
             return None
 
         text = text.strip()
+
+        # 1차: 도메인 키워드 매칭 (최우선!)
+        domain_match = self.domain_registry.match_domain(text)
+        if domain_match:
+            logger.info(
+                f"[V7 Classifier] Domain match: '{text[:30]}...' → "
+                f"{domain_match.module_code} (keyword in text)"
+            )
+
+            return ClassificationResult(
+                v7_intent="CHECK",  # 도메인 데이터 조회
+                route_to=domain_match.route_to,
+                confidence=0.98,
+                source="domain_registry",
+                legacy_intent="bi",
+                matched_keyword=next(
+                    (k for k in domain_match.keywords if k.lower() in text.lower()),
+                    None
+                ),
+                slots={
+                    "domain": domain_match.module_code,
+                    "schema": domain_match.schema_name,
+                },
+            )
+
+        # 2차: 기존 V7 규칙 기반 분류
         all_matches: List[Dict[str, Any]] = []
 
         # 모든 V7 Intent에 대해 패턴 매칭 시도

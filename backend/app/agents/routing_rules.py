@@ -200,10 +200,11 @@ V7_ROUTING_RULES: Dict[str, Dict[str, Any]] = {
 
     "RANK": {
         "priority": 65,
-        "route_to": "JUDGMENT_ENGINE",
+        "route_to": "BI_GUIDE",
         "description": "순위/최대/최소 조회",
         "patterns": [
-            # 순위/최대/최소
+            # 도메인별 키워드(비타민, 배합비 등)는 DomainRegistry가 처리하므로 제거됨
+            # 일반 순위 패턴만 유지
             r"(제일|가장|최고|최저|최대|최소).*(뭐|어디|어느)",
             r"(순위|순서|랭킹|\btop\b|\bTOP\b|상위|하위)",
             r"(많은|적은|높은|낮은).*(순서|순위|순으로)",

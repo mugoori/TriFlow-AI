@@ -22,6 +22,7 @@ class SafeQueryExecutor:
     - SQL Injection 방어
     - 타임아웃 설정
     - 결과 행 수 제한
+    - 동적 스키마 허용 (DomainRegistry 통합)
     """
 
     def __init__(
@@ -45,6 +46,10 @@ class SafeQueryExecutor:
         )
         self.max_rows = max_rows
         self.timeout_seconds = timeout_seconds
+
+        # 도메인 레지스트리 (동적 스키마 허용)
+        from app.services.domain_registry import get_domain_registry
+        self.domain_registry = get_domain_registry()
 
     def execute(self, sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
@@ -147,19 +152,23 @@ class SafeQueryExecutor:
 
     def get_table_schema(self, schema: str, table: str) -> Dict[str, Any]:
         """
-        테이블 스키마 정보 조회
+        테이블 스키마 정보 조회 (동적 스키마 허용)
 
         Args:
-            schema: 스키마 이름 (e.g., 'core', 'bi')
+            schema: 스키마 이름 (e.g., 'core', 'bi', 'korea_biopharm')
             table: 테이블 이름
 
         Returns:
             테이블 스키마 정보 (컬럼명, 타입 등)
         """
-        # 허용된 스키마만 접근
-        allowed_schemas = ['core', 'bi', 'rag', 'audit']
+        # 동적으로 허용된 스키마 목록 생성
+        allowed_schemas = self.domain_registry.get_all_schemas()
+
         if schema not in allowed_schemas:
-            raise ValueError(f"Schema '{schema}' is not allowed")
+            raise ValueError(
+                f"Schema '{schema}' is not allowed. "
+                f"Allowed: {', '.join(allowed_schemas)}"
+            )
 
         query = """
             SELECT
@@ -200,7 +209,7 @@ class SafeQueryExecutor:
 
     def get_available_tables(self, schema: str) -> List[str]:
         """
-        스키마 내 사용 가능한 테이블 목록 조회
+        스키마 내 사용 가능한 테이블 목록 조회 (동적 허용)
 
         Args:
             schema: 스키마 이름
@@ -208,7 +217,9 @@ class SafeQueryExecutor:
         Returns:
             테이블 이름 리스트
         """
-        allowed_schemas = ['core', 'bi', 'rag', 'audit']
+        # 동적으로 허용된 스키마 목록 생성
+        allowed_schemas = self.domain_registry.get_all_schemas()
+
         if schema not in allowed_schemas:
             raise ValueError(f"Schema '{schema}' is not allowed")
 

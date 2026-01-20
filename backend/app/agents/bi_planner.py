@@ -38,23 +38,72 @@ class BIPlannerAgent(BaseAgent):
             model="claude-sonnet-4-5-20250929",
             max_tokens=4096,
         )
+        # 도메인 레지스트리
+        from app.services.domain_registry import get_domain_registry
+        self.domain_registry = get_domain_registry()
 
     def get_system_prompt(self) -> str:
         """
-        시스템 프롬프트 로드
+        시스템 프롬프트 로드 + 도메인 스키마 동적 생성
         """
+        # 기본 프롬프트 로드
         prompt_path = Path(__file__).parent.parent / "prompts" / "bi_planner.md"
         try:
             with open(prompt_path, "r", encoding="utf-8") as f:
-                return f.read()
+                base_prompt = f.read()
         except FileNotFoundError:
             logger.warning(f"Prompt file not found: {prompt_path}, using default")
-            return "You are a BI Planner Agent for TriFlow AI."
+            base_prompt = "You are a BI Planner Agent for TriFlow AI."
+
+        # 도메인 스키마 정보 동적 생성 (에러 발생 시 기본 프롬프트만 사용)
+        try:
+            domain_schemas = self.domain_registry.generate_schema_docs()
+
+            # 도메인 키워드 트리거 생성
+            trigger_section = f"""
+## 🔥 DOMAIN KEYWORD TRIGGERS 🔥
+
+사용자가 다음 키워드를 언급하면 해당 모듈 스키마 사용:
+
+{self._generate_keyword_table()}
+
+**중요**: 이 키워드들은 제조 센서 데이터(LINE_A, 온도, 압력)와 무관합니다!
+
+---
+"""
+
+            # 최종 프롬프트 조합
+            return f"{trigger_section}\n{base_prompt}\n\n{domain_schemas}"
+        except Exception as e:
+            logger.error(f"Failed to generate dynamic prompt, using base prompt only: {e}")
+            return base_prompt
+
+    def _generate_keyword_table(self) -> str:
+        """도메인 키워드 테이블 생성"""
+        if not self.domain_registry.domains:
+            return "(등록된 도메인 없음)"
+
+        rows = []
+        for domain in self.domain_registry.domains.values():
+            keywords_str = ", ".join(domain.keywords[:5])
+            if len(domain.keywords) > 5:
+                keywords_str += f" (외 {len(domain.keywords) - 5}개)"
+
+            rows.append(f"- **{domain.name}**: {keywords_str} → `{domain.schema_name}` 스키마")
+
+        return "\n".join(rows)
 
     def get_tools(self) -> List[Dict[str, Any]]:
         """
-        BI Planner Agent의 Tool 정의
+        BI Planner Agent의 Tool 정의 (동적 스키마 enum)
         """
+        # 동적 스키마 목록 생성 (에러 발생 시 기본 스키마만 사용)
+        try:
+            allowed_schemas = self.domain_registry.get_all_schemas()
+        except Exception as e:
+            logger.error(f"Failed to get dynamic schemas, using defaults: {e}")
+            allowed_schemas = ["core", "bi", "rag", "audit", "korea_biopharm"]
+
         return [
             {
                 "name": "get_table_schema",
@@ -64,12 +113,12 @@ class BIPlannerAgent(BaseAgent):
                     "properties": {
                         "table_name": {
                             "type": "string",
-                            "description": "조회할 테이블 이름 (예: sensor_data, judgment_executions)",
+                            "description": "조회할 테이블 이름 (예: sensor_data, judgment_executions, recipe_metadata, historical_recipes)",
                         },
                         "schema": {
                             "type": "string",
                             "description": "스키마 이름 (기본값: core)",
-                            "enum": ["core", "bi", "rag", "audit"],
+                            "enum": allowed_schemas,  # 동적 생성!
                             "default": "core",
                         },
                     },

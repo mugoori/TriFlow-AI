@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated_at": "2026-01-05T06:41:26.567990Z",
+  "generated_at": "2026-01-19T07:53:30.384869Z",
   "modules": [
     {
       "$schema": "../module-schema.json",
@@ -27,6 +27,38 @@
       },
       "author": "TriFlow AI Team",
       "license": "proprietary"
+    },
+    {
+      "module_code": "korea_biopharm",
+      "version": "1.0.0",
+      "name": "한국바이오팜",
+      "description": "바이오 제약 배합 관리 모듈",
+      "category": "industry",
+      "icon": "FlaskConical",
+      "backend": {
+        "router_path": "modules.korea_biopharm.backend.main",
+        "api_prefix": "/api/v1/korea-biopharm"
+      },
+      "frontend": {
+        "page_component": "KoreaBiopharmPage"
+      },
+      "domain_config": {
+        "keywords": [
+          "비타민", "미네랄", "원료", "성분", "배합비",
+          "정제", "캡슐", "시럽", "제형", "연질캡슐",
+          "한국바이오팜", "바이오팜"
+        ],
+        "schema_name": "korea_biopharm",
+        "tables": ["recipe_metadata", "historical_recipes"],
+        "route_to": "BI_GUIDE",
+        "sample_queries": [
+          "비타민C를 포함한 제품 찾아줘",
+          "정제 제품 10개 보여줘",
+          "제형별 제품 수 분석해줘",
+          "원료 사용 빈도 Top 20"
+        ],
+        "description": "한국바이오팜 배합비 및 제품 데이터"
+      }
     }
   ]
 }

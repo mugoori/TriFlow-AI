@@ -181,6 +181,28 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ========== 파일 업로드 크기 제한 설정 ==========
+# 모듈 ZIP 파일 업로드를 위해 200MB까지 허용
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, max_body_size: int):
+        super().__init__(app)
+        self.max_body_size = max_body_size
+
+    async def dispatch(self, request, call_next):
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_length = request.headers.get("content-length")
+            if content_length and int(content_length) > self.max_body_size:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": f"File too large (max {self.max_body_size // 1024 // 1024}MB)"}
+                )
+        return await call_next(request)
+
+app.add_middleware(MaxBodySizeMiddleware, max_body_size=200 * 1024 * 1024)
+logger.info(f"Max upload size set to 200MB")
+
 # ========== 미들웨어 설정 (등록 역순으로 실행됨 - 나중에 추가된 것이 먼저 실행) ==========
 
 # 0. Metrics 미들웨어 (가장 나중에 실행 - 모든 요청 측정)
@@ -567,7 +589,7 @@ except Exception as e:
 # Tenant Config 라우터 (Multi-Tenant Module Configuration)
 try:
     from app.routers import tenant_config
-    app.include_router(tenant_config.router, prefix="/api/v1", tags=["tenant-config"])
+    app.include_router(tenant_config.router, prefix="/api/v1/tenant-config", tags=["tenant-config"])
     logger.info("Tenant Config router registered")
 except Exception as e:
     logger.error(f"Failed to register tenant-config router: {e}")
@@ -652,6 +674,14 @@ try:
     logger.info("Users router registered")
 except Exception as e:
     logger.error(f"Failed to register users router: {e}")
+
+# Module Management 라우터 (모듈 업로드/제거)
+try:
+    from app.routers import modules
+    app.include_router(modules.router, prefix="/api/v1/modules", tags=["modules"])
+    logger.info("Module management router registered")
+except Exception as e:
+    logger.error(f"Failed to register module management router: {e}")
 
 
 # ========== 프론트엔드 정적 파일 서빙 (SPA) ==========
