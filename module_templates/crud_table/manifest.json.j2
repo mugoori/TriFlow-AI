@@ -1,0 +1,25 @@
+{
+  "$schema": "../module-schema.json",
+  "module_code": "{{ module_code }}",
+  "version": "1.0.0",
+  "name": "{{ name }}",
+  "description": "{{ description }}",
+  "category": "{{ category }}",
+  "icon": "{{ icon }}",
+  "default_enabled": false,
+  "requires_subscription": {{ 'null' if not requires_subscription else '"' + requires_subscription + '"' }},
+  "depends_on": [],
+  "display_order": {{ display_order }},
+  "backend": {
+    "router_path": "modules.{{ module_code }}.backend.router",
+    "api_prefix": "/api/v1/{{ module_code.replace('_', '-') }}",
+    "tags": ["{{ module_code.replace('_', '-') }}"]
+  },
+  "frontend": {
+    "page_component": "{{ pascal_name }}Page",
+    "admin_only": {{ 'true' if admin_only else 'false' }},
+    "hide_from_nav": false
+  },
+  "author": "TriFlow AI Team",
+  "license": "proprietary"
+}
