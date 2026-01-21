@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.models import FeedbackLog, ProposedRule, Ruleset, Tenant
+from app.utils.decorators import handle_service_errors
 
 logger = logging.getLogger(__name__)
 
@@ -385,6 +386,7 @@ if requires_validation {{
 
         return saved
 
+    @handle_service_errors(resource="proposal", operation="approve")
     def approve_proposal(
         self,
         proposal_id: UUID,
@@ -402,64 +404,58 @@ if requires_validation {{
         Returns:
             생성된 Ruleset 또는 None
         """
-        try:
-            proposal = self.db.query(ProposedRule).filter(
-                ProposedRule.proposal_id == proposal_id
-            ).first()
+        proposal = self.db.query(ProposedRule).filter(
+            ProposedRule.proposal_id == proposal_id
+        ).first()
 
-            if not proposal:
-                logger.error(f"Proposal not found: {proposal_id}")
-                return None
+        if not proposal:
+            logger.error(f"Proposal not found: {proposal_id}")
+            return None
 
-            if proposal.status != "pending":
-                logger.warning(f"Proposal already processed: {proposal_id}")
-                return None
+        if proposal.status != "pending":
+            logger.warning(f"Proposal already processed: {proposal_id}")
+            return None
 
-            # 동일한 이름의 룰셋이 이미 존재하는지 확인
-            existing_ruleset = self.db.query(Ruleset).filter(
-                Ruleset.tenant_id == proposal.tenant_id,
-                Ruleset.name == proposal.rule_name,
-            ).first()
+        # 동일한 이름의 룰셋이 이미 존재하는지 확인
+        existing_ruleset = self.db.query(Ruleset).filter(
+            Ruleset.tenant_id == proposal.tenant_id,
+            Ruleset.name == proposal.rule_name,
+        ).first()
 
-            # 이름 중복 시 타임스탬프 추가
-            ruleset_name = proposal.rule_name
-            if existing_ruleset:
-                timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-                ruleset_name = f"{proposal.rule_name}_{timestamp}"
-                logger.info(f"Ruleset name conflict, using: {ruleset_name}")
+        # 이름 중복 시 타임스탬프 추가
+        ruleset_name = proposal.rule_name
+        if existing_ruleset:
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            ruleset_name = f"{proposal.rule_name}_{timestamp}"
+            logger.info(f"Ruleset name conflict, using: {ruleset_name}")
 
-            # 새 룰셋 생성
-            ruleset = Ruleset(
-                ruleset_id=uuid4(),
-                tenant_id=proposal.tenant_id,
-                name=ruleset_name,
-                description=f"[자동 생성] {proposal.rule_description}",
-                rhai_script=proposal.rhai_script,
-                version="1.0.0",
-                is_active=True,
-                created_by=user_id,
-                ruleset_metadata={"source": "proposal", "proposal_id": str(proposal_id)},
-            )
+        # 새 룰셋 생성
+        ruleset = Ruleset(
+            ruleset_id=uuid4(),
+            tenant_id=proposal.tenant_id,
+            name=ruleset_name,
+            description=f"[자동 생성] {proposal.rule_description}",
+            rhai_script=proposal.rhai_script,
+            version="1.0.0",
+            is_active=True,
+            created_by=user_id,
+            ruleset_metadata={"source": "proposal", "proposal_id": str(proposal_id)},
+        )
 
-            self.db.add(ruleset)
+        self.db.add(ruleset)
 
-            # 제안 상태 업데이트
-            proposal.status = "deployed"
-            proposal.reviewed_by = user_id
-            proposal.reviewed_at = datetime.utcnow()
-            proposal.review_comment = comment or "자동 승인 및 배포"
+        # 제안 상태 업데이트
+        proposal.status = "deployed"
+        proposal.reviewed_by = user_id
+        proposal.reviewed_at = datetime.utcnow()
+        proposal.review_comment = comment or "자동 승인 및 배포"
 
-            self.db.commit()
-            self.db.refresh(ruleset)
+        self.db.commit()
+        self.db.refresh(ruleset)
 
-            logger.info(f"Proposal {proposal_id} approved and deployed as ruleset {ruleset.ruleset_id}")
+        logger.info(f"Proposal {proposal_id} approved and deployed as ruleset {ruleset.ruleset_id}")
 
-            return ruleset
-
-        except Exception as e:
-            logger.error(f"Failed to approve proposal {proposal_id}: {e}")
-            self.db.rollback()
-            raise
+        return ruleset
 
     def reject_proposal(
         self,
