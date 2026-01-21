@@ -1,16 +1,11 @@
-# ===================================================
-# TriFlow AI Backend - Development Dependencies
-# 로컬 개발 및 테스트용
-# ===================================================
-
-# Include core dependencies
--r requirements-core.txt
+# Development & Testing Dependencies
+# Install with: pip install -r requirements-dev.txt
 
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 
-# Code Quality
+# Linting & Type Checking
 ruff==0.1.6
 mypy==1.7.1
