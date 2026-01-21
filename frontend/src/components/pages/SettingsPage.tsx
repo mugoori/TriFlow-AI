@@ -86,7 +86,7 @@ function getInitialSettings(): Settings {
   return defaultSettings;
 }
 
-type SettingsTab = 'user' | 'admin' | 'dev';
+type SettingsTab = 'user' | 'admin';
 
 export default function SettingsPage() {
   const { isAuthenticated } = useAuth();
@@ -332,8 +332,7 @@ export default function SettingsPage() {
   // 탭 정의
   const tabs = [
     { id: 'user' as SettingsTab, label: '사용자 설정', icon: '👤', minRole: 'viewer' },
-    { id: 'admin' as SettingsTab, label: '관리자', icon: '⚙️', minRole: 'approver' },
-    { id: 'dev' as SettingsTab, label: '개발/운영', icon: '🔧', minRole: 'admin' },
+    { id: 'admin' as SettingsTab, label: '관리자/운영', icon: '⚙️', minRole: 'admin' },
   ];
 
   return (
@@ -627,8 +626,8 @@ export default function SettingsPage() {
         </div>
         )}
 
-        {/* Admin Settings Tab - Approver 이상 */}
-        {activeTab === 'admin' && (isAdmin() || canViewUsers()) && (
+        {/* Admin/Operations Tab - Admin만 */}
+        {activeTab === 'admin' && isAdmin() && (
         <div className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Slack 알림 카드 */}
