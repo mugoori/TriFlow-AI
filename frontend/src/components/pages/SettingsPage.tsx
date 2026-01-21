@@ -11,6 +11,7 @@ import RolePermissionsCard from '../settings/RolePermissionsCard';
 import LearningConfigSection from '../settings/LearningConfigSection';
 import ModuleManagerSection from '../settings/ModuleManagerSection';
 import FeatureFlagManagerSection from '../settings/FeatureFlagManagerSection';
+import SystemDiagnosticsSection from '../settings/SystemDiagnosticsSection';
 
 type Theme = 'system' | 'light' | 'dark';
 type Language = 'ko' | 'en';
@@ -931,6 +932,20 @@ export default function SettingsPage() {
             </div>
 
             <FeatureFlagManagerSection />
+          </>
+        )}
+
+        {/* System Diagnostics 섹션 (admin만 표시) */}
+        {isAdmin() && (
+          <>
+            <div className="mt-8 mb-4">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">System Diagnostics</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                시스템 상태 및 성능 모니터링 (관리자 전용)
+              </p>
+            </div>
+
+            <SystemDiagnosticsSection />
           </>
         )}
 
