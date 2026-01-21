@@ -92,7 +92,7 @@ class CandidateResponse(BaseModel):
     generated_rule: str
     generation_method: GenerationMethod
     coverage: float
-    precision_score: float = Field(alias="precision")
+    precision: float
     recall: float
     f1_score: float
     approval_status: ApprovalStatus

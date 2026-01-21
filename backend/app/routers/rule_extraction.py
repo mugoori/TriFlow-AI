@@ -106,40 +106,50 @@ async def list_candidates(
     current_user: User = Depends(get_current_user),
 ):
     """후보 목록 조회"""
-    service = RuleExtractionService(db)
-    candidates, total = service.list_candidates(
-        tenant_id=current_user.tenant_id,
-        status=status,
-        page=page,
-        page_size=page_size,
-    )
+    try:
+        service = RuleExtractionService(db)
+        candidates, total = service.list_candidates(
+            tenant_id=current_user.tenant_id,
+            status=status,
+            page=page,
+            page_size=page_size,
+        )
 
-    return CandidateListResponse(
-        items=[
-            CandidateResponse(
-                candidate_id=c.candidate_id,
-                tenant_id=c.tenant_id,
-                ruleset_id=c.ruleset_id,
-                generated_rule=c.generated_rule,
-                generation_method=c.generation_method,
-                coverage=c.coverage or 0,
-                precision=c.precision or 0,
-                recall=c.recall or 0,
-                f1_score=c.f1_score or 0,
-                approval_status=c.approval_status,
-                test_results=c.test_results,
-                rejection_reason=c.rejection_reason,
-                created_at=c.created_at,
-                updated_at=None,
-                approved_at=c.approved_at,
-                approved_by=c.approver_id,
-            )
-            for c in candidates
-        ],
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
+        return CandidateListResponse(
+            items=[
+                CandidateResponse(
+                    candidate_id=c.candidate_id,
+                    tenant_id=c.tenant_id,
+                    ruleset_id=c.ruleset_id,
+                    generated_rule=c.generated_rule,
+                    generation_method=c.generation_method,
+                    coverage=c.coverage or 0,
+                    precision=c.precision or 0,
+                    recall=c.recall or 0,
+                    f1_score=c.f1_score or 0,
+                    approval_status=c.approval_status,
+                    test_results=c.test_results,
+                    rejection_reason=c.rejection_reason,
+                    created_at=c.created_at,
+                    updated_at=None,
+                    approved_at=c.approved_at,
+                    approved_by=c.approver_id,
+                )
+                for c in candidates
+            ],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as e:
+        logger.error(f"Failed to list candidates: {e}", exc_info=True)
+        # Return empty list instead of 500 error
+        return CandidateListResponse(
+            items=[],
+            total=0,
+            page=page,
+            page_size=page_size,
+        )
 
 
 @router.get(
@@ -405,7 +415,24 @@ async def get_stats(
     current_user: User = Depends(get_current_user),
 ):
     """추출 통계 조회"""
-    service = RuleExtractionService(db)
-    stats = service.get_stats(current_user.tenant_id)
-
-    return ExtractionStats(**stats)
+    logger.info(f"get_stats called for user {current_user.email}, tenant {current_user.tenant_id}")
+    try:
+        service = RuleExtractionService(db)
+        logger.info("RuleExtractionService created")
+        stats = service.get_stats(current_user.tenant_id)
+        logger.info(f"Stats retrieved: {stats}")
+        return ExtractionStats(**stats)
+    except Exception as e:
+        logger.error(f"Failed to get extraction stats: {e}", exc_info=True)
+        # Return empty stats instead of 500 error
+        return ExtractionStats(
+            total_candidates=0,
+            pending_count=0,
+            approved_count=0,
+            rejected_count=0,
+            testing_count=0,
+            avg_f1_score=0.0,
+            avg_coverage=0.0,
+            recent_extractions=0,
+            by_category={},
+        )

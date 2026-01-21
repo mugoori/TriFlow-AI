@@ -662,10 +662,14 @@ except Exception as e:
 # Rule Extraction 라우터 (Decision Tree 기반 규칙 추출)
 try:
     from app.routers import rule_extraction
+    logger.info(f"rule_extraction module imported, router: {rule_extraction.router}, routes: {len(rule_extraction.router.routes)}")
     app.include_router(rule_extraction.router, prefix="/api/v1", tags=["rule-extraction"])
-    logger.info("Rule extraction router registered")
+    logger.info("Rule extraction router registered successfully")
+    # Verify routes were added
+    rule_routes = [r for r in app.routes if '/rule-extraction' in str(getattr(r, 'path', ''))]
+    logger.info(f"Verified {len(rule_routes)} rule-extraction routes in app")
 except Exception as e:
-    logger.error(f"Failed to register rule extraction router: {e}")
+    logger.error(f"Failed to register rule extraction router: {e}", exc_info=True)
 
 # Users 라우터 (RBAC 및 Data Scope 관리)
 try:
