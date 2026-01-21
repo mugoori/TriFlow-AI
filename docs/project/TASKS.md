@@ -1595,10 +1595,15 @@ Username: admin / Password: triflow_grafana_password
 2. Repository 패턴 도입 ✅
 3. Grafana Dashboards 3개 추가 ✅
 4. 의존성 정리 ✅
-5. **Learning 탭 에러 핸들링 강화** ✅ (신규)
-6. **Grafana 비즈니스 메트릭 수집 구현** ✅ (신규)
+5. **Learning 탭 에러 핸들링 강화** ✅
+6. **Grafana 비즈니스 메트릭 수집 구현** ✅
+7. **Settings: Feature Flags UI** ✅
+8. **Settings: System Diagnostics** ✅
+9. **ERP/MES API 연결 기능 완전 구현** ✅
+10. **Settings: 역할 기반 탭 UI 재구성** ✅
 
-**총 커밋**: 9개 (develop 브랜치)
+**총 커밋**: 24개 (develop 브랜치, 모두 push 완료)
+**Settings 페이지 완성도**: 50% → 70%
 
 ---
 
