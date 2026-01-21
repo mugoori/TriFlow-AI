@@ -78,6 +78,18 @@ export function ErpMesDataTab() {
 
   // API 연결 설정
   const [showConnectionModal, setShowConnectionModal] = useState(false);
+  const [connectionForm, setConnectionForm] = useState({
+    name: '',
+    description: '',
+    source_type: 'mes' as 'erp' | 'mes',
+    source_system: 'custom',
+    connection_type: 'rest_api' as const,
+    base_url: '',
+    auth_type: 'bearer',
+    api_token: '',
+    sync_interval_minutes: 30,
+  });
+  const [savingConnection, setSavingConnection] = useState(false);
 
   // Mock 타입 로드
   useEffect(() => {
