@@ -274,24 +274,30 @@ class MetaRouterAgent(BaseAgent):
 
         return routing_info
 
-    def classify_with_rules(self, user_input: str) -> Optional[ClassificationResult]:
+    def classify_with_rules(
+        self,
+        user_input: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Optional[ClassificationResult]:
         """
         규칙 기반 V7 분류 시도
 
         Args:
             user_input: 사용자 입력 텍스트
+            context: 컨텍스트 (tenant_id, db 포함)
 
         Returns:
             ClassificationResult: 규칙 매칭 시
             None: 규칙으로 분류 불가 (LLM 필요)
         """
-        return self.v7_intent_classifier.classify(user_input)
+        return self.v7_intent_classifier.classify(user_input, context=context)
 
     def route_with_hybrid(
         self,
         user_input: str,
         llm_result: Optional[Dict[str, Any]] = None,
-        user_role: Optional[Role] = None
+        user_role: Optional[Role] = None,
+        context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         하이브리드 라우팅 (V7 규칙 우선, LLM fallback)
@@ -300,13 +306,14 @@ class MetaRouterAgent(BaseAgent):
             user_input: 사용자 입력 텍스트
             llm_result: LLM 분류 결과 (이미 호출한 경우)
             user_role: 사용자 역할 (권한 체크용, None이면 체크 생략)
+            context: 컨텍스트 (tenant_id, db 포함)
 
         Returns:
             라우팅 정보 딕셔너리 (V7 Intent 포함)
             권한 부족 시 error 필드 포함
         """
         # 1차: V7 규칙 기반 분류 시도
-        rule_result = self.classify_with_rules(user_input)
+        rule_result = self.classify_with_rules(user_input, context=context)
 
         if rule_result and rule_result.confidence >= 0.9:
             logger.info(

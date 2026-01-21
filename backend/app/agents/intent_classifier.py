@@ -99,17 +99,22 @@ class V7IntentClassifier:
             ]
         logger.info(f"Compiled V7 patterns for {len(self._compiled_patterns)} intents")
 
-    def classify(self, text: str) -> Optional[ClassificationResult]:
+    def classify(
+        self,
+        text: str,
+        context: Optional[Dict] = None
+    ) -> Optional[ClassificationResult]:
         """
         텍스트를 V7 Intent로 분류
 
         우선순위:
-        1. 도메인 키워드 매칭 (최우선, 모듈 기반)
+        1. 도메인 키워드 매칭 (최우선, 테넌트별 모듈 기반)
         2. V7 규칙 기반 분류
         3. None (LLM fallback 필요)
 
         Args:
             text: 사용자 입력 텍스트
+            context: 컨텍스트 (tenant_id, db 포함)
 
         Returns:
             ClassificationResult: 분류 결과 (규칙 매칭 시)
@@ -121,7 +126,18 @@ class V7IntentClassifier:
         text = text.strip()
 
         # 1차: 도메인 키워드 매칭 (최우선!)
-        domain_match = self.domain_registry.match_domain(text)
+        # 테넌트 정보 추출
+        tenant_id = context.get("tenant_id") if context else None
+        db = context.get("db") if context else None
+
+        if tenant_id and db:
+            # 테넌트별 활성화된 모듈에서만 매칭
+            domain_match = self.domain_registry.match_domain_for_tenant(
+                text, tenant_id, db
+            )
+        else:
+            # Fallback: 기존 로직 (모든 도메인 검색)
+            domain_match = self.domain_registry.match_domain(text)
         if domain_match:
             logger.info(
                 f"[V7 Classifier] Domain match: '{text[:30]}...' → "

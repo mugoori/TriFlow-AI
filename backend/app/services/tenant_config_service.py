@@ -215,6 +215,11 @@ class TenantConfigService:
 
         self.db.commit()
         self.db.refresh(tm)
+
+        # 캐시 무효화 (즉시 반영)
+        from app.services.cache_service import CacheService, CacheKeys
+        CacheService.delete(CacheService.generate_key(CacheKeys.TENANT, f"{tenant_id}:modules"))
+
         return tm
 
     def disable_module(
@@ -243,6 +248,11 @@ class TenantConfigService:
             tm.is_enabled = False
             tm.disabled_at = datetime.utcnow()
             self.db.commit()
+
+            # 캐시 무효화 (즉시 반영)
+            from app.services.cache_service import CacheService, CacheKeys
+            CacheService.delete(CacheService.generate_key(CacheKeys.TENANT, f"{tenant_id}:modules"))
+
             return True
         return False
 

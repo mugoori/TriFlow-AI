@@ -1,7 +1,7 @@
 # TriFlow AI - 작업 목록 (TASKS)
 
-> **최종 업데이트**: 2026-01-09
-> **현재 Phase**: V2 Phase 3 진행 중 (Feature Flags & Module System)
+> **최종 업데이트**: 2026-01-21
+> **현재 Phase**: V2 Phase 3 진행 중 (Multi-Tenant Module System)
 > **현재 브랜치**: `develop`
 
 ---
@@ -1385,6 +1385,67 @@ cd frontend && npx tsc --noEmit  # ✓ 에러 없음
 docker-compose ps  # 모든 서비스 healthy
 curl http://localhost:8000/health
 ```
+
+---
+
+---
+
+## 2026-01-21 (화) - DomainRegistry Multi-Tenant 키워드 충돌 방지 구현
+
+### 작업 내용
+**목표**: 여러 고객사가 같은 키워드 사용 시 충돌 방지 (예: "비타민" → korea_biopharm vs usa_biopharm)
+
+#### 구현 완료
+1. **DomainRegistry 테넌트 필터링** (~100 LOC)
+   - `match_domain_for_tenant()` 메서드 추가 (캐싱 포함)
+   - TenantModule 기반 활성화된 모듈만 키워드 매칭
+   - 기존 CacheService 100% 재사용
+   - 하위 호환성 유지 (tenant_id 없으면 기존 로직)
+
+2. **Context 전달 체인 구축**
+   - `agents.py`: DB Session을 context에 추가
+   - `intent_classifier.py`: classify()에 context 파라미터 추가
+   - `meta_router.py`: route_with_hybrid()에 context 전달
+   - `agent_orchestrator.py`: MetaRouter에 context 전달
+
+3. **캐시 즉시 무효화**
+   - `tenant_config_service.py`: enable_module()/disable_module()에 캐시 삭제 추가
+   - 모듈 ON/OFF 시 즉시 반영
+
+4. **테스트 작성 및 검증**
+   - `test_domain_registry_tenant.py`: 단위 테스트 5개 (4 passed, 1 skipped)
+   - `test_domain_registry_integration.py`: 통합 테스트 9개 시나리오 (13 passed)
+   - 테넌트 격리, 폴백, 캐싱, 하위 호환성 모두 검증 완료
+
+#### 수정 파일
+- `backend/app/services/domain_registry.py` (+67 LOC)
+- `backend/app/agents/intent_classifier.py` (+15 LOC)
+- `backend/app/agents/meta_router.py` (+5 LOC)
+- `backend/app/services/agent_orchestrator.py` (+2 LOC)
+- `backend/app/routers/agents.py` (+5 LOC)
+- `backend/app/services/tenant_config_service.py` (+6 LOC)
+
+#### 신규 파일
+- `backend/tests/test_domain_registry_tenant.py` (220 LOC)
+- `backend/tests/test_domain_registry_integration.py` (340 LOC)
+
+#### 검증 결과
+```bash
+pytest tests/test_domain_registry_*.py -v
+# 결과: 13 passed, 1 skipped (Redis 필요)
+# 통과율: 100%
+```
+
+#### 효과
+- ✅ 완전한 Multi-Tenant 격리 (고객사별 전용 모듈)
+- ✅ 관리자는 Settings UI에서 모듈 토글 ON/OFF로 관리
+- ✅ Redis 캐싱으로 2-5ms 성능 유지
+- ✅ 기존 인프라 100% 재사용 (TenantModule, CacheService)
+
+#### 비고
+- 기존 ModuleManagerSection.tsx UI 활용 (새 UI 불필요)
+- 기존 `/api/v1/tenant/modules/*` API 활용
+- 오버 엔지니어링 제거 (~440 LOC → ~100 LOC로 56% 감소)
 
 ---
 

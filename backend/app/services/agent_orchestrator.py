@@ -167,6 +167,7 @@ class AgentOrchestrator:
             user_input=message,
             llm_result=None,
             user_role=role_enum,
+            context=context,
         )
 
         # LLM fallback이 필요한 경우 (규칙 매칭 실패)
@@ -180,6 +181,7 @@ class AgentOrchestrator:
                 user_input=message,
                 llm_result=llm_result,
                 user_role=role_enum,
+                context=context,
             )
 
         return routing_info

@@ -15,8 +15,9 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from app.services.agent_orchestrator import orchestrator
 from app.schemas.agent import AgentRequest, AgentResponse, JudgmentRequest
 from app.utils.errors import classify_error, format_error_response
-from app.auth.dependencies import get_optional_user
+from app.auth.dependencies import get_optional_user, get_db
 from app.models import User
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,8 @@ _executor = ThreadPoolExecutor(max_workers=4)
 @router.post("/chat", response_model=AgentResponse)
 async def chat_with_agent(
     request: AgentRequest,
-    current_user: User = Depends(get_optional_user)
+    current_user: User = Depends(get_optional_user),
+    db: Session = Depends(get_db)
 ):
     """
     Meta Router를 통한 채팅
@@ -61,6 +63,9 @@ async def chat_with_agent(
             context["user_id"] = str(current_user.user_id)
             context["user_email"] = current_user.email
             logger.info(f"Authenticated user: {current_user.email} (role: {user_role})")
+
+        # DB Session을 context에 추가 (DomainRegistry 필터링용)
+        context["db"] = db
 
         # AgentOrchestrator를 통한 자동 라우팅 및 실행
         # run_in_executor로 동기 함수를 비동기로 실행 (이벤트 루프 블로킹 방지)

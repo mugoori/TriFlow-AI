@@ -3,10 +3,13 @@ Domain Registry Service
 모듈의 도메인 키워드를 자동으로 인식하여 Intent 라우팅 및 스키마 관리
 """
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 import json
 import logging
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +175,74 @@ class DomainRegistry:
     def get_domain(self, module_code: str) -> Optional[DomainConfig]:
         """특정 모듈의 도메인 설정 반환"""
         return self.domains.get(module_code)
+
+    def match_domain_for_tenant(
+        self,
+        user_input: str,
+        tenant_id: str,
+        db: "Session"
+    ) -> Optional[DomainConfig]:
+        """
+        테넌트별 활성화된 모듈에서만 도메인 매칭 (캐시 적용)
+
+        Args:
+            user_input: 사용자 입력 텍스트
+            tenant_id: 테넌트 ID
+            db: SQLAlchemy Session
+
+        Returns:
+            DomainConfig: 매칭된 도메인 (활성화된 모듈의 키워드만)
+            None: 매칭 실패
+
+        예시:
+            - TenantA: korea_biopharm 활성화 → "비타민" 매칭됨
+            - TenantB: usa_biopharm 활성화 → "비타민" 매칭됨 (다른 도메인)
+        """
+        from app.services.cache_service import CacheService, CacheKeys
+        from app.models.tenant_config import TenantModule
+
+        if not user_input:
+            return None
+
+        # 캐시 키 생성 (기존 패턴 활용)
+        cache_key = CacheService.generate_key(CacheKeys.TENANT, f"{tenant_id}:modules")
+
+        # 캐시 조회
+        enabled_codes = CacheService.get(cache_key)
+
+        if enabled_codes is None:
+            # Cache miss: DB 쿼리
+            enabled_modules = db.query(TenantModule).filter(
+                TenantModule.tenant_id == tenant_id,
+                TenantModule.is_enabled.is_(True)
+            ).all()
+
+            enabled_codes = {m.module_code for m in enabled_modules}
+
+            # 캐시 저장 (TTL: 1시간)
+            CacheService.set(cache_key, enabled_codes, ttl=3600)
+
+        if not enabled_codes:
+            # 활성 모듈 없으면 기존 로직 폴백
+            return self.match_domain(user_input)
+
+        user_input_lower = user_input.lower()
+
+        # 활성화된 모듈의 도메인에서만 키워드 매칭
+        for domain_code, config in self.domains.items():
+            if domain_code not in enabled_codes:
+                continue  # 비활성 모듈 스킵
+
+            # 키워드 매칭 (기존 로직)
+            for keyword in config.keywords:
+                if keyword.lower() in user_input_lower:
+                    logger.info(
+                        f"[TenantModule Match] tenant={tenant_id}, "
+                        f"module={domain_code}, keyword='{keyword}'"
+                    )
+                    return config
+
+        return None
 
 
 # 전역 인스턴스 (Singleton)
