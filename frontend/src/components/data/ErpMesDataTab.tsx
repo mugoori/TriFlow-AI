@@ -610,7 +610,7 @@ export function ErpMesDataTab() {
       {showConnectionModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 p-6">
-            <h3 className="text-lg font-semibold mb-4">ERP/MES API 연결 설정</h3>
+            <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-100">ERP/MES API 연결 설정</h3>
 
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
               <p className="text-sm text-blue-700 dark:text-blue-300">
@@ -620,7 +620,7 @@ export function ErpMesDataTab() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">연결 이름 *</label>
+                <label className="block text-sm font-medium mb-1 text-slate-900 dark:text-slate-100">연결 이름 *</label>
                 <input
                   type="text"
                   value={connectionForm.name}
@@ -632,7 +632,7 @@ export function ErpMesDataTab() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">타입 *</label>
+                  <label className="block text-sm font-medium mb-1 text-slate-900 dark:text-slate-100">타입 *</label>
                   <select
                     value={connectionForm.source_type}
                     onChange={(e) => setConnectionForm({ ...connectionForm, source_type: e.target.value as 'erp' | 'mes' })}
@@ -643,7 +643,7 @@ export function ErpMesDataTab() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">시스템</label>
+                  <label className="block text-sm font-medium mb-1 text-slate-900 dark:text-slate-100">시스템</label>
                   <input
                     type="text"
                     value={connectionForm.source_system}
@@ -655,7 +655,7 @@ export function ErpMesDataTab() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">API URL *</label>
+                <label className="block text-sm font-medium mb-1 text-slate-900 dark:text-slate-100">API URL *</label>
                 <input
                   type="text"
                   value={connectionForm.base_url}
@@ -666,7 +666,7 @@ export function ErpMesDataTab() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">API Token / Bearer Token *</label>
+                <label className="block text-sm font-medium mb-1 text-slate-900 dark:text-slate-100">API Token / Bearer Token *</label>
                 <input
                   type="password"
                   value={connectionForm.api_token}
@@ -677,7 +677,7 @@ export function ErpMesDataTab() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">동기화 주기 (분)</label>
+                <label className="block text-sm font-medium mb-1 text-slate-900 dark:text-slate-100">동기화 주기 (분)</label>
                 <input
                   type="number"
                   value={connectionForm.sync_interval_minutes}
@@ -686,7 +686,7 @@ export function ErpMesDataTab() {
                   max={1440}
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                 />
-                <p className="text-xs text-slate-500 mt-1">5분 ~ 1440분 (24시간)</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">5분 ~ 1440분 (24시간)</p>
               </div>
             </div>
 
