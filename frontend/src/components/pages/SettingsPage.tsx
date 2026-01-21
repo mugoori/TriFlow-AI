@@ -86,9 +86,14 @@ function getInitialSettings(): Settings {
   return defaultSettings;
 }
 
+type SettingsTab = 'general' | 'system' | 'users' | 'notifications';
+
 export default function SettingsPage() {
   const { isAuthenticated } = useAuth();
   const { isAdmin, canViewUsers } = usePermission();
+
+  // 탭 상태
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   // 초기 상태를 localStorage에서 동기적으로 로드 (깜빡임 방지)
   const [settings, setSettings] = useState<Settings>(getInitialSettings);
@@ -324,9 +329,43 @@ export default function SettingsPage() {
     }
   };
 
+  // 탭 정의
+  const tabs = [
+    { id: 'general' as SettingsTab, label: '일반', icon: '⚙️' },
+    { id: 'system' as SettingsTab, label: '시스템', icon: '🖥️', adminOnly: true },
+    { id: 'users' as SettingsTab, label: '사용자', icon: '👥' },
+    { id: 'notifications' as SettingsTab, label: '알림', icon: '🔔' },
+  ];
+
   return (
     <div className="h-full overflow-y-auto bg-slate-50 dark:bg-slate-900">
       <div className="max-w-4xl mx-auto p-6">
+        {/* 탭 네비게이션 */}
+        <div className="border-b border-slate-200 dark:border-slate-700 mb-6">
+          <nav className="flex gap-1" aria-label="Settings Tabs">
+            {tabs.map((tab) => {
+              if (tab.adminOnly && !isAdmin()) return null;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* General Tab */}
+        {activeTab === 'general' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 일반 설정 카드 */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
@@ -584,13 +623,11 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+        )}
 
-        {/* 알림 설정 섹션 헤더 */}
-        <div className="mt-8 mb-4">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">알림 설정</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Slack, Email 알림 연동 설정 (관리자 전용)</p>
-        </div>
-
+        {/* Notifications Tab */}
+        {activeTab === 'notifications' && (
+        <div className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Slack 알림 카드 */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
@@ -861,20 +898,47 @@ export default function SettingsPage() {
             {notificationSaveStatus === 'saving' ? '저장 중...' : '알림 설정 저장'}
           </button>
         </div>
+        </div>
+        )}
 
-        {/* Module Manager 섹션 (Admin 전용) */}
-        {isAdmin() && (
-          <>
-            <div className="mt-8 mb-4">
+        {/* System Tab */}
+        {activeTab === 'system' && isAdmin() && (
+        <div className="space-y-6">
+            <div className="mb-4">
               <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">모듈 관리</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">외부 모듈 설치 및 관리 (관리자 전용)</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">외부 모듈 설치 및 관리</p>
             </div>
 
             <ModuleManagerSection />
-          </>
+
+        {/* Learning Pipeline Configuration */}
+        {canViewUsers() && (
+            <div>
+              <div className="mt-8 mb-4">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">학습 파이프라인 설정</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  자동 학습 및 규칙 추출 설정
+                </p>
+              </div>
+              <LearningConfigSection isAdmin={isAdmin()} />
+            </div>
         )}
 
-        {/* 저장 버튼 영역 */}
+            <div className="mt-8 mb-4">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">Feature Flags</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">V2 기능 플래그 관리</p>
+            </div>
+            <FeatureFlagManagerSection />
+
+            <div className="mt-8 mb-4">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">System Diagnostics</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">시스템 상태 및 성능 모니터링</p>
+            </div>
+            <SystemDiagnosticsSection />
+        </div>
+        )}
+
+        {/* 저장 버튼 영역 - 제거됨 */}
         <div className="mt-6 flex items-center justify-between p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
           <div className="text-sm">
             {saveStatus === 'saved' && (
@@ -949,10 +1013,10 @@ export default function SettingsPage() {
           </>
         )}
 
-        {/* 사용자 및 권한 관리 섹션 (admin, approver만 표시) */}
-        {canViewUsers() && (
-          <>
-            <div className="mt-8 mb-4">
+        {/* Users Tab */}
+        {activeTab === 'users' && canViewUsers() && (
+        <div className="space-y-6">
+            <div className="mb-4">
               <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">사용자 및 권한 관리</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 테넌트 내 사용자 관리 및 RBAC 설정 {isAdmin() ? '(관리자)' : '(조회 전용)'}
@@ -970,7 +1034,7 @@ export default function SettingsPage() {
                 <RolePermissionsCard />
               </div>
             </div>
-          </>
+        </div>
         )}
       </div>
     </div>
