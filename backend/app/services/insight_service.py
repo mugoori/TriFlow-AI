@@ -27,6 +27,7 @@ from app.schemas.bi_insight import (
     InsightReasoning,
     InsightRequest,
 )
+from app.utils.decorators import handle_service_errors
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ class InsightService:
         self.client = Anthropic(api_key=settings.anthropic_api_key)
         self.model = "claude-sonnet-4-5-20250929"
 
+    @handle_service_errors(resource="insight", operation="generate")
     async def generate_insight(
         self,
         tenant_id: UUID,
@@ -118,48 +120,43 @@ class InsightService:
         start_time = time.time()
         insight_id = uuid4()
 
-        try:
-            # 1. 데이터 준비
-            data_context = await self._prepare_data_context(tenant_id, request)
+        # 1. 데이터 준비
+        data_context = await self._prepare_data_context(tenant_id, request)
 
-            # 2. LLM 호출
-            llm_result = self._call_llm_for_insight(data_context, request)
+        # 2. LLM 호출
+        llm_result = self._call_llm_for_insight(data_context, request)
 
-            # 3. 응답 파싱
-            parsed = self._parse_insight_response(llm_result["content"])
+        # 3. 응답 파싱
+        parsed = self._parse_insight_response(llm_result["content"])
 
-            # 4. 데이터베이스 저장
-            insight = AIInsight(
-                insight_id=insight_id,
-                tenant_id=tenant_id,
-                source_type=request.source_type,
-                source_id=request.source_id,
-                title=parsed["title"],
-                summary=parsed["summary"],
-                facts=[InsightFact(**f) for f in parsed.get("facts", [])],
-                reasoning=InsightReasoning(**parsed.get("reasoning", {
-                    "analysis": "분석 결과를 확인할 수 없습니다.",
-                    "contributing_factors": [],
-                    "confidence": 0.5,
-                })),
-                actions=[InsightAction(**a) for a in parsed.get("actions", [])],
-                model_used=self.model,
-                generated_at=datetime.utcnow(),
-            )
+        # 4. 데이터베이스 저장
+        insight = AIInsight(
+            insight_id=insight_id,
+            tenant_id=tenant_id,
+            source_type=request.source_type,
+            source_id=request.source_id,
+            title=parsed["title"],
+            summary=parsed["summary"],
+            facts=[InsightFact(**f) for f in parsed.get("facts", [])],
+            reasoning=InsightReasoning(**parsed.get("reasoning", {
+                "analysis": "분석 결과를 확인할 수 없습니다.",
+                "contributing_factors": [],
+                "confidence": 0.5,
+            })),
+            actions=[InsightAction(**a) for a in parsed.get("actions", [])],
+            model_used=self.model,
+            generated_at=datetime.utcnow(),
+        )
 
-            await self._save_insight(tenant_id, user_id, insight, llm_result)
+        await self._save_insight(tenant_id, user_id, insight, llm_result)
 
-            processing_time_ms = int((time.time() - start_time) * 1000)
-            logger.info(
-                f"Generated insight {insight_id} in {processing_time_ms}ms "
-                f"(facts={len(insight.facts)}, actions={len(insight.actions)})"
-            )
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            f"Generated insight {insight_id} in {processing_time_ms}ms "
+            f"(facts={len(insight.facts)}, actions={len(insight.actions)})"
+        )
 
-            return insight
-
-        except Exception as e:
-            logger.error(f"Failed to generate insight: {e}")
-            raise
+        return insight
 
     async def _prepare_data_context(
         self,

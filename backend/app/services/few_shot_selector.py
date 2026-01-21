@@ -5,7 +5,7 @@ Golden Sample Set에서 최적의 few-shot examples 선택
 """
 import logging
 import json
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Optional
 from uuid import UUID
 import random
 

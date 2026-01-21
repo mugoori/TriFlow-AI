@@ -11,6 +11,7 @@ from datetime import datetime
 import logging
 
 from app.services.notifications import notification_manager
+from app.utils.decorators import handle_service_errors
 
 logger = logging.getLogger(__name__)
 
@@ -58,28 +59,32 @@ class AlertHandler:
                 status, alertname, severity, summary, description
             )
 
-            try:
-                # Severity에 따라 채널 선택
-                if severity == "critical":
-                    # Slack + Email 모두
-                    await notification_manager.send_slack(message, channel="#alerts")
-                    await notification_manager.send_email(
-                        to=["admin@example.com"],
-                        subject=f"🚨 CRITICAL: {alertname}",
-                        body=message,
-                    )
-                    logger.info(f"Sent critical alert to Slack and Email: {alertname}")
-                elif severity == "warning":
-                    # Slack만
-                    await notification_manager.send_slack(message, channel="#alerts")
-                    logger.info(f"Sent warning alert to Slack: {alertname}")
-                else:
-                    # Info - 로그만
-                    logger.info(f"Alert (info): {alertname} - {summary}")
-            except Exception as e:
-                logger.error(f"Failed to send alert notification: {e}")
+            # Severity에 따라 채널 선택
+            await self._send_alert_notification(severity, alertname, summary, message)
 
         return True
+
+    @handle_service_errors(resource="alert", operation="send")
+    async def _send_alert_notification(
+        self, severity: str, alertname: str, summary: str, message: str
+    ):
+        """알림 전송 (Decorator로 에러 처리)"""
+        if severity == "critical":
+            # Slack + Email 모두
+            await notification_manager.send_slack(message, channel="#alerts")
+            await notification_manager.send_email(
+                to=["admin@example.com"],
+                subject=f"🚨 CRITICAL: {alertname}",
+                body=message,
+            )
+            logger.info(f"Sent critical alert to Slack and Email: {alertname}")
+        elif severity == "warning":
+            # Slack만
+            await notification_manager.send_slack(message, channel="#alerts")
+            logger.info(f"Sent warning alert to Slack: {alertname}")
+        else:
+            # Info - 로그만
+            logger.info(f"Alert (info): {alertname} - {summary}")
 
     def _format_alert_message(
         self, status: str, alertname: str, severity: str, summary: str, description: str

@@ -19,6 +19,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 from app.database import get_db_context
+from app.utils.decorators import handle_service_errors
 
 logger = logging.getLogger(__name__)
 
@@ -1046,24 +1047,20 @@ class BIService:
     # 유틸리티
     # =========================================
 
+    @handle_service_errors(resource="SQL query", operation="execute")
     async def _execute_sql(
         self,
         sql: str,
         params: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
-        """SQL 실행"""
-        try:
-            async with get_db_context() as db:
-                result = await db.execute(text(sql), params)
-                rows = result.fetchall()
+        """SQL 실행 (Decorator로 에러 처리)"""
+        async with get_db_context() as db:
+            result = await db.execute(text(sql), params)
+            rows = result.fetchall()
 
-                # Row를 딕셔너리로 변환
-                columns = result.keys()
-                return [dict(zip(columns, row)) for row in rows]
-
-        except Exception as e:
-            logger.error(f"SQL execution error: {e}")
-            return []
+            # Row를 딕셔너리로 변환
+            columns = result.keys()
+            return [dict(zip(columns, row)) for row in rows]
 
 
 # =========================================
