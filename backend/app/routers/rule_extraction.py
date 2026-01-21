@@ -12,8 +12,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.core.security import get_current_user
+from app.database import get_db
+from app.auth.dependencies import get_current_user
 from app.models import User
 from app.services.rule_extraction_service import RuleExtractionService
 from app.services.rbac_service import Role, require_role
