@@ -51,9 +51,11 @@
 - Feature Flag 관리 섹션 구현 (Admin 전용)
 - featureFlagService.ts 및 FeatureFlagManagerSection.tsx 생성
 - 6개 V2 Feature Flags 토글 UI
-- **커밋**: `6c2cb11`
+- 배열 검증 버그 수정
+- **커밋**: `6c2cb11`, `36726b6`
 
-**총 커밋**: 10개 (모두 push 완료)
+**총 커밋**: 11개 (모두 push 완료)
+**Settings 페이지 완성도**: 50% → 60%
 
 ---
 
