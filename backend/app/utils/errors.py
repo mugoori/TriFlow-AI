@@ -270,3 +270,100 @@ def format_error_response(
         response["error"]["detail"] = error.technical_detail
 
     return response
+
+
+# ============================================================================
+# Repository 패턴을 위한 추가 헬퍼 함수
+# ============================================================================
+
+def raise_not_found(resource: str, resource_id: Optional[str] = None):
+    """
+    404 Not Found 에러 발생
+
+    Args:
+        resource: 리소스 이름 (예: "User", "Workflow")
+        resource_id: 리소스 ID (선택사항)
+    """
+    from fastapi import HTTPException
+    detail = f"{resource} not found"
+    if resource_id:
+        detail += f": {resource_id}"
+    raise HTTPException(status_code=404, detail=detail)
+
+
+def raise_access_denied(resource: str, action: str = "access"):
+    """
+    403 Forbidden 에러 발생
+
+    Args:
+        resource: 리소스 이름
+        action: 수행하려는 작업 (예: "modify", "delete")
+    """
+    from fastapi import HTTPException
+    raise HTTPException(
+        status_code=403,
+        detail=f"You don't have permission to {action} this {resource}"
+    )
+
+
+def raise_validation_error(field: str, message: str):
+    """
+    400 Bad Request 에러 발생
+
+    Args:
+        field: 필드 이름
+        message: 에러 메시지
+    """
+    from fastapi import HTTPException
+    raise HTTPException(
+        status_code=400,
+        detail=f"Validation error in {field}: {message}"
+    )
+
+
+def require_resource(
+    resource: Any,
+    resource_name: str,
+    resource_id: Optional[str] = None
+) -> Any:
+    """
+    리소스 존재 확인 (없으면 404 에러)
+
+    Args:
+        resource: 확인할 리소스
+        resource_name: 리소스 이름
+        resource_id: 리소스 ID (선택사항)
+
+    Returns:
+        resource: 존재하는 경우 리소스 반환
+
+    Raises:
+        HTTPException: 리소스가 없는 경우 404
+    """
+    if not resource:
+        raise_not_found(resource_name, resource_id)
+    return resource
+
+
+def require_ownership(
+    resource: Any,
+    user_id,  # UUID
+    action: str = "access"
+):
+    """
+    리소스 소유권 확인 (소유자가 아니면 403 에러)
+
+    Args:
+        resource: 확인할 리소스 (owner_id 속성 필요)
+        user_id: 현재 사용자 ID
+        action: 수행하려는 작업
+
+    Raises:
+        HTTPException: 소유자가 아닌 경우 403
+    """
+    if not hasattr(resource, 'owner_id'):
+        return  # owner_id 속성이 없으면 검사하지 않음
+
+    if resource.owner_id != user_id:
+        resource_name = type(resource).__name__
+        raise_access_denied(resource_name, action)

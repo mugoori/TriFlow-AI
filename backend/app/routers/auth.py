@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Tenant
 from app.auth.password import verify_password, get_password_hash
+from app.repositories import UserRepository
 from app.auth.jwt import (
     create_access_token,
     create_refresh_token,
@@ -66,8 +67,9 @@ async def login(
 
     이메일과 비밀번호로 인증 후 JWT 토큰 발급
     """
-    # 사용자 조회
-    user = db.query(User).filter(User.email == request.email).first()
+    # 사용자 조회 - Repository 패턴 적용
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_email(request.email)
 
     if not user:
         logger.warning(f"Login failed: user not found - {request.email}")
@@ -113,9 +115,9 @@ async def register(
 
     새 사용자 계정 생성 및 JWT 토큰 발급
     """
-    # 이메일 중복 체크
-    existing_user = db.query(User).filter(User.email == request.email).first()
-    if existing_user:
+    # 이메일 중복 체크 - Repository 패턴 적용
+    user_repo = UserRepository(db)
+    if user_repo.email_exists(request.email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",

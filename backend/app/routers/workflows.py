@@ -26,6 +26,7 @@ from app.services.rbac_service import (
     check_permission,
     require_admin,
 )
+from app.repositories import WorkflowRepository
 
 router = APIRouter()
 
@@ -833,10 +834,9 @@ async def get_workflow(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid workflow ID format")
 
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
-
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+    # Repository 패턴 적용
+    workflow_repo = WorkflowRepository(db)
+    workflow = workflow_repo.get_by_id_or_404(wf_uuid)
 
     return _workflow_to_response(workflow)
 
@@ -909,10 +909,10 @@ async def update_workflow(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid workflow ID format")
 
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+    workflow_repo = WorkflowRepository(db)
 
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow = workflow_repo.get_by_id_or_404(wf_uuid)
 
     if update_data.name is not None:
         workflow.name = update_data.name
@@ -959,10 +959,10 @@ async def delete_workflow(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid workflow ID format")
 
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+    workflow_repo = WorkflowRepository(db)
 
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow = workflow_repo.get_by_id_or_404(wf_uuid)
 
     db.delete(workflow)
     db.commit()
@@ -995,10 +995,10 @@ async def toggle_workflow(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid workflow ID format")
 
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+    workflow_repo = WorkflowRepository(db)
 
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow = workflow_repo.get_by_id_or_404(wf_uuid)
 
     # 상태 토글
     workflow.is_active = not workflow.is_active
@@ -1049,10 +1049,10 @@ async def execute_workflow(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid workflow ID format")
 
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+    workflow_repo = WorkflowRepository(db)
 
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow = workflow_repo.get_by_id_or_404(wf_uuid)
 
     if not workflow.is_active:
         raise HTTPException(status_code=400, detail="Workflow is not active. Toggle it on first.")
@@ -1157,10 +1157,10 @@ async def run_workflow(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid workflow ID format")
 
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+    workflow_repo = WorkflowRepository(db)
 
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow = workflow_repo.get_by_id_or_404(wf_uuid)
 
     if not workflow.is_active:
         raise HTTPException(status_code=400, detail="Workflow is not active")
@@ -1263,10 +1263,10 @@ async def list_workflow_instances(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid workflow ID format")
 
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == wf_uuid).first()
+    workflow_repo = WorkflowRepository(db)
 
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow = workflow_repo.get_by_id_or_404(wf_uuid)
 
     query = db.query(WorkflowInstance).filter(WorkflowInstance.workflow_id == wf_uuid)
 
@@ -1774,9 +1774,9 @@ async def list_workflow_versions(
     from sqlalchemy import text
 
     # 워크플로우 존재 확인
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == workflow_id).first()
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+    workflow_repo = WorkflowRepository(db)
+
+    workflow = workflow_repo.get_by_id_or_404(workflow_id)
 
     # 버전 목록 조회
     query = """
@@ -1833,9 +1833,9 @@ async def create_workflow_version(
     from sqlalchemy import text
 
     # 워크플로우 조회
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == workflow_id).first()
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+    workflow_repo = WorkflowRepository(db)
+
+    workflow = workflow_repo.get_by_id_or_404(workflow_id)
 
     # 다음 버전 번호 조회
     next_version_query = """
@@ -2019,9 +2019,9 @@ async def rollback_workflow_version(
     dsl_definition = row[1]
 
     # 워크플로우 DSL 업데이트
-    workflow = db.query(Workflow).filter(Workflow.workflow_id == workflow_id).first()
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+    workflow_repo = WorkflowRepository(db)
+
+    workflow = workflow_repo.get_by_id_or_404(workflow_id)
 
     workflow.dsl_definition = dsl_definition
     flag_modified(workflow, "dsl_definition")

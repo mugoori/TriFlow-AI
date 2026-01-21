@@ -24,6 +24,7 @@ from app.services.rbac_service import (
     check_permission,
     require_admin,
 )
+from app.repositories import RulesetRepository
 
 router = APIRouter()
 
@@ -409,10 +410,9 @@ async def get_ruleset(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
 
-    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
-
-    if not ruleset:
-        raise HTTPException(status_code=404, detail="Ruleset not found")
+    # Repository 패턴 적용
+    ruleset_repo = RulesetRepository(db)
+    ruleset = ruleset_repo.get_by_id_or_404(rs_uuid)
 
     return _ruleset_to_response(ruleset)
 
@@ -459,10 +459,10 @@ async def update_ruleset(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
 
-    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
+    ruleset_repo = RulesetRepository(db)
 
-    if not ruleset:
-        raise HTTPException(status_code=404, detail="Ruleset not found")
+
+    ruleset = ruleset_repo.get_by_id_or_404(rs_uuid)
 
     if update_data.name is not None:
         ruleset.name = update_data.name
@@ -499,10 +499,10 @@ async def delete_ruleset(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
 
-    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
+    ruleset_repo = RulesetRepository(db)
 
-    if not ruleset:
-        raise HTTPException(status_code=404, detail="Ruleset not found")
+
+    ruleset = ruleset_repo.get_by_id_or_404(rs_uuid)
 
     db.delete(ruleset)
     db.commit()
@@ -528,10 +528,10 @@ async def execute_ruleset(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
 
-    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
+    ruleset_repo = RulesetRepository(db)
 
-    if not ruleset:
-        raise HTTPException(status_code=404, detail="Ruleset not found")
+
+    ruleset = ruleset_repo.get_by_id_or_404(rs_uuid)
 
     if not ruleset.is_active:
         raise HTTPException(status_code=400, detail="Ruleset is not active")
@@ -589,10 +589,10 @@ async def list_ruleset_executions(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
 
-    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
+    ruleset_repo = RulesetRepository(db)
 
-    if not ruleset:
-        raise HTTPException(status_code=404, detail="Ruleset not found")
+
+    ruleset = ruleset_repo.get_by_id_or_404(rs_uuid)
 
     # MVP: 실행 이력 DB 저장이 구현되지 않아 빈 배열 반환
     return ExecutionHistoryResponse(
@@ -665,9 +665,10 @@ async def list_ruleset_versions(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
 
-    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
-    if not ruleset:
-        raise HTTPException(status_code=404, detail="Ruleset not found")
+    ruleset_repo = RulesetRepository(db)
+
+
+    ruleset = ruleset_repo.get_by_id_or_404(rs_uuid)
 
     # 버전 목록 조회
     query = (
@@ -729,9 +730,10 @@ async def create_ruleset_version(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID format")
 
-    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
-    if not ruleset:
-        raise HTTPException(status_code=404, detail="Ruleset not found")
+    ruleset_repo = RulesetRepository(db)
+
+
+    ruleset = ruleset_repo.get_by_id_or_404(rs_uuid)
 
     new_version = _create_version_snapshot(db, ruleset, change_summary)
 
@@ -754,9 +756,10 @@ async def rollback_to_version(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
-    ruleset = db.query(Ruleset).filter(Ruleset.ruleset_id == rs_uuid).first()
-    if not ruleset:
-        raise HTTPException(status_code=404, detail="Ruleset not found")
+    ruleset_repo = RulesetRepository(db)
+
+
+    ruleset = ruleset_repo.get_by_id_or_404(rs_uuid)
 
     target_version = (
         db.query(RulesetVersion)
