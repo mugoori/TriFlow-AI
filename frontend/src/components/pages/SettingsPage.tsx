@@ -990,47 +990,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Learning Pipeline Configuration (admin, approver만 표시) */}
-        {canViewUsers() && (
-          <>
-            <div className="mt-8 mb-4">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">학습 파이프라인 설정</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                자동 학습 및 규칙 추출 설정 {isAdmin() ? '(관리자)' : '(조회 전용)'}
-              </p>
-            </div>
-
-            <LearningConfigSection isAdmin={isAdmin()} />
-          </>
-        )}
-
-        {/* Feature Flags 섹션 (admin만 표시) */}
-        {isAdmin() && (
-          <>
-            <div className="mt-8 mb-4">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">Feature Flags</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                V2 기능 플래그 관리 (관리자 전용)
-              </p>
-            </div>
-
-            <FeatureFlagManagerSection />
-          </>
-        )}
-
-        {/* System Diagnostics 섹션 (admin만 표시) */}
-        {isAdmin() && (
-          <>
-            <div className="mt-8 mb-4">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">System Diagnostics</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                시스템 상태 및 성능 모니터링 (관리자 전용)
-              </p>
-            </div>
-
-            <SystemDiagnosticsSection />
-          </>
-        )}
 
       </div>
     </div>
