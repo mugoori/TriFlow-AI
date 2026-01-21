@@ -86,14 +86,14 @@ function getInitialSettings(): Settings {
   return defaultSettings;
 }
 
-type SettingsTab = 'general' | 'system' | 'users' | 'notifications';
+type SettingsTab = 'user' | 'admin' | 'dev';
 
 export default function SettingsPage() {
   const { isAuthenticated } = useAuth();
   const { isAdmin, canViewUsers } = usePermission();
 
   // 탭 상태
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('user');
 
   // 초기 상태를 localStorage에서 동기적으로 로드 (깜빡임 방지)
   const [settings, setSettings] = useState<Settings>(getInitialSettings);
@@ -331,10 +331,9 @@ export default function SettingsPage() {
 
   // 탭 정의
   const tabs = [
-    { id: 'general' as SettingsTab, label: '일반', icon: '⚙️' },
-    { id: 'system' as SettingsTab, label: '시스템', icon: '🖥️', adminOnly: true },
-    { id: 'users' as SettingsTab, label: '사용자', icon: '👥' },
-    { id: 'notifications' as SettingsTab, label: '알림', icon: '🔔' },
+    { id: 'user' as SettingsTab, label: '사용자 설정', icon: '👤', minRole: 'viewer' },
+    { id: 'admin' as SettingsTab, label: '관리자', icon: '⚙️', minRole: 'approver' },
+    { id: 'dev' as SettingsTab, label: '개발/운영', icon: '🔧', minRole: 'admin' },
   ];
 
   return (
@@ -344,7 +343,10 @@ export default function SettingsPage() {
         <div className="border-b border-slate-200 dark:border-slate-700 mb-6">
           <nav className="flex gap-1" aria-label="Settings Tabs">
             {tabs.map((tab) => {
-              if (tab.adminOnly && !isAdmin()) return null;
+              // 역할 기반 필터링
+              if (tab.minRole === 'admin' && !isAdmin()) return null;
+              if (tab.minRole === 'approver' && !isAdmin() && !canViewUsers()) return null;
+
               const isActive = activeTab === tab.id;
               return (
                 <button
@@ -364,8 +366,8 @@ export default function SettingsPage() {
           </nav>
         </div>
 
-        {/* General Tab */}
-        {activeTab === 'general' && (
+        {/* User Settings Tab - 모든 사용자 */}
+        {activeTab === 'user' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 일반 설정 카드 */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
@@ -625,8 +627,8 @@ export default function SettingsPage() {
         </div>
         )}
 
-        {/* Notifications Tab */}
-        {activeTab === 'notifications' && (
+        {/* Admin Settings Tab - Approver 이상 */}
+        {activeTab === 'admin' && (isAdmin() || canViewUsers()) && (
         <div className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Slack 알림 카드 */}
@@ -901,8 +903,8 @@ export default function SettingsPage() {
         </div>
         )}
 
-        {/* System Tab */}
-        {activeTab === 'system' && isAdmin() && (
+        {/* Dev/Operations Tab - Admin만 */}
+        {activeTab === 'dev' && isAdmin() && (
         <div className="space-y-6">
             <div className="mb-4">
               <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">모듈 관리</h2>
@@ -1013,8 +1015,13 @@ export default function SettingsPage() {
           </>
         )}
 
-        {/* Users Tab */}
-        {activeTab === 'users' && canViewUsers() && (
+        {/* 사용자 관리는 Admin 탭으로 이동 */}
+        {activeTab === 'admin' && canViewUsers() && (
+        <div className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">사용자 관리</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">사용자 및 권한 관리</p>
+          </div>
         <div className="space-y-6">
             <div className="mb-4">
               <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">사용자 및 권한 관리</h2>
