@@ -51,10 +51,12 @@ export function FeatureFlagManagerSection() {
       setLoading(true);
       setError(null);
       const data = await featureFlagService.listFlags();
-      setFlags(data);
+      // Ensure data is an array
+      setFlags(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load feature flags:', err);
       setError('기능 플래그를 불러오는데 실패했습니다.');
+      setFlags([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -134,7 +136,7 @@ export function FeatureFlagManagerSection() {
 
         {/* Feature Flags List */}
         <div className="space-y-3">
-          {flags.map((flag) => {
+          {Array.isArray(flags) && flags.map((flag) => {
             const meta = FEATURE_DESCRIPTIONS[flag.feature] || {
               name: flag.feature,
               description: flag.description || 'No description',
