@@ -900,6 +900,24 @@ export default function SettingsPage() {
             {notificationSaveStatus === 'saving' ? '저장 중...' : '알림 설정 저장'}
           </button>
         </div>
+
+        {/* User Management */}
+        {canViewUsers() && (
+          <div className="mt-8">
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">사용자 관리</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">사용자 및 권한 관리</p>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="lg:col-span-2">
+                <UserManagementSection isAdmin={isAdmin()} />
+              </div>
+              <div className="lg:col-span-2">
+                <RolePermissionsCard />
+              </div>
+            </div>
+          </div>
+        )}
         </div>
         )}
 
@@ -1015,34 +1033,6 @@ export default function SettingsPage() {
           </>
         )}
 
-        {/* 사용자 관리는 Admin 탭으로 이동 */}
-        {activeTab === 'admin' && canViewUsers() && (
-        <div className="mt-8">
-          <div className="mb-4">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">사용자 관리</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">사용자 및 권한 관리</p>
-          </div>
-        <div className="space-y-6">
-            <div className="mb-4">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">사용자 및 권한 관리</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                테넌트 내 사용자 관리 및 RBAC 설정 {isAdmin() ? '(관리자)' : '(조회 전용)'}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 사용자 관리 테이블 */}
-              <div className="lg:col-span-2">
-                <UserManagementSection isAdmin={isAdmin()} />
-              </div>
-
-              {/* 역할별 권한 카드 */}
-              <div className="lg:col-span-2">
-                <RolePermissionsCard />
-              </div>
-            </div>
-        </div>
-        )}
       </div>
     </div>
   );
