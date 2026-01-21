@@ -143,6 +143,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Canary monitor task failed to start: {e}")
 
+    # 비즈니스 메트릭 초기화 (Grafana 즉시 표시용)
+    try:
+        from app.services.metrics_exporter import update_business_metrics
+        update_business_metrics()
+        logger.info("Business metrics initialized")
+    except Exception as e:
+        logger.warning(f"Business metrics initialization failed: {e}")
+
     # 스케줄러 시작 (MV 리프레시 포함)
     try:
         from app.services.scheduler_service import scheduler

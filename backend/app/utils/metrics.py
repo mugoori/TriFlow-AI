@@ -199,6 +199,37 @@ ruleset_evaluations_total = Counter(
 )
 
 
+# ========== Production/Manufacturing Metrics ==========
+
+# 생산량 (Gauge로 현재 값 표시)
+production_quantity_total = Gauge(
+    "production_quantity_total",
+    "Total production quantity",
+    ["period", "line_code", "product_type"]
+)
+
+# 불량품 수 (Gauge로 현재 값 표시)
+defect_quantity_total = Gauge(
+    "defect_quantity_total",
+    "Total defect quantity",
+    ["period", "line_code", "defect_type"]
+)
+
+# 설비 가동률
+equipment_utilization = Gauge(
+    "equipment_utilization",
+    "Equipment utilization percentage",
+    ["line_code", "equipment_id"]
+)
+
+# 활성 알림 수
+active_alerts_count = Gauge(
+    "active_alerts_count",
+    "Current number of active alerts",
+    ["severity", "category"]
+)
+
+
 # ========== Helper Functions ==========
 
 # Claude Sonnet 토큰 가격 (USD, 2024년 기준)

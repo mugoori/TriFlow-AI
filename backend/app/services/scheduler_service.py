@@ -358,6 +358,17 @@ scheduler = SchedulerService()
 def setup_default_jobs():
     """기본 스케줄 작업 등록"""
     from app.services.mv_refresh_service import refresh_materialized_views
+    from app.services.metrics_exporter import update_business_metrics
+
+    # 비즈니스 메트릭 업데이트 (1분마다)
+    scheduler.register_job(
+        job_id="update_business_metrics",
+        name="비즈니스 메트릭 업데이트",
+        description="DB 데이터를 Prometheus 메트릭으로 변환",
+        interval_seconds=60,  # 1분
+        handler=update_business_metrics,
+        enabled=True,
+    )
 
     # 데이터 정리 (매일 자정)
     scheduler.register_job(
