@@ -14,12 +14,19 @@ export interface FeatureFlag {
   tenant_overrides?: Record<string, boolean>;
 }
 
+interface AllFlagsResponse {
+  tenant_id?: string;
+  flags: Record<string, FeatureFlag>;
+}
+
 export const featureFlagService = {
   /**
    * 모든 Feature Flags 조회
    */
   async listFlags(): Promise<FeatureFlag[]> {
-    return apiClient.get<FeatureFlag[]>('/api/v2/feature-flags');
+    const response = await apiClient.get<AllFlagsResponse>('/api/v2/feature-flags');
+    // Convert object to array
+    return Object.values(response.flags || {});
   },
 
   /**
