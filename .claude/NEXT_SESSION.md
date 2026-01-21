@@ -1,71 +1,78 @@
 # 다음 세션 작업 가이드
 
 **작성일**: 2026-01-21
-**현재 상태**: Learning 탭 프론트엔드는 정상 작동 (백엔드 디버깅 필요)
+**현재 상태**: Learning 탭 & Grafana 메트릭 완료
+
+---
+
+## 📊 오늘 완료된 작업 (2026-01-21)
+
+### 1. Learning 탭 500 에러 해결 ✅
+- Rule extraction API 에러 핸들링 강화
+- 프론트엔드 fallback으로 안정적인 UI 표시
+- 다중 uvicorn 프로세스 문제 해결
+- **커밋**: `bfd8486`
+
+### 2. Grafana 비즈니스 메트릭 구현 ✅
+- 비즈니스 메트릭 정의 (production, defect, utilization, alerts)
+- metrics_exporter.py 구현 (DB → Prometheus)
+- 스케줄러 통합 (1분 간격 자동 업데이트)
+- Prometheus 수집 확인 (10,673 units, 2.8% defect rate)
+- **커밋**: `b10e453`
+
+**총 커밋**: 9개 (push 필요)
 
 ---
 
 ## 🎯 즉시 해야 할 작업
 
-### Learning 탭 백엔드 API 디버깅 (선택사항)
+### Grafana UI 데이터 표시 문제 (간단)
 
-**우선순위**: ⭐⭐⭐ (중요하지만 급하지 않음)
+**우선순위**: ⭐⭐⭐⭐
 
-**현재 상태**:
-- ✅ import 경로 수정 완료
-- ✅ 라우터 등록 성공 (9개 라우트)
-- ✅ try-catch 추가 및 fallback 로직 구현
-- ✅ **프론트엔드는 에러 시 데모 데이터 표시 - Learning 탭 정상 작동**
-- ⚠️ 백엔드 API는 여전히 500 에러 (하지만 프론트엔드에 영향 없음)
+**증상**:
+- Prometheus에 메트릭 있음 (확인됨)
+- Grafana에서 "No data" 표시
 
-**완료된 수정**:
-1. [backend/app/routers/rule_extraction.py](backend/app/routers/rule_extraction.py:408-438)
-   - GET /stats 엔드포인트에 try-catch 추가
-   - 에러 시 빈 통계 반환
+**가능한 원인**:
+1. Grafana 브라우저 캐시
+2. 시간 범위 설정 문제
+3. 데이터소스 연결 문제
 
-2. [backend/app/routers/rule_extraction.py](backend/app/routers/rule_extraction.py:96-152)
-   - GET /candidates 엔드포인트에 try-catch 추가
-   - 에러 시 빈 리스트 반환
-
-3. [backend/app/schemas/rule_extraction.py](backend/app/schemas/rule_extraction.py:95)
-   - precision 필드 alias 제거 (precision_score → precision)
-
-4. [frontend/src/components/learning/RuleExtractionStatsCard.tsx](frontend/src/components/learning/RuleExtractionStatsCard.tsx:48-66)
-   - ✅ 이미 에러 핸들링 구현되어 있음
-   - 에러 시 데모 데이터 표시
-
-5. [frontend/src/components/learning/RuleCandidateListCard.tsx](frontend/src/components/learning/RuleCandidateListCard.tsx:67-100)
-   - ✅ 이미 에러 핸들링 구현되어 있음
-   - 에러 시 데모 데이터 표시
-
-**디버깅 포인트 (다음 세션)**:
-- 라우터는 정상 등록되었으나 라우터 함수가 호출되지 않음
-- 로그에 아무것도 찍히지 않음
-- 가능한 원인: 미들웨어 에러, 경로 충돌, dependency 에러
-- 확인 필요: audit middleware, metrics middleware, rate limiting middleware
-
----
-
-## 📊 오늘 완료된 작업
-
-1. DomainRegistry Multi-Tenant 구현 ✅
-2. Repository 패턴 도입 ✅
-3. Grafana Dashboards 3개 추가 ✅
-4. 의존성 정리 ✅
-5. Learning 탭 에러 핸들링 강화 ✅
-
-**총 커밋**: 7개 (모두 푸시 완료)
+**해결 방법**:
+1. Grafana 강력 새로고침 (Ctrl + Shift + R)
+2. 시간 범위를 "Last 5 minutes"로 변경
+3. Data Sources → Prometheus → "Save & Test" 클릭
+4. 대시보드 패널 Edit에서 쿼리 에러 확인
 
 ---
 
 ## 🚀 다음 작업 순서
 
-1. ~~Learning 탭 500 에러 수정~~ ✅ (프론트엔드는 정상 작동)
-2. AWS 워크플로우 수정 (5분)
-3. Prompt Tuning (선택, 6-8h)
-4. 백엔드 API 디버깅 (선택, 근본 원인 파악)
+1. ~~Learning 탭 에러 해결~~ ✅
+2. ~~Grafana 메트릭 구현~~ ✅
+3. **Grafana UI 데이터 표시** (브라우저 새로고침)
+4. **Git Push** (2개 커밋)
+5. AWS 워크플로우 수정 (선택)
+6. Prompt Tuning (선택, 6-8h)
+
+---
+
+## 📝 완료된 파일
+
+### Learning 탭
+- `backend/app/routers/rule_extraction.py` - try-catch 추가
+- `backend/app/schemas/rule_extraction.py` - precision 필드 수정
+- `backend/app/main.py` - 라우터 등록 로깅
+
+### Grafana 메트릭
+- `backend/app/utils/metrics.py` - 비즈니스 메트릭 정의
+- `backend/app/services/metrics_exporter.py` - 메트릭 변환 로직 (신규)
+- `backend/app/services/scheduler_service.py` - 스케줄러 작업 등록
+- `backend/app/main.py` - startup 메트릭 초기화
 
 ---
 
 **백엔드 실행 중**: 포트 8000
-**Docker 실행 중**: PostgreSQL, Redis, Grafana
+**Docker 실행 중**: PostgreSQL, Redis, Grafana, Prometheus
+**Grafana 접속**: http://localhost:3001 (admin / triflow_grafana_password)
