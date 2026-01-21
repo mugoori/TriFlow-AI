@@ -76,6 +76,9 @@ export function ErpMesDataTab() {
   // 확장된 행
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
+  // API 연결 설정
+  const [showConnectionModal, setShowConnectionModal] = useState(false);
+
   // Mock 타입 로드
   useEffect(() => {
     const loadMockTypes = async () => {
@@ -246,6 +249,13 @@ export function ErpMesDataTab() {
 
       {/* 액션 버튼 */}
       <div className="flex justify-end gap-2">
+        <button
+          onClick={() => setShowConnectionModal(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors"
+        >
+          <Database className="w-4 h-4" />
+          API 연결 설정
+        </button>
         <button
           onClick={() => {
             setShowMockGenerator(!showMockGenerator);
@@ -555,6 +565,89 @@ export function ErpMesDataTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* API 연결 설정 모달 */}
+      {showConnectionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold mb-4">ERP/MES API 연결 설정</h3>
+
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                <strong>안내:</strong> MES/ERP 시스템의 REST API 정보를 입력하면 자동으로 데이터를 동기화합니다.
+              </p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                현재는 CSV 업로드로 데이터를 가져올 수 있습니다. REST API 연동 기능은 V2에서 지원 예정입니다.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">연결 이름</label>
+                <input
+                  type="text"
+                  placeholder="예: 현장 MES"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  disabled
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">타입</label>
+                  <select className="w-full px-3 py-2 border rounded-lg" disabled>
+                    <option>MES</option>
+                    <option>ERP</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">연결 방식</label>
+                  <select className="w-full px-3 py-2 border rounded-lg" disabled>
+                    <option>REST API</option>
+                    <option>SOAP</option>
+                    <option>DB Direct</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">API URL</label>
+                <input
+                  type="text"
+                  placeholder="https://mes.company.com/api/v1"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  disabled
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">API Token</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  disabled
+                />
+              </div>
+
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                  ⚠️ REST API 연동 기능은 개발 중입니다. 현재는 CSV 파일 업로드를 사용해주세요.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => setShowConnectionModal(false)}
+                className="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
