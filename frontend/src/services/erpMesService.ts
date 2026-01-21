@@ -76,6 +76,34 @@ export interface ErpMesStats {
   field_mappings: number;
 }
 
+export interface DataSource {
+  source_id: string;
+  tenant_id: string;
+  name: string;
+  description?: string;
+  source_type: 'erp' | 'mes';
+  source_system: string;
+  connection_type: 'rest_api' | 'soap' | 'db_direct' | 'file';
+  connection_config: Record<string, unknown>;
+  sync_enabled: boolean;
+  sync_interval_minutes: number;
+  last_sync_at?: string;
+  last_sync_status?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface DataSourceCreate {
+  name: string;
+  description?: string;
+  source_type: 'erp' | 'mes';
+  source_system: string;
+  connection_type: 'rest_api' | 'soap' | 'db_direct' | 'file';
+  connection_config: Record<string, unknown>;
+  sync_enabled?: boolean;
+  sync_interval_minutes?: number;
+}
+
 // ===========================================
 // API Functions (using apiClient for automatic token handling)
 // ===========================================
@@ -167,6 +195,41 @@ export async function importFile(
 // Convenience Object Export
 // ===========================================
 
+/**
+ * Data Source 생성
+ */
+export async function createDataSource(
+  source: DataSourceCreate
+): Promise<DataSource> {
+  return apiClient.post<DataSource>('/api/v1/erp-mes/data-sources', source);
+}
+
+/**
+ * Data Source 목록 조회
+ */
+export async function listDataSources(): Promise<DataSource[]> {
+  return apiClient.get<DataSource[]>('/api/v1/erp-mes/data-sources');
+}
+
+/**
+ * Data Source 연결 테스트
+ */
+export async function testConnection(
+  sourceId: string
+): Promise<{ success: boolean; message: string }> {
+  return apiClient.post<{ success: boolean; message: string }>(
+    `/api/v1/erp-mes/data-sources/${sourceId}/test`,
+    {}
+  );
+}
+
+/**
+ * Data Source 삭제
+ */
+export async function deleteDataSource(sourceId: string): Promise<{ message: string }> {
+  return apiClient.delete<{ message: string }>(`/api/v1/erp-mes/data-sources/${sourceId}`);
+}
+
 export const erpMesService = {
   listData: listErpMesData,
   deleteData: deleteErpMesData,
@@ -174,6 +237,10 @@ export const erpMesService = {
   generateMockData,
   getStats: getErpMesStats,
   importFile,
+  createDataSource,
+  listDataSources,
+  testConnection,
+  deleteDataSource,
 };
 
 export default erpMesService;

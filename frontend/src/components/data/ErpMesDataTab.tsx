@@ -185,6 +185,34 @@ export function ErpMesDataTab() {
     setExpandedRow(expandedRow === dataId ? null : dataId);
   };
 
+  // API 연결 저장
+  const handleSaveConnection = async () => {
+    setSavingConnection(true);
+    try {
+      await erpMesService.createDataSource({
+        name: connectionForm.name,
+        description: connectionForm.description,
+        source_type: connectionForm.source_type,
+        source_system: connectionForm.source_system,
+        connection_type: connectionForm.connection_type,
+        connection_config: {
+          base_url: connectionForm.base_url,
+          auth_type: connectionForm.auth_type,
+          api_token: connectionForm.api_token,
+        },
+        sync_enabled: true,
+        sync_interval_minutes: connectionForm.sync_interval_minutes,
+      });
+
+      toast.success('API 연결이 저장되었습니다');
+      setShowConnectionModal(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'API 연결 저장 실패');
+    } finally {
+      setSavingConnection(false);
+    }
+  };
+
   // Mock 소스 타입 변경 시 레코드 타입 초기화
   useEffect(() => {
     if (mockTypes) {
@@ -576,64 +604,77 @@ export function ErpMesDataTab() {
               <p className="text-sm text-blue-700 dark:text-blue-300">
                 <strong>안내:</strong> MES/ERP 시스템의 REST API 정보를 입력하면 자동으로 데이터를 동기화합니다.
               </p>
-              <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                현재는 CSV 업로드로 데이터를 가져올 수 있습니다. REST API 연동 기능은 V2에서 지원 예정입니다.
-              </p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">연결 이름</label>
+                <label className="block text-sm font-medium mb-1">연결 이름 *</label>
                 <input
                   type="text"
+                  value={connectionForm.name}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, name: e.target.value })}
                   placeholder="예: 현장 MES"
-                  className="w-full px-3 py-2 border rounded-lg"
-                  disabled
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">타입</label>
-                  <select className="w-full px-3 py-2 border rounded-lg" disabled>
-                    <option>MES</option>
-                    <option>ERP</option>
+                  <label className="block text-sm font-medium mb-1">타입 *</label>
+                  <select
+                    value={connectionForm.source_type}
+                    onChange={(e) => setConnectionForm({ ...connectionForm, source_type: e.target.value as 'erp' | 'mes' })}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="mes">MES</option>
+                    <option value="erp">ERP</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">연결 방식</label>
-                  <select className="w-full px-3 py-2 border rounded-lg" disabled>
-                    <option>REST API</option>
-                    <option>SOAP</option>
-                    <option>DB Direct</option>
-                  </select>
+                  <label className="block text-sm font-medium mb-1">시스템</label>
+                  <input
+                    type="text"
+                    value={connectionForm.source_system}
+                    onChange={(e) => setConnectionForm({ ...connectionForm, source_system: e.target.value })}
+                    placeholder="SAP, Oracle 등"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                  />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">API URL</label>
+                <label className="block text-sm font-medium mb-1">API URL *</label>
                 <input
                   type="text"
+                  value={connectionForm.base_url}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, base_url: e.target.value })}
                   placeholder="https://mes.company.com/api/v1"
-                  className="w-full px-3 py-2 border rounded-lg"
-                  disabled
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">API Token</label>
+                <label className="block text-sm font-medium mb-1">API Token / Bearer Token *</label>
                 <input
                   type="password"
-                  placeholder="••••••••"
-                  className="w-full px-3 py-2 border rounded-lg"
-                  disabled
+                  value={connectionForm.api_token}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, api_token: e.target.value })}
+                  placeholder="API 토큰 입력"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                 />
               </div>
 
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
-                <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                  ⚠️ REST API 연동 기능은 개발 중입니다. 현재는 CSV 파일 업로드를 사용해주세요.
-                </p>
+              <div>
+                <label className="block text-sm font-medium mb-1">동기화 주기 (분)</label>
+                <input
+                  type="number"
+                  value={connectionForm.sync_interval_minutes}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, sync_interval_minutes: parseInt(e.target.value) || 30 })}
+                  min={5}
+                  max={1440}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                />
+                <p className="text-xs text-slate-500 mt-1">5분 ~ 1440분 (24시간)</p>
               </div>
             </div>
 
@@ -642,7 +683,14 @@ export function ErpMesDataTab() {
                 onClick={() => setShowConnectionModal(false)}
                 className="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors"
               >
-                닫기
+                취소
+              </button>
+              <button
+                onClick={handleSaveConnection}
+                disabled={!connectionForm.name || !connectionForm.base_url || !connectionForm.api_token || savingConnection}
+                className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingConnection ? '저장 중...' : '저장'}
               </button>
             </div>
           </div>

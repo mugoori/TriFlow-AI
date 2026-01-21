@@ -619,7 +619,8 @@
       "Bash(pkill:*)",
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAxMDEiLCJ0ZW5hbnRfaWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoiYWRtaW4iLCJleHAiOjE3Njg5NzIwOTIsInR5cGUiOiJhY2Nlc3MiLCJpYXQiOjE3Njg5NzAyOTJ9.jkyV_3Ql6rXlH4AphDeU3UOOH6uQ8DUPCmE8ebK5Y30\")",
       "Bash(__NEW_LINE_e7ec9c7bc823a9e8__ echo \"=== Testing /stats endpoint ===\")",
-      "Bash(__NEW_LINE_76e83c4cb3d988a2__ echo -e \"\\\\n\\\\n=== Testing /candidates endpoint ===\")"
+      "Bash(__NEW_LINE_76e83c4cb3d988a2__ echo -e \"\\\\n\\\\n=== Testing /candidates endpoint ===\")",
+      "Read(//c/dev/triflow-ai/**)"
     ],
     "deny": [],
     "ask": [],
