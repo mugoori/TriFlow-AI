@@ -1,9 +1,9 @@
-import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical, GraduationCap } from 'lucide-react';
+import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical, GraduationCap, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenantConfig } from '../../contexts/TenantConfigContext';
 
-export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings' | 'korea_biopharm';
+export type ViewType = 'chat' | 'dashboard' | 'judgment' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings' | 'korea_biopharm';
 
 interface SidebarProps {
   currentView: ViewType;
@@ -33,6 +33,13 @@ const navItems: NavItem[] = [
     icon: BarChart3,
     description: '데이터 시각화',
     moduleCode: 'dashboard',
+  },
+  {
+    id: 'judgment',
+    label: 'Judgment',
+    icon: Brain,
+    description: '하이브리드 판단',
+    moduleCode: 'judgment',
   },
   {
     id: 'workflows',

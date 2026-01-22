@@ -9,6 +9,7 @@ import RulesetsPage from "./components/pages/RulesetsPage";
 import ExperimentsPage from "./components/pages/ExperimentsPage";
 import LearningPage from "./components/pages/LearningPage";
 import SettingsPage from "./components/pages/SettingsPage";
+import JudgmentPage from "./components/pages/JudgmentPage";
 import { LoginPage } from "./components/pages/LoginPage";
 import { DashboardProvider } from "./contexts/DashboardContext";
 import { ChatProvider } from "./contexts/ChatContext";
@@ -22,6 +23,7 @@ import { getPageComponent } from "./modules/_imports";
 const PAGE_INFO: Record<ViewType, { title: string; description: string }> = {
   chat: { title: 'AI Chat', description: '에이전트와 대화하기' },
   dashboard: { title: 'Dashboard', description: '제조 현장 실시간 모니터링' },
+  judgment: { title: 'Judgment', description: 'Rule + LLM 하이브리드 판단 실행' },
   workflows: { title: 'Workflows', description: '자동화 워크플로우 관리' },
   rulesets: { title: 'Rulesets', description: 'Rhai 규칙 스크립트 관리' },
   experiments: { title: 'A/B Tests', description: '규칙 변형 실험 관리' },
@@ -73,6 +75,8 @@ function MainLayout() {
         return <ChatContainer />;
       case 'dashboard':
         return <DashboardPage />;
+      case 'judgment':
+        return <JudgmentPage />;
       case 'workflows':
         return <WorkflowsPage />;
       case 'rulesets':
