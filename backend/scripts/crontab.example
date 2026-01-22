@@ -1,0 +1,62 @@
+# TriFlow AI - Crontab 설정 예제
+#
+# 설치 방법:
+# 1. 이 파일을 /etc/cron.d/triflow-ai로 복사
+# 2. 권한 설정: chmod 644 /etc/cron.d/triflow-ai
+# 3. 환경변수 설정: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
+#
+# 또는 사용자 crontab에 추가:
+# crontab -e
+# 아래 내용 복사
+
+# ========================================
+# 환경변수 설정 (필수)
+# ========================================
+# DB_HOST=localhost
+# DB_PORT=5432
+# DB_USER=postgres
+# DB_PASSWORD=your_password
+# DB_NAME=ai_factory
+
+# ========================================
+# 자동 파티셔닝 (매월 1일 03:00)
+# ========================================
+# 미래 3개월 파티션 사전 생성 + 2년 전 파티션 삭제
+0 3 1 * * /app/backend/scripts/auto_partition.sh >> /var/log/triflow/auto_partition.log 2>&1
+
+# ========================================
+# 대안: 매주 일요일 03:00 (더 안전)
+# ========================================
+# 0 3 * * 0 /app/backend/scripts/auto_partition.sh >> /var/log/triflow/auto_partition.log 2>&1
+
+# ========================================
+# 데이터베이스 백업 (매일 02:00)
+# ========================================
+# 0 2 * * * /app/backend/scripts/backup_postgres.sh >> /var/log/triflow/backup.log 2>&1
+
+# ========================================
+# Materialized View 리프레시 (매일 04:00)
+# ========================================
+# 0 4 * * * psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_defect_trend;" >> /var/log/triflow/mv_refresh.log 2>&1
+# 5 4 * * * psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_oee_daily;" >> /var/log/triflow/mv_refresh.log 2>&1
+# 10 4 * * * psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_inventory_coverage;" >> /var/log/triflow/mv_refresh.log 2>&1
+# 15 4 * * * psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_line_performance;" >> /var/log/triflow/mv_refresh.log 2>&1
+
+# ========================================
+# 데이터베이스 VACUUM (매주 일요일 05:00)
+# ========================================
+# 0 5 * * 0 psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "VACUUM ANALYZE;" >> /var/log/triflow/vacuum.log 2>&1
+
+# ========================================
+# 로그 정리 (매일 06:00)
+# ========================================
+# 30일 이상 된 로그 파일 압축
+# 0 6 * * * find /var/log/triflow -name "*.log" -mtime +30 -exec gzip {} \; >> /var/log/triflow/cleanup.log 2>&1
+# 90일 이상 된 압축 로그 삭제
+# 5 6 * * * find /var/log/triflow -name "*.log.gz" -mtime +90 -delete >> /var/log/triflow/cleanup.log 2>&1
+
+# ========================================
+# WAL 아카이빙 정리 (매일 07:00)
+# ========================================
+# 30일 이상 된 WAL 파일 삭제
+# 0 7 * * * find /backup/wal_archive -name "*.wal" -mtime +30 -delete >> /var/log/triflow/wal_cleanup.log 2>&1

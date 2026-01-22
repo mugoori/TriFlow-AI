@@ -23,6 +23,33 @@ router = APIRouter()
 # ========== Request/Response Schemas ==========
 
 
+class JudgmentExecuteRequest(BaseModel):
+    """Judgment 실행 요청"""
+    ruleset_id: str = Field(..., description="Ruleset ID (UUID)")
+    input_data: dict = Field(..., description="입력 데이터 (센서 값 등)")
+    policy: str = Field("hybrid_weighted", description="판단 정책 (rule_only, llm_only, hybrid_weighted, hybrid_gate 등)")
+    need_explanation: bool = Field(True, description="설명 생성 여부")
+    context: Optional[dict] = Field(None, description="추가 컨텍스트")
+
+
+class JudgmentExecuteResponse(BaseModel):
+    """Judgment 실행 응답"""
+    execution_id: str
+    decision: str
+    confidence: float
+    source: str
+    policy_used: str
+    execution_time_ms: int
+    cached: bool
+    explanation: Optional[dict] = None
+    evidence: Optional[List[str]] = None
+    recommended_actions: Optional[List[dict]] = None
+    rule_result: Optional[dict] = None
+    llm_result: Optional[dict] = None
+    details: dict = {}
+    timestamp: str
+
+
 class ReplayRequest(BaseModel):
     """Replay 요청"""
     use_current_ruleset: bool = Field(True, description="현재 활성 Ruleset 사용 여부")
@@ -41,6 +68,128 @@ class WhatIfRequest(BaseModel):
 
 
 # ========== API Endpoints ==========
+
+
+@router.post("/execute", response_model=JudgmentExecuteResponse)
+async def execute_judgment(
+    request: JudgmentExecuteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Judgment 실행 (독립 API)
+
+    스펙 참조: A-2 JUD-FR-010~050
+
+    Rule + LLM 하이브리드 판단을 수행하여 결과를 반환합니다.
+
+    Args:
+        ruleset_id: 실행할 Ruleset ID
+        input_data: 입력 데이터 (센서 값, 생산 데이터 등)
+        policy: 판단 정책 (rule_only, llm_only, hybrid_weighted, hybrid_gate 등)
+        need_explanation: True면 설명/증거/추천조치 생성
+        context: 추가 컨텍스트 (라인 코드, 날짜 등)
+
+    Returns:
+        {
+            "execution_id": "...",
+            "decision": "OK|WARNING|CRITICAL",
+            "confidence": 0.92,
+            "source": "rule|llm|hybrid",
+            "policy_used": "hybrid_weighted",
+            "execution_time_ms": 1250,
+            "cached": false,
+            "explanation": {...},
+            "evidence": [...],
+            "recommended_actions": [...]
+        }
+    """
+    from app.services.judgment_policy import get_hybrid_judgment_service, JudgmentPolicy
+    from app.models.core import JudgmentExecution, Ruleset
+    from uuid import UUID as PythonUUID
+
+    # UUID 변환
+    try:
+        ruleset_uuid = PythonUUID(request.ruleset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ruleset_id format")
+
+    # Ruleset 존재 여부 확인
+    ruleset = db.query(Ruleset).filter(
+        Ruleset.ruleset_id == ruleset_uuid,
+        Ruleset.tenant_id == current_user.tenant_id
+    ).first()
+
+    if not ruleset:
+        raise HTTPException(status_code=404, detail="Ruleset not found")
+
+    if not ruleset.is_active:
+        raise HTTPException(status_code=400, detail="Ruleset is not active")
+
+    # 정책 변환
+    try:
+        policy_enum = JudgmentPolicy(request.policy)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid policy. Allowed: {', '.join([p.value for p in JudgmentPolicy])}"
+        )
+
+    # Judgment 실행
+    try:
+        hybrid_service = get_hybrid_judgment_service()
+        result = await hybrid_service.execute(
+            tenant_id=current_user.tenant_id,
+            ruleset_id=ruleset_uuid,
+            input_data=request.input_data,
+            policy=policy_enum,
+            context=request.context or {},
+        )
+
+        # DB에 실행 기록 저장
+        execution = JudgmentExecution(
+            tenant_id=current_user.tenant_id,
+            ruleset_id=ruleset_uuid,
+            source="api",
+            input_data=request.input_data,
+            result=result.decision,
+            confidence=result.confidence,
+            method_used=result.source,
+            explanation=result.explanation,
+            evidence=result.evidence,
+            cache_hit=result.cached,
+        )
+        db.add(execution)
+        db.commit()
+        db.refresh(execution)
+
+        logger.info(
+            f"Judgment executed: execution_id={execution.execution_id}, "
+            f"decision={result.decision}, confidence={result.confidence:.3f}, "
+            f"policy={policy_enum.value}, cached={result.cached}"
+        )
+
+        # 응답 구성
+        return JudgmentExecuteResponse(
+            execution_id=str(execution.execution_id),
+            decision=result.decision,
+            confidence=result.confidence,
+            source=result.source,
+            policy_used=policy_enum.value,
+            execution_time_ms=result.execution_time_ms,
+            cached=result.cached,
+            explanation=result.explanation if request.need_explanation else None,
+            evidence=result.evidence if request.need_explanation else None,
+            recommended_actions=result.details.get("recommended_actions") if request.need_explanation else None,
+            rule_result=result.rule_result if request.need_explanation else None,
+            llm_result=result.llm_result if request.need_explanation else None,
+            details=result.details,
+            timestamp=result.timestamp,
+        )
+
+    except Exception as e:
+        logger.error(f"Judgment execution failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Judgment execution failed: {str(e)}")
 
 
 @router.post("/replay/{execution_id}")

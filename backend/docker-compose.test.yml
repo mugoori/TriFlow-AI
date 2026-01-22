@@ -1,0 +1,115 @@
+# TriFlow AI - 통합 테스트 환경
+# 스펙 참조: C-3-1 Integration Testing
+
+version: '3.9'
+
+services:
+  # PostgreSQL 테스트 DB
+  postgres-test:
+    image: postgres:14-alpine
+    container_name: triflow-postgres-test
+    environment:
+      POSTGRES_DB: ai_factory_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"  # 프로덕션과 포트 충돌 방지
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d ai_factory_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis 테스트 캐시
+  redis-test:
+    image: redis:7.2-alpine
+    container_name: triflow-redis-test
+    ports:
+      - "6380:6379"  # 프로덕션과 포트 충돌 방지
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Backend 테스트 서버
+  backend-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: triflow-backend-test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    environment:
+      # DB 연결
+      DATABASE_URL: postgresql://test_user:test_password@postgres-test:5432/ai_factory_test
+      # Redis 연결
+      REDIS_URL: redis://redis-test:6379
+      # LLM API (테스트용 Mock)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-test_key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-test_key}
+      # 환경 설정
+      ENVIRONMENT: testing
+      LOG_LEVEL: INFO
+      # 기능 플래그
+      METRICS_ENABLED: "false"  # 테스트 시 메트릭 비활성화
+      PII_MASKING_ENABLED: "false"  # 테스트 데이터는 마스킹 불필요
+      RATE_LIMIT_ENABLED: "false"  # 테스트 시 제한 없음
+    ports:
+      - "8001:8000"  # 프로덕션과 포트 충돌 방지
+    command: >
+      sh -c "
+        echo 'Waiting for database...';
+        sleep 5;
+        echo 'Running migrations...';
+        alembic upgrade head;
+        echo 'Starting test server...';
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 통합 테스트 실행기
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: triflow-test-runner
+    depends_on:
+      backend-test:
+        condition: service_healthy
+    environment:
+      # 테스트 대상 서버
+      API_BASE_URL: http://backend-test:8000
+      DATABASE_URL: postgresql://test_user:test_password@postgres-test:5432/ai_factory_test
+      REDIS_URL: redis://redis-test:6379
+      # pytest 설정
+      PYTEST_ARGS: "-v --cov=app --cov-report=html --cov-report=term-missing"
+    volumes:
+      - ./tests:/app/tests
+      - ./htmlcov:/app/htmlcov
+    command: >
+      sh -c "
+        echo 'Waiting for backend...';
+        sleep 10;
+        echo 'Running integration tests...';
+        pytest tests/integration ${PYTEST_ARGS};
+        echo 'Tests completed. Coverage report: htmlcov/index.html'
+      "
+
+volumes:
+  postgres-test-data:
+
+networks:
+  default:
+    name: triflow-test-network

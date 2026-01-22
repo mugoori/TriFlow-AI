@@ -1,0 +1,144 @@
+{
+  "judgment": {
+    "high_defect": {
+      "message": {
+        "ko": "불량률이 임계값을 초과했습니다. 즉시 라인을 중단하세요.",
+        "en": "Defect rate exceeded threshold. Stop the line immediately."
+      }
+    },
+    "normal": {
+      "message": {
+        "ko": "모든 지표가 정상 범위입니다.",
+        "en": "All metrics are within normal range."
+      }
+    },
+    "warning": {
+      "message": {
+        "ko": "주의가 필요한 상태입니다.",
+        "en": "Attention required."
+      }
+    },
+    "critical": {
+      "message": {
+        "ko": "즉각적인 조치가 필요합니다.",
+        "en": "Immediate action required."
+      }
+    }
+  },
+  "workflow": {
+    "approval_required": {
+      "message": {
+        "ko": "{approver}님의 승인이 필요합니다.",
+        "en": "Approval from {approver} is required."
+      }
+    },
+    "execution_started": {
+      "message": {
+        "ko": "워크플로우 실행이 시작되었습니다.",
+        "en": "Workflow execution started."
+      }
+    },
+    "execution_completed": {
+      "message": {
+        "ko": "워크플로우 실행이 완료되었습니다.",
+        "en": "Workflow execution completed."
+      }
+    },
+    "execution_failed": {
+      "message": {
+        "ko": "워크플로우 실행이 실패했습니다: {error}",
+        "en": "Workflow execution failed: {error}"
+      }
+    }
+  },
+  "error": {
+    "invalid_input": {
+      "message": {
+        "ko": "입력 데이터가 유효하지 않습니다: {field}",
+        "en": "Invalid input data: {field}"
+      }
+    },
+    "not_found": {
+      "message": {
+        "ko": "{resource}을(를) 찾을 수 없습니다.",
+        "en": "{resource} not found."
+      }
+    },
+    "unauthorized": {
+      "message": {
+        "ko": "접근 권한이 없습니다.",
+        "en": "Unauthorized access."
+      }
+    },
+    "forbidden": {
+      "message": {
+        "ko": "{action} 권한이 없습니다.",
+        "en": "Permission denied for {action}."
+      }
+    },
+    "internal_error": {
+      "message": {
+        "ko": "내부 서버 오류가 발생했습니다.",
+        "en": "Internal server error occurred."
+      }
+    },
+    "validation_failed": {
+      "message": {
+        "ko": "유효성 검증에 실패했습니다: {details}",
+        "en": "Validation failed: {details}"
+      }
+    }
+  },
+  "notification": {
+    "drift_detected": {
+      "title": {
+        "ko": "스키마 변경 감지",
+        "en": "Schema Drift Detected"
+      },
+      "message": {
+        "ko": "커넥터 '{connector}'에서 스키마 변경이 감지되었습니다.",
+        "en": "Schema drift detected in connector '{connector}'."
+      }
+    },
+    "canary_rollback": {
+      "title": {
+        "ko": "Canary 자동 롤백",
+        "en": "Canary Auto-Rollback"
+      },
+      "message": {
+        "ko": "Canary 배포가 자동으로 롤백되었습니다: {reason}",
+        "en": "Canary deployment automatically rolled back: {reason}"
+      }
+    }
+  },
+  "common": {
+    "success": {
+      "ko": "성공",
+      "en": "Success"
+    },
+    "failure": {
+      "ko": "실패",
+      "en": "Failure"
+    },
+    "pending": {
+      "ko": "대기 중",
+      "en": "Pending"
+    },
+    "running": {
+      "ko": "실행 중",
+      "en": "Running"
+    },
+    "completed": {
+      "ko": "완료",
+      "en": "Completed"
+    },
+    "failed": {
+      "ko": "실패",
+      "en": "Failed"
+    },
+    "cancelled": {
+      "ko": "취소됨",
+      "en": "Cancelled"
+    }
+  }
+}

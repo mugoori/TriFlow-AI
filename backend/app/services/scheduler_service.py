@@ -351,6 +351,241 @@ async def auto_update_golden_sets():
         db.close()
 
 
+async def auto_create_partitions():
+    """
+    자동 파티션 생성 (스펙 B-3-4)
+
+    미래 3개월 파티션을 미리 생성하여 INSERT 실패 방지
+    매월 1일 실행 권장
+
+    대상 테이블:
+    - judgment_executions, workflow_instances, llm_calls (월별)
+    - fact_daily_production, fact_daily_defect (분기별)
+    """
+    from app.database import SessionLocal
+    from sqlalchemy import text
+
+    try:
+        db = SessionLocal()
+
+        # 월별 파티션 대상 테이블
+        monthly_tables = [
+            ("judgment_executions", "created_at"),
+            ("workflow_instances", "started_at"),
+            ("llm_calls", "created_at"),
+            ("mcp_call_logs", "created_at"),
+            ("audit_logs", "created_at"),
+            ("raw_mes_production", "event_time"),
+            ("raw_erp_order", "event_time"),
+            ("raw_inventory", "event_time"),
+            ("raw_equipment_event", "event_time"),
+            ("fact_hourly_production", "hour_timestamp"),
+        ]
+
+        # 분기별 파티션 대상 테이블
+        quarterly_tables = [
+            ("fact_daily_production", "date"),
+            ("fact_daily_defect", "date"),
+            ("fact_inventory_snapshot", "date"),
+            ("fact_equipment_event", "date"),
+        ]
+
+        created_count = 0
+
+        # 미래 3개월 파티션 생성
+        for table_name, column_name in monthly_tables:
+            for month_offset in range(1, 4):  # 1, 2, 3개월 후
+                try:
+                    sql = text(
+                        f"SELECT create_monthly_partition(:table_name, :column_name, "
+                        f"NOW() + INTERVAL '{month_offset} month')"
+                    )
+                    result = db.execute(sql, {"table_name": table_name, "column_name": column_name})
+                    partition_name = result.scalar()
+                    if partition_name:
+                        created_count += 1
+                        logger.info(f"Created partition: {partition_name}")
+                except Exception as e:
+                    # 파티션이 이미 존재하면 경고만 (에러 아님)
+                    if "already exists" in str(e).lower():
+                        logger.debug(f"Partition already exists for {table_name} +{month_offset}m")
+                    else:
+                        logger.warning(f"Failed to create partition for {table_name} +{month_offset}m: {e}")
+
+        # 미래 2분기 파티션 생성
+        for table_name, column_name in quarterly_tables:
+            for quarter_offset in range(1, 3):  # 1, 2분기 후
+                try:
+                    sql = text(
+                        f"SELECT create_quarterly_partition(:table_name, :column_name, "
+                        f"NOW() + INTERVAL '{quarter_offset * 3} month')"
+                    )
+                    result = db.execute(sql, {"table_name": table_name, "column_name": column_name})
+                    partition_name = result.scalar()
+                    if partition_name:
+                        created_count += 1
+                        logger.info(f"Created partition: {partition_name}")
+                except Exception as e:
+                    if "already exists" in str(e).lower():
+                        logger.debug(f"Partition already exists for {table_name} +{quarter_offset}q")
+                    else:
+                        logger.warning(f"Failed to create partition for {table_name} +{quarter_offset}q: {e}")
+
+        db.commit()
+        logger.info(f"Auto-partition job completed: {created_count} partitions created")
+
+    except Exception as e:
+        logger.error(f"Failed to auto-create partitions: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+async def auto_delete_expired_partitions():
+    """
+    만료된 파티션 자동 삭제 (스펙 B-3-4)
+
+    보존 기간 초과 파티션 삭제 (2년 전 데이터)
+    """
+    from app.database import SessionLocal
+    from sqlalchemy import text
+
+    try:
+        db = SessionLocal()
+
+        # 2년 전 데이터 삭제
+        retention_years = 2
+
+        # 삭제 대상 테이블
+        tables_to_cleanup = [
+            "judgment_executions",
+            "workflow_instances",
+            "llm_calls",
+            "mcp_call_logs",
+        ]
+
+        deleted_count = 0
+
+        for table_name in tables_to_cleanup:
+            try:
+                # 2년 전 날짜 계산
+                cutoff_sql = text(
+                    f"SELECT to_char(NOW() - INTERVAL '{retention_years} years', 'YYYYMM')"
+                )
+                cutoff_date = db.execute(cutoff_sql).scalar()  # 예: '202301'
+
+                partition_name = f"{table_name}_y{cutoff_date[:4]}m{cutoff_date[4:]}"
+
+                # 파티션 존재 여부 확인
+                check_sql = text(
+                    "SELECT 1 FROM pg_tables "
+                    "WHERE schemaname = 'core' AND tablename = :partition_name"
+                )
+                exists = db.execute(check_sql, {"partition_name": partition_name}).scalar()
+
+                if exists:
+                    # 파티션 삭제
+                    drop_sql = text(f"DROP TABLE IF EXISTS core.{partition_name}")
+                    db.execute(drop_sql)
+                    deleted_count += 1
+                    logger.info(f"Deleted expired partition: {partition_name}")
+
+            except Exception as e:
+                logger.error(f"Failed to delete partition for {table_name}: {e}")
+
+        db.commit()
+        logger.info(f"Auto-delete job completed: {deleted_count} partitions deleted")
+
+    except Exception as e:
+        logger.error(f"Failed to auto-delete partitions: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+async def auto_detect_schema_drift():
+    """
+    자동 스키마 변경 감지 (스펙 INT-FR-040)
+
+    외부 데이터 소스의 스키마를 주기적으로 체크하여
+    변경 사항을 감지하고 알림을 보냅니다.
+
+    실행 주기: 1시간마다 (빠른 감지) 또는 6시간마다 (안정적)
+    """
+    from app.database import async_session_factory
+    from app.services.drift_detector import SchemaDriftDetector
+    from app.services.notification_service import send_drift_alert
+    from app.models.mcp import DriftSeverity
+
+    try:
+        async with async_session_factory() as db:
+            detector = SchemaDriftDetector(db)
+
+            # 활성 커넥터 목록 조회
+            from sqlalchemy import text
+            connectors_query = text("""
+                SELECT connector_id, tenant_id, name
+                FROM core.data_connectors
+                WHERE status = 'active'
+                ORDER BY last_connection_test ASC NULLS FIRST
+            """)
+            result = await db.execute(connectors_query)
+            connectors = result.fetchall()
+
+            total_checked = 0
+            drifts_detected = 0
+            critical_drifts = 0
+
+            for connector_row in connectors:
+                connector_id = connector_row.connector_id
+                tenant_id = connector_row.tenant_id
+                connector_name = connector_row.name
+
+                try:
+                    # Drift 감지
+                    drift_report = await detector.detect_drift(
+                        connector_id=connector_id,
+                        tenant_id=tenant_id,
+                    )
+
+                    total_checked += 1
+
+                    if drift_report.has_changes:
+                        drifts_detected += 1
+                        logger.warning(
+                            f"Drift detected in connector '{connector_name}': "
+                            f"{len(drift_report.changes)} changes, "
+                            f"severity={drift_report.severity}"
+                        )
+
+                        # Critical drift 카운트
+                        if drift_report.severity == DriftSeverity.CRITICAL:
+                            critical_drifts += 1
+
+                        # 알림 발송 (Critical/Warning만)
+                        if drift_report.severity in [DriftSeverity.CRITICAL, DriftSeverity.WARNING]:
+                            try:
+                                await send_drift_alert(
+                                    connector_id=connector_id,
+                                    connector_name=connector_name,
+                                    drift_report=drift_report,
+                                )
+                                logger.info(f"Drift alert sent for connector '{connector_name}'")
+                            except Exception as alert_error:
+                                logger.error(f"Failed to send drift alert: {alert_error}")
+
+                except Exception as e:
+                    logger.error(f"Failed to detect drift for connector '{connector_name}': {e}")
+
+            logger.info(
+                f"Drift detection completed: {total_checked} connectors checked, "
+                f"{drifts_detected} drifts detected ({critical_drifts} critical)"
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to auto-detect schema drift: {e}")
+
+
 # 싱글톤 인스턴스
 scheduler = SchedulerService()
 
@@ -418,4 +653,34 @@ def setup_default_jobs():
         interval_seconds=86400,  # 24 hours
         handler=auto_update_golden_sets,
         enabled=False,  # 설정에서 활성화
+    )
+
+    # 자동 파티션 생성 (7일마다 - 매주 일요일)
+    scheduler.register_job(
+        job_id="auto_create_partitions",
+        name="자동 파티션 생성",
+        description="미래 3개월 파티션 사전 생성 (장애 방지)",
+        interval_seconds=604800,  # 7일 (일주일)
+        handler=auto_create_partitions,
+        enabled=True,  # 즉시 활성화
+    )
+
+    # 만료된 파티션 삭제 (30일마다)
+    scheduler.register_job(
+        job_id="auto_delete_expired_partitions",
+        name="만료 파티션 삭제",
+        description="2년 전 파티션 자동 삭제 (스토리지 관리)",
+        interval_seconds=2592000,  # 30일
+        handler=auto_delete_expired_partitions,
+        enabled=True,  # 즉시 활성화
+    )
+
+    # 스키마 Drift 감지 (6시간마다)
+    scheduler.register_job(
+        job_id="auto_detect_schema_drift",
+        name="스키마 변경 감지",
+        description="외부 데이터 소스 스키마 변경 감지 및 알림 (스펙 INT-FR-040)",
+        interval_seconds=21600,  # 6시간
+        handler=auto_detect_schema_drift,
+        enabled=True,  # 즉시 활성화
     )

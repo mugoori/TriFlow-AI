@@ -159,6 +159,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Scheduler failed to start: {e}")
 
+    # IoT 수집기 시작 (MQTT/OPC UA)
+    try:
+        from app.services.iot_collector import setup_iot_collectors
+        setup_iot_collectors()
+        logger.info("IoT collectors initialized successfully")
+    except Exception as e:
+        logger.warning(f"IoT collectors initialization failed (non-critical): {e}")
+
     yield
 
     # Shutdown
@@ -179,6 +187,15 @@ async def lifespan(app: FastAPI):
         logger.info("Canary monitor task stopped")
     except Exception as e:
         logger.warning(f"Canary monitor task failed to stop: {e}")
+
+    # IoT 수집기 중지
+    try:
+        from app.services.iot_collector import get_iot_manager
+        manager = get_iot_manager()
+        manager.stop_all()
+        logger.info("IoT collectors stopped successfully")
+    except Exception as e:
+        logger.warning(f"IoT collectors failed to stop: {e}")
 
 
 # FastAPI 앱 생성
@@ -279,6 +296,19 @@ if AUDIT_LOG_ENABLED:
 else:
     logger.info("Audit Log middleware disabled")
 
+# 5.5. I18N 미들웨어 (국제화)
+I18N_ENABLED = os.getenv("I18N_ENABLED", "true").lower() == "true"
+if I18N_ENABLED:
+    try:
+        from app.middleware.i18n import I18nMiddleware
+
+        app.add_middleware(I18nMiddleware)
+        logger.info("I18N middleware enabled")
+    except Exception as e:
+        logger.warning(f"Failed to enable I18N middleware: {e}")
+else:
+    logger.info("I18N middleware disabled")
+
 # 6. CORS 미들웨어 (가장 마지막에 추가 → 가장 먼저 실행됨)
 # FastAPI 미들웨어는 역순으로 실행되므로, CORS를 마지막에 추가해야
 # 다른 미들웨어의 에러 응답에도 CORS 헤더가 포함됨
@@ -320,9 +350,8 @@ def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """HTTP 예외 핸들러 - 사용자 친화적 메시지로 변환"""
-    # Accept-Language 헤더에서 언어 추출
-    lang = request.headers.get("Accept-Language", "ko")
-    lang = "ko" if "ko" in lang else "en"
+    # Request State에서 언어 추출 (I18N 미들웨어가 설정)
+    lang = getattr(request.state, "language", "ko")
 
     # HTTPException의 detail이 이미 dict인 경우 그대로 반환
     if isinstance(exc.detail, dict):
@@ -346,8 +375,8 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Pydantic 유효성 검사 에러 핸들러"""
-    lang = request.headers.get("Accept-Language", "ko")
-    lang = "ko" if "ko" in lang else "en"
+    # Request State에서 언어 추출
+    lang = getattr(request.state, "language", "ko")
 
     # 에러 상세 정보 추출
     errors = exc.errors()
@@ -380,8 +409,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """일반 예외 핸들러 - 예상치 못한 에러 처리"""
-    lang = request.headers.get("Accept-Language", "ko")
-    lang = "ko" if "ko" in lang else "en"
+    # Request State에서 언어 추출
+    lang = getattr(request.state, "language", "ko")
 
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
 
@@ -609,6 +638,22 @@ try:
     logger.info("Prompts router registered")
 except Exception as e:
     logger.error(f"Failed to register prompts router: {e}")
+
+# Judgment 라우터 (독립 Judgment Execute API)
+try:
+    from app.routers import judgment
+    app.include_router(judgment.router, prefix="/api/v1/judgment", tags=["judgment"])
+    logger.info("Judgment router registered")
+except Exception as e:
+    logger.error(f"Failed to register judgment router: {e}")
+
+# I18N 라우터 (다국어 지원)
+try:
+    from app.routers import i18n
+    app.include_router(i18n.router, prefix="/api/v1/i18n", tags=["i18n"])
+    logger.info("I18N router registered")
+except Exception as e:
+    logger.error(f"Failed to register i18n router: {e}")
 
 # ========== 플러그인 모듈 로딩 ==========
 # modules/ 디렉토리의 매니페스트 기반 동적 라우터 로딩

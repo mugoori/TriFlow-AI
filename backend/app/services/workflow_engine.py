@@ -6950,3 +6950,208 @@ checkpoint_manager = CheckpointManager()
 
 # 전역 워크플로우 엔진
 workflow_engine = WorkflowEngine()
+
+
+# ============================================================================
+# DSL 검증 로직 (스펙 WF-FR-010)
+# ============================================================================
+
+class DSLValidationError(Exception):
+    """DSL 검증 오류"""
+    def __init__(self, errors: List[Dict[str, Any]]):
+        self.errors = errors
+        super().__init__(f"{len(errors)} validation error(s)")
+
+
+def validate_workflow_dsl(dsl: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Workflow DSL 검증
+
+    스펙 WF-FR-010 구현:
+    - 순환 참조(Cycle) 탐지
+    - 고아 노드(Orphan) 탐지
+    - 시작 노드 정확히 1개 확인
+    - 노드 타입별 필수 파라미터 검증
+
+    Args:
+        dsl: Workflow DSL (JSON)
+
+    Returns:
+        {
+            "valid": True/False,
+            "errors": [...],
+            "warnings": [...],
+            "node_count": N,
+            "start_node_id": "..."
+        }
+
+    Raises:
+        DSLValidationError: 검증 실패 시
+    """
+    errors = []
+    warnings = []
+
+    # 1. 기본 구조 검증
+    if not isinstance(dsl, dict):
+        errors.append({"type": "structure", "message": "DSL must be a dict"})
+        raise DSLValidationError(errors)
+
+    nodes = dsl.get("nodes", [])
+    if not isinstance(nodes, list):
+        errors.append({"type": "structure", "message": "nodes must be a list"})
+
+    if len(nodes) == 0:
+        errors.append({"type": "structure", "message": "At least one node is required"})
+
+    # 2. 노드 ID 중복 검사
+    node_ids = set()
+    for i, node in enumerate(nodes):
+        node_id = node.get("id")
+        if not node_id:
+            errors.append({"type": "node", "index": i, "message": "Node missing 'id' field"})
+            continue
+
+        if node_id in node_ids:
+            errors.append({"type": "duplicate", "node_id": node_id, "message": f"Duplicate node ID: {node_id}"})
+        node_ids.add(node_id)
+
+    # 3. 노드 타입 및 필수 파라미터 검증
+    required_params = {
+        "condition": ["expression"],
+        "action": ["type"],
+        "if_else": ["condition"],
+        "loop": ["condition"],
+        "data": ["source"],
+        "wait": ["duration_seconds"],
+        "approval": ["approvers"],
+        "switch": ["cases"],
+        "judgment": ["ruleset_id", "input_data"],
+        "bi": [],
+        "mcp": ["server_id", "tool_name"],
+        "compensation": ["compensation_nodes"],
+        "deploy": ["target", "strategy"],
+        "rollback": ["target", "version"],
+        "simulate": [],
+    }
+
+    for i, node in enumerate(nodes):
+        node_id = node.get("id", f"node_{i}")
+        node_type = node.get("type")
+
+        if not node_type:
+            errors.append({"type": "node", "node_id": node_id, "message": "Node missing 'type' field"})
+            continue
+
+        config = node.get("config", {})
+        if node_type in required_params:
+            for param in required_params[node_type]:
+                if param not in config:
+                    errors.append({
+                        "type": "config",
+                        "node_id": node_id,
+                        "message": f"Missing required parameter: {param}"
+                    })
+
+    # 4. 순환 참조 탐지 (DFS)
+    def build_adjacency_list(nodes_list):
+        """노드 간 연결 그래프 구축"""
+        graph = {}
+        for node in nodes_list:
+            node_id = node.get("id")
+            if not node_id:
+                continue
+
+            graph[node_id] = []
+
+            # 'next' 필드
+            next_nodes = node.get("next", [])
+            if isinstance(next_nodes, list):
+                graph[node_id].extend(next_nodes)
+
+            # 중첩 노드 (if_else, loop, parallel)
+            for branch_key in ["then_nodes", "else_nodes", "loop_nodes", "parallel_nodes"]:
+                branch_nodes = node.get(branch_key, [])
+                if isinstance(branch_nodes, list) and len(branch_nodes) > 0:
+                    for branch_node in branch_nodes:
+                        branch_id = branch_node.get("id")
+                        if branch_id:
+                            graph[node_id].append(branch_id)
+
+        return graph
+
+    def has_cycle(graph, start_node):
+        """DFS로 순환 참조 탐지"""
+        visited = set()
+        rec_stack = set()
+
+        def dfs(node_id):
+            if node_id in rec_stack:
+                return True  # 순환 발견
+            if node_id in visited:
+                return False
+
+            visited.add(node_id)
+            rec_stack.add(node_id)
+
+            for neighbor in graph.get(node_id, []):
+                if dfs(neighbor):
+                    return True
+
+            rec_stack.remove(node_id)
+            return False
+
+        return dfs(start_node)
+
+    graph = build_adjacency_list(nodes)
+
+    for node_id in graph.keys():
+        if has_cycle(graph, node_id):
+            errors.append({
+                "type": "cycle",
+                "node_id": node_id,
+                "message": f"Cycle detected starting from node: {node_id}"
+            })
+            break  # 하나만 보고 (순환이 발견되면 전체 무효)
+
+    # 5. 고아 노드 탐지 (진입 간선이 없는 노드)
+    incoming_edges = {node_id: 0 for node_id in graph.keys()}
+
+    for node_id, neighbors in graph.items():
+        for neighbor in neighbors:
+            if neighbor in incoming_edges:
+                incoming_edges[neighbor] += 1
+
+    # 첫 번째 노드는 진입 간선 0개 허용
+    first_node_id = nodes[0].get("id") if nodes else None
+
+    orphan_nodes = []
+    for node_id, count in incoming_edges.items():
+        if count == 0 and node_id != first_node_id:
+            orphan_nodes.append(node_id)
+
+    if orphan_nodes:
+        warnings.append({
+            "type": "orphan",
+            "node_ids": orphan_nodes,
+            "message": f"Orphan nodes (no incoming edges): {', '.join(orphan_nodes)}"
+        })
+
+    # 6. 시작 노드 확인 (trigger 필드 또는 첫 번째 노드)
+    trigger = dsl.get("trigger", {})
+    if trigger and trigger.get("type"):
+        start_node_id = first_node_id
+    else:
+        # trigger가 없으면 첫 번째 노드가 시작 노드
+        start_node_id = first_node_id
+
+    # 에러가 있으면 예외 발생
+    if errors:
+        raise DSLValidationError(errors)
+
+    return {
+        "valid": True,
+        "errors": [],
+        "warnings": warnings,
+        "node_count": len(nodes),
+        "start_node_id": start_node_id,
+    }

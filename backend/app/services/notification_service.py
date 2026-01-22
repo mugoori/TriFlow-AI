@@ -394,3 +394,118 @@ async def send_canary_warning_alert(
         email_subject=email_subject,
         email_body=email_body,
     )
+
+
+async def send_drift_alert(
+    connector_id: Any,
+    connector_name: str,
+    drift_report: Any,
+) -> Dict[str, bool]:
+    """
+    스키마 Drift 알림 발송 (스펙 INT-FR-040)
+
+    Args:
+        connector_id: 커넥터 ID
+        connector_name: 커넥터 이름
+        drift_report: DriftReport 객체
+
+    Returns:
+        발송 결과
+    """
+    notification = get_notification_service()
+
+    # 심각도별 제목 및 레벨
+    severity_map = {
+        "critical": ("🚨 Critical Schema Drift Detected", "critical"),
+        "warning": ("⚠️ Schema Drift Detected", "warning"),
+        "info": ("ℹ️ Schema Change Detected", "info"),
+    }
+
+    title, level = severity_map.get(
+        drift_report.severity.value if hasattr(drift_report.severity, 'value') else str(drift_report.severity),
+        ("⚠️ Schema Change Detected", "warning")
+    )
+
+    # 변경 사항 요약
+    change_summary = []
+    if drift_report.tables_added > 0:
+        change_summary.append(f"➕ {drift_report.tables_added} table(s) added")
+    if drift_report.tables_deleted > 0:
+        change_summary.append(f"❌ {drift_report.tables_deleted} table(s) deleted")
+    if drift_report.columns_added > 0:
+        change_summary.append(f"➕ {drift_report.columns_added} column(s) added")
+    if drift_report.columns_deleted > 0:
+        change_summary.append(f"❌ {drift_report.columns_deleted} column(s) deleted")
+    if drift_report.types_changed > 0:
+        change_summary.append(f"🔄 {drift_report.types_changed} type(s) changed")
+
+    message = (
+        f"Schema drift detected in connector: *{connector_name}*\n\n"
+        f"*Changes:*\n"
+    )
+    message += "\n".join(f"- {item}" for item in change_summary)
+
+    # 상세 변경 사항 (처음 5개만)
+    if drift_report.changes:
+        message += "\n\n*Details:*\n"
+        for change in drift_report.changes[:5]:
+            change_desc = f"{change.type.value}: {change.table_name}"
+            if change.column_name:
+                change_desc += f".{change.column_name}"
+            if change.old_value and change.new_value:
+                change_desc += f" ({change.old_value} → {change.new_value})"
+            message += f"- {change_desc}\n"
+
+        if len(drift_report.changes) > 5:
+            message += f"\n_(... and {len(drift_report.changes) - 5} more changes)_"
+
+    message += f"\n\n:point_right: Check connector settings to acknowledge changes."
+
+    fields = {
+        "Connector": connector_name,
+        "Severity": drift_report.severity.value if hasattr(drift_report.severity, 'value') else str(drift_report.severity),
+        "Changes": str(len(drift_report.changes)),
+    }
+
+    # 이메일 본문
+    email_subject = f"[Triflow AI] {title}: {connector_name}"
+    email_body = (
+        f"Schema Drift Alert\n"
+        f"==================\n\n"
+        f"Connector: {connector_name}\n"
+        f"Connector ID: {connector_id}\n"
+        f"Severity: {drift_report.severity.value if hasattr(drift_report.severity, 'value') else str(drift_report.severity)}\n"
+        f"Total Changes: {len(drift_report.changes)}\n\n"
+        f"Change Summary:\n"
+    )
+    email_body += "\n".join(f"- {item}" for item in change_summary)
+
+    if drift_report.changes:
+        email_body += "\n\nDetailed Changes:\n"
+        for change in drift_report.changes:
+            change_desc = f"{change.type.value}: {change.table_name}"
+            if change.column_name:
+                change_desc += f".{change.column_name}"
+            if change.old_value and change.new_value:
+                change_desc += f" ({change.old_value} → {change.new_value})"
+            email_body += f"- {change_desc}\n"
+
+    email_body += (
+        f"\n"
+        f"Action Required:\n"
+        f"- Review and acknowledge the schema changes\n"
+        f"- Update ETL mappings if necessary\n"
+        f"- Test affected workflows\n"
+        f"\n"
+        f"Triflow AI\n"
+        f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+    )
+
+    return await notification.send_notification(
+        message=message,
+        title=title,
+        level=level,
+        fields=fields,
+        email_subject=email_subject,
+        email_body=email_body,
+    )

@@ -852,6 +852,7 @@ async def create_workflow(
     """
     # tenant 확인 또는 생성 (MVP: default tenant)
     from app.models import Tenant
+    from app.services.workflow_engine import validate_workflow_dsl, DSLValidationError
 
     tenant = db.query(Tenant).first()
     if not tenant:
@@ -867,6 +868,20 @@ async def create_workflow(
 
     # 새 워크플로우 생성
     dsl_dict = workflow.dsl_definition.model_dump(exclude_none=False)
+
+    # DSL 검증 (스펙 WF-FR-010)
+    try:
+        validation_result = validate_workflow_dsl(dsl_dict)
+        if validation_result["warnings"]:
+            logger.warning(f"DSL validation warnings: {validation_result['warnings']}")
+    except DSLValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "DSL validation failed",
+                "errors": e.errors
+            }
+        )
 
     new_workflow = Workflow(
         tenant_id=tenant.tenant_id,
@@ -890,6 +905,61 @@ class WorkflowUpdate(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     dsl_definition: Optional[WorkflowDSL] = None
+
+
+class DSLValidateRequest(BaseModel):
+    """DSL 검증 요청"""
+    dsl: WorkflowDSL
+
+
+class DSLValidateResponse(BaseModel):
+    """DSL 검증 응답"""
+    valid: bool
+    errors: List[dict] = []
+    warnings: List[dict] = []
+    node_count: int = 0
+    start_node_id: Optional[str] = None
+
+
+@router.post("/validate", response_model=DSLValidateResponse)
+async def validate_dsl(
+    request: DSLValidateRequest,
+    _: None = Depends(check_permission("workflows", "create")),
+):
+    """
+    Workflow DSL 검증 (스펙 WF-FR-010)
+
+    DSL을 저장하기 전에 유효성을 검증합니다.
+
+    검증 항목:
+    - 순환 참조(Cycle) 탐지
+    - 고아 노드(Orphan) 탐지
+    - 시작 노드 확인
+    - 노드 타입별 필수 파라미터 검증
+
+    Returns:
+        {
+            "valid": true,
+            "errors": [],
+            "warnings": [...],
+            "node_count": 5,
+            "start_node_id": "start"
+        }
+    """
+    from app.services.workflow_engine import validate_workflow_dsl, DSLValidationError
+
+    dsl_dict = request.dsl.model_dump(exclude_none=False)
+
+    try:
+        result = validate_workflow_dsl(dsl_dict)
+        return DSLValidateResponse(**result)
+    except DSLValidationError as e:
+        return DSLValidateResponse(
+            valid=False,
+            errors=e.errors,
+            warnings=[],
+            node_count=len(dsl_dict.get("nodes", [])),
+        )
 
 
 @router.patch("/{workflow_id}", response_model=WorkflowResponse)
