@@ -85,8 +85,7 @@ export interface JudgmentExecutionListResponse {
 export const executeJudgment = async (
   request: JudgmentExecuteRequest
 ): Promise<JudgmentExecuteResponse> => {
-  const response = await apiClient.post('/api/v1/judgment/execute', request);
-  return response.data;
+  return await apiClient.post<JudgmentExecuteResponse>('/api/v1/judgment/execute', request);
 };
 
 /**
@@ -97,8 +96,8 @@ export const getRecentExecutions = async (params?: {
   ruleset_id?: string;
   result?: string;
 }): Promise<JudgmentExecutionListResponse> => {
-  const response = await apiClient.get('/api/v1/judgment/executions/recent', { params });
-  return response.data;
+  const queryString = params ? '?' + new URLSearchParams(params as any).toString() : '';
+  return await apiClient.get<JudgmentExecutionListResponse>(`/api/v1/judgment/executions/recent${queryString}`);
 };
 
 /**
@@ -108,10 +107,9 @@ export const replayExecution = async (
   execution_id: string,
   use_current_ruleset: boolean = true
 ): Promise<any> => {
-  const response = await apiClient.post(`/api/v1/judgment/replay/${execution_id}`, {
+  return await apiClient.post(`/api/v1/judgment/replay/${execution_id}`, {
     use_current_ruleset,
   });
-  return response.data;
 };
 
 export const judgmentService = {

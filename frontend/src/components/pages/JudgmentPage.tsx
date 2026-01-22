@@ -92,9 +92,10 @@ export default function JudgmentPage() {
   const loadRecentExecutions = async () => {
     try {
       const response = await judgmentService.getRecentExecutions({ limit: 10 });
-      setRecentExecutions(response.executions);
+      setRecentExecutions(response?.executions || []);
     } catch (err) {
       console.error('Failed to load recent executions:', err);
+      setRecentExecutions([]);
     }
   };
 
