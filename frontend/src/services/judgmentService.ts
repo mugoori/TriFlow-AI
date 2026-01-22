@@ -2,7 +2,7 @@
  * Judgment Service
  * Judgment Execute API 호출
  */
-import api from './api';
+import { apiClient } from './api';
 
 export interface JudgmentExecuteRequest {
   ruleset_id: string;
@@ -85,7 +85,7 @@ export interface JudgmentExecutionListResponse {
 export const executeJudgment = async (
   request: JudgmentExecuteRequest
 ): Promise<JudgmentExecuteResponse> => {
-  const response = await api.post('/api/v1/judgment/execute', request);
+  const response = await apiClient.post('/api/v1/judgment/execute', request);
   return response.data;
 };
 
@@ -97,7 +97,7 @@ export const getRecentExecutions = async (params?: {
   ruleset_id?: string;
   result?: string;
 }): Promise<JudgmentExecutionListResponse> => {
-  const response = await api.get('/api/v1/judgment/executions/recent', { params });
+  const response = await apiClient.get('/api/v1/judgment/executions/recent', { params });
   return response.data;
 };
 
@@ -108,7 +108,7 @@ export const replayExecution = async (
   execution_id: string,
   use_current_ruleset: boolean = true
 ): Promise<any> => {
-  const response = await api.post(`/api/v1/judgment/replay/${execution_id}`, {
+  const response = await apiClient.post(`/api/v1/judgment/replay/${execution_id}`, {
     use_current_ruleset,
   });
   return response.data;
