@@ -209,7 +209,7 @@ class HybridJudgmentService:
             decision = self._extract_decision(rule_result)
             return JudgmentResult(
                 decision=decision,
-                confidence=self._calculate_rule_confidence(rule_result, input_data),
+                confidence=self._calculate_rule_confidence(rule_result, input_data, tenant_id, ruleset_id),
                 source="rule",
                 policy_used=JudgmentPolicy.RULE_ONLY,
                 rule_result=rule_result,
@@ -291,7 +291,7 @@ class HybridJudgmentService:
         """
         # 1. 먼저 룰 실행
         rule_result = await self._run_rule_engine(tenant_id, ruleset_id, input_data)
-        rule_confidence = self._calculate_rule_confidence(rule_result, input_data)
+        rule_confidence = self._calculate_rule_confidence(rule_result, input_data, tenant_id, ruleset_id)
 
         # 2. 룰 신뢰도가 충분하면 룰 결과 사용
         if rule_result["success"] and rule_confidence >= self.RULE_CONFIDENCE_THRESHOLD:
@@ -361,7 +361,7 @@ class HybridJudgmentService:
             decision = self._extract_decision(rule_result)
             return JudgmentResult(
                 decision=decision,
-                confidence=self._calculate_rule_confidence(rule_result, input_data),
+                confidence=self._calculate_rule_confidence(rule_result, input_data, tenant_id, ruleset_id),
                 source="rule",
                 policy_used=JudgmentPolicy.RULE_FALLBACK,
                 rule_result=rule_result,
@@ -450,7 +450,7 @@ class HybridJudgmentService:
             decision = self._extract_decision(rule_result)
             return JudgmentResult(
                 decision=decision,
-                confidence=self._calculate_rule_confidence(rule_result, input_data),
+                confidence=self._calculate_rule_confidence(rule_result, input_data, tenant_id, ruleset_id),
                 source="rule_fallback",
                 policy_used=JudgmentPolicy.LLM_FALLBACK,
                 rule_result=rule_result,
@@ -517,7 +517,7 @@ class HybridJudgmentService:
 
         # 1. 먼저 룰 실행
         rule_result = await self._run_rule_engine(tenant_id, ruleset_id, input_data)
-        rule_confidence = self._calculate_rule_confidence(rule_result, input_data)
+        rule_confidence = self._calculate_rule_confidence(rule_result, input_data, tenant_id, ruleset_id)
         rule_decision = self._extract_decision(rule_result)
 
         # 2. 룰 신뢰도가 게이트 임계값 이상이면 룰 결과만 사용
@@ -639,7 +639,7 @@ class HybridJudgmentService:
         rule_result, llm_result = await asyncio.gather(rule_task, llm_task)
 
         # 신뢰도 계산
-        rule_confidence = self._calculate_rule_confidence(rule_result, input_data)
+        rule_confidence = self._calculate_rule_confidence(rule_result, input_data, tenant_id, ruleset_id)
         llm_confidence = llm_result.get("confidence", 0.5)
 
         # 결정 추출
@@ -878,6 +878,8 @@ JSON 형식으로 응답하세요."""
         self,
         rule_result: Dict[str, Any],
         input_data: Optional[Dict[str, Any]] = None,
+        tenant_id: Optional[UUID] = None,
+        ruleset_id: Optional[UUID] = None,
     ) -> float:
         """
         룰 결과의 신뢰도 계산 (스펙 개선)
@@ -959,7 +961,10 @@ JSON 형식으로 응답하세요."""
             )
 
         # 3. 히스토리 정확도 (30%) - 실제 DB 조회
-        historical_accuracy = self._get_historical_accuracy_sync(tenant_id, ruleset_id)
+        if tenant_id and ruleset_id:
+            historical_accuracy = self._get_historical_accuracy_sync(tenant_id, ruleset_id)
+        else:
+            historical_accuracy = 0.75  # tenant_id/ruleset_id 없으면 기본값
 
         # 최종 신뢰도 = 가중 합계
         final_confidence = (
@@ -1122,7 +1127,7 @@ JSON 형식으로 응답하세요."""
                 explanation["decision_factors"].append({
                     "factor": "rule_decision",
                     "decision": self._extract_decision(rule_result),
-                    "confidence": self._calculate_rule_confidence(rule_result, input_data),
+                    "confidence": self._calculate_rule_confidence(rule_result, input_data, tenant_id, ruleset_id),
                 })
             if llm_result:
                 explanation["decision_factors"].append({
