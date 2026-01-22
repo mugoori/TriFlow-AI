@@ -17,6 +17,7 @@ from app.services.rbac_service import require_admin
 from app.services.prompt_service import PromptService
 from app.services.few_shot_selector import FewShotSelector
 from app.services.prompt_metrics_aggregator import PromptMetricsAggregator
+from app.services.prompt_auto_tuner import get_prompt_auto_tuner
 from app.schemas.prompt import (
     PromptTemplateCreateRequest,
     PromptTemplateUpdateRequest,
@@ -282,6 +283,152 @@ async def select_few_shot_examples(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Few-shot example 선택에 실패했습니다",
         )
+
+
+@router.post("/templates/{template_id}/auto-tune")
+async def auto_tune_prompt(
+    template_id: UUID,
+    max_examples: int = 5,
+    min_rating: float = 4.0,
+    time_window_days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    프롬프트 자동 튜닝 (ADMIN 전용)
+
+    긍정 피드백 샘플을 Few-shot 예시로 자동 추가합니다.
+
+    Args:
+        template_id: 프롬프트 템플릿 ID
+        max_examples: 최대 Few-shot 개수 (기본 5개)
+        min_rating: 최소 평점 (기본 4.0)
+        time_window_days: 샘플 수집 기간 (기본 30일)
+
+    Returns:
+        {
+            "added_count": int,
+            "total_examples": int,
+            "template_id": str,
+        }
+    """
+    auto_tuner = get_prompt_auto_tuner(db)
+
+    try:
+        result = auto_tuner.auto_add_few_shots(
+            template_id=template_id,
+            max_examples=max_examples,
+            min_rating=min_rating,
+            time_window_days=time_window_days,
+        )
+
+        logger.info(
+            f"Auto-tuned template {template_id}: "
+            f"added {result['added_count']} examples"
+        )
+
+        return result
+
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to auto-tune prompt: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="프롬프트 자동 튜닝에 실패했습니다",
+        )
+
+
+@router.post("/templates/auto-tune-all")
+async def auto_tune_all_prompts(
+    max_examples: int = 5,
+    min_rating: float = 4.0,
+    time_window_days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    모든 활성 프롬프트 자동 튜닝 (ADMIN 전용)
+
+    모든 활성 프롬프트에 Few-shot 예시를 자동 추가합니다.
+
+    Args:
+        max_examples: 최대 Few-shot 개수
+        min_rating: 최소 평점
+        time_window_days: 샘플 수집 기간
+
+    Returns:
+        {
+            "tuned_count": int,
+            "total_templates": int,
+            "total_examples_added": int,
+        }
+    """
+    auto_tuner = get_prompt_auto_tuner(db)
+
+    try:
+        result = auto_tuner.auto_tune_all_templates(
+            max_examples=max_examples,
+            min_rating=min_rating,
+            time_window_days=time_window_days,
+        )
+
+        logger.info(
+            f"Auto-tuned {result['tuned_count']} templates, "
+            f"added {result['total_examples_added']} examples"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to auto-tune all prompts: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="전체 프롬프트 자동 튜닝에 실패했습니다",
+        )
+
+
+@router.get("/templates/{template_id}/tuning-candidates")
+async def get_tuning_candidates(
+    template_id: UUID,
+    min_rating: float = 4.0,
+    time_window_days: int = 30,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Few-shot 후보 샘플 조회
+
+    자동 튜닝 전 어떤 샘플이 추가될지 미리 확인합니다.
+
+    Args:
+        template_id: 프롬프트 템플릿 ID
+        min_rating: 최소 평점
+        time_window_days: 샘플 수집 기간
+        limit: 최대 개수
+
+    Returns:
+        후보 샘플 리스트
+    """
+    auto_tuner = get_prompt_auto_tuner(db)
+
+    try:
+        candidates = auto_tuner.get_tuning_candidates(
+            template_id=template_id,
+            min_rating=min_rating,
+            time_window_days=time_window_days,
+            limit=limit,
+        )
+
+        return {
+            "candidates": candidates,
+            "count": len(candidates),
+            "template_id": str(template_id),
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 logger.info("Prompts router initialized")

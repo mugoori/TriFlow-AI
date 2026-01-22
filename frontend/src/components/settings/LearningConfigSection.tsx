@@ -105,14 +105,24 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
   };
 
   const handleChange = (key: keyof LearningSettings, value: string) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+    const newSettings = { ...settings, [key]: value };
+    setSettings(newSettings);
     setSaveStatus('idle');
-    // Clear validation error for this field
-    setValidationErrors((prev) => {
-      const newErrors = { ...prev };
-      delete newErrors[key];
-      return newErrors;
-    });
+
+    // Real-time validation for this field
+    const tempSettings = { ...settings, [key]: value };
+    const errors = validateSettings(tempSettings);
+
+    // Only keep error for current field if it exists
+    if (errors[key]) {
+      setValidationErrors((prev) => ({ ...prev, [key]: errors[key] }));
+    } else {
+      setValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[key];
+        return newErrors;
+      });
+    }
   };
 
   const handleToggle = (key: keyof LearningSettings) => {
@@ -152,11 +162,12 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
 
       await settingsService.updateSettings(settingsToSave);
       setSaveStatus('saved');
-      toast.success('학습 설정이 성공적으로 저장되었습니다');
+      toast.success('학습 설정이 성공적으로 저장되었습니다', 3000);
 
-      // Reload settings to confirm save
+      // Reload settings to confirm save and show confirmation
       setTimeout(async () => {
         await loadSettings();
+        toast.info('최신 설정이 반영되었습니다', 2000);
         setSaveStatus('idle');
       }, 1500);
     } catch (err) {
@@ -175,10 +186,18 @@ export default function LearningConfigSection({ isAdmin }: LearningConfigSection
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="bg-gray-100 dark:bg-gray-700 rounded-xl h-64 animate-pulse" />
-        ))}
+      <div className="space-y-4">
+        <div className="flex items-center justify-center gap-2 py-8">
+          <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
+          <span className="text-sm text-slate-600 dark:text-slate-400">
+            학습 설정을 불러오는 중...
+          </span>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-gray-100 dark:bg-gray-700 rounded-xl h-64 animate-pulse" />
+          ))}
+        </div>
       </div>
     );
   }

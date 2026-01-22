@@ -10,6 +10,8 @@ B-2-2 스펙 기반 BI 분석 서비스
 - 차트 추천: 분석 유형별 최적 차트 추천
 """
 import logging
+import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -20,6 +22,7 @@ from sqlalchemy import text
 
 from app.database import get_db_context
 from app.utils.decorators import handle_service_errors
+from app.services.redis_client import get_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -132,10 +135,95 @@ class BIService:
     - PREDICT 분석 (이동평균, 선형회귀)
     - WHAT_IF 시뮬레이션
     - 차트 추천
+    - Redis 캐싱 (TTL 600초)
     """
+
+    # 캐시 TTL (초)
+    CACHE_TTL = 600  # 10분
 
     def __init__(self):
         pass
+
+    def _generate_cache_key(self, analysis_type: str, params: Dict[str, Any]) -> str:
+        """
+        캐시 키 생성
+
+        Args:
+            analysis_type: 분석 유형 (rank, predict, what_if)
+            params: 분석 파라미터
+
+        Returns:
+            캐시 키 (해시)
+        """
+        # 파라미터를 정렬된 JSON으로 변환
+        sorted_params = json.dumps(params, sort_keys=True)
+
+        # 해시 생성
+        hash_obj = hashlib.md5(sorted_params.encode())
+        cache_hash = hash_obj.hexdigest()
+
+        return f"bi:cache:{analysis_type}:{cache_hash}"
+
+    async def _get_cached_result(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        """
+        캐시에서 결과 조회
+
+        Args:
+            cache_key: 캐시 키
+
+        Returns:
+            캐시된 결과 또는 None
+        """
+        try:
+            redis = await get_redis_client()
+            cached = await redis.get(cache_key)
+
+            if cached:
+                logger.info(f"Cache HIT: {cache_key}")
+                return json.loads(cached)
+
+            logger.debug(f"Cache MISS: {cache_key}")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Cache read failed: {e}")
+            return None
+
+    async def _set_cached_result(
+        self,
+        cache_key: str,
+        result: Dict[str, Any],
+        ttl: int = None
+    ):
+        """
+        결과를 캐시에 저장
+
+        Args:
+            cache_key: 캐시 키
+            result: 저장할 결과
+            ttl: TTL (초, 기본 600초)
+        """
+        try:
+            redis = await get_redis_client()
+            ttl = ttl or self.CACHE_TTL
+
+            # 결과에 캐시 메타데이터 추가
+            result_with_meta = {
+                **result,
+                "from_cache": False,
+                "cached_at": datetime.utcnow().isoformat(),
+            }
+
+            await redis.setex(
+                cache_key,
+                ttl,
+                json.dumps(result_with_meta)
+            )
+
+            logger.info(f"Cache SET: {cache_key} (TTL: {ttl}s)")
+
+        except Exception as e:
+            logger.warning(f"Cache write failed: {e}")
 
     # =========================================
     # RANK 분석
@@ -152,7 +240,7 @@ class BIService:
         filters: Optional[Dict[str, Any]] = None,
     ) -> AnalysisResult:
         """
-        RANK 분석: 상위/하위 N개 항목 분석
+        RANK 분석: 상위/하위 N개 항목 분석 (캐싱 지원)
 
         Args:
             tenant_id: 테넌트 ID
@@ -164,10 +252,28 @@ class BIService:
             filters: 추가 필터
 
         Returns:
-            AnalysisResult
+            AnalysisResult (캐시된 경우 from_cache=True)
         """
+        # 캐시 키 생성
+        cache_params = {
+            "tenant_id": str(tenant_id),
+            "metric": metric,
+            "dimension": dimension,
+            "limit": limit,
+            "order": order,
+            "time_range_days": time_range_days,
+            "filters": filters or {},
+        }
+        cache_key = self._generate_cache_key("rank", cache_params)
+
+        # 캐시 조회
+        cached_result = await self._get_cached_result(cache_key)
+        if cached_result:
+            cached_result["from_cache"] = True
+            return cached_result
+
         logger.info(
-            f"RANK analysis: metric={metric}, dimension={dimension}, "
+            f"RANK analysis (NO CACHE): metric={metric}, dimension={dimension}, "
             f"limit={limit}, order={order}"
         )
 
@@ -206,7 +312,7 @@ class BIService:
             order=order,
         )
 
-        return AnalysisResult(
+        result = AnalysisResult(
             analysis_type=AnalysisType.RANK,
             data=rows_with_percentile,
             summary=summary,
@@ -220,6 +326,11 @@ class BIService:
                 "time_range_days": time_range_days,
             },
         )
+
+        # 캐시 저장
+        await self._set_cached_result(cache_key, result.__dict__)
+
+        return result
 
     def _build_rank_sql(
         self,

@@ -46,7 +46,7 @@ async def list_audit_logs(
     - 모든 API 호출 기록 조회
     - 필터링 지원 (사용자, 리소스, 액션, 상태 코드, 날짜 범위)
     """
-    logs = await get_audit_logs(
+    logs, total = await get_audit_logs(
         db=db,
         user_id=user_id,
         tenant_id=current_user.tenant_id,  # 테넌트 격리
@@ -61,7 +61,7 @@ async def list_audit_logs(
 
     return AuditLogListResponse(
         items=[AuditLogResponse(**log) for log in logs],
-        total=len(logs),  # TODO: 실제 total count 쿼리 추가
+        total=total,
         limit=limit,
         offset=offset,
     )
@@ -106,7 +106,7 @@ async def list_my_audit_logs(
     - 현재 사용자의 API 호출 기록만 조회
     - 모든 인증된 사용자 접근 가능
     """
-    logs = await get_audit_logs(
+    logs, total = await get_audit_logs(
         db=db,
         user_id=current_user.user_id,
         resource=resource,
@@ -117,7 +117,7 @@ async def list_my_audit_logs(
 
     return AuditLogListResponse(
         items=[AuditLogResponse(**log) for log in logs],
-        total=len(logs),
+        total=total,
         limit=limit,
         offset=offset,
     )

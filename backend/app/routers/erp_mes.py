@@ -25,6 +25,7 @@ from app.database import get_db
 from app.models.core import ErpMesData, FieldMapping, DataSource
 from app.models import User
 from app.auth.dependencies import get_current_user
+from app.services.encryption_service import get_encryption_service, SENSITIVE_CONFIG_KEYS
 
 router = APIRouter()
 
@@ -585,13 +586,24 @@ async def list_data_sources(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """데이터 소스 목록 조회"""
+    """데이터 소스 목록 조회 (자격증명 복호화)"""
     query = db.query(DataSource).filter(DataSource.tenant_id == current_user.tenant_id)
 
     if source_type:
         query = query.filter(DataSource.source_type == source_type)
 
-    return query.order_by(DataSource.created_at.desc()).all()
+    sources = query.order_by(DataSource.created_at.desc()).all()
+
+    # 각 소스의 민감한 정보 복호화
+    encryption = get_encryption_service()
+    for source in sources:
+        decrypted_config = encryption.decrypt_dict(
+            source.connection_config,
+            SENSITIVE_CONFIG_KEYS
+        )
+        source.connection_config = decrypted_config
+
+    return sources
 
 
 @router.post("/sources", response_model=DataSourceResponse)
@@ -600,11 +612,14 @@ async def create_data_source(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """데이터 소스 생성"""
-    # 연결 설정에서 민감한 정보 검증 (실제로는 암호화 필요)
-    if "password" in source.connection_config:
-        # TODO: V2에서 암호화 구현
-        pass
+    """데이터 소스 생성 (자격증명 암호화)"""
+    encryption = get_encryption_service()
+
+    # 연결 설정에서 민감한 정보 암호화
+    encrypted_config = encryption.encrypt_dict(
+        source.connection_config,
+        SENSITIVE_CONFIG_KEYS
+    )
 
     db_source = DataSource(
         tenant_id=current_user.tenant_id,
@@ -613,7 +628,7 @@ async def create_data_source(
         source_type=source.source_type,
         source_system=source.source_system,
         connection_type=source.connection_type,
-        connection_config=source.connection_config,
+        connection_config=encrypted_config,
         sync_enabled=source.sync_enabled,
         sync_interval_minutes=source.sync_interval_minutes,
     )
@@ -629,7 +644,7 @@ async def get_data_source(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """데이터 소스 상세 조회"""
+    """데이터 소스 상세 조회 (자격증명 복호화)"""
     source = db.query(DataSource).filter(
         DataSource.source_id == source_id,
         DataSource.tenant_id == current_user.tenant_id
@@ -637,6 +652,15 @@ async def get_data_source(
 
     if not source:
         raise HTTPException(status_code=404, detail="Data source not found")
+
+    # 응답 전 민감한 정보 복호화
+    encryption = get_encryption_service()
+    decrypted_config = encryption.decrypt_dict(
+        source.connection_config,
+        SENSITIVE_CONFIG_KEYS
+    )
+    source.connection_config = decrypted_config
+
     return source
 
 
@@ -676,6 +700,14 @@ async def test_data_source_connection(
 
     if not source:
         raise HTTPException(status_code=404, detail="Data source not found")
+
+    # 연결 테스트를 위해 자격증명 복호화
+    encryption = get_encryption_service()
+    decrypted_config = encryption.decrypt_dict(
+        source.connection_config,
+        SENSITIVE_CONFIG_KEYS
+    )
+    source.connection_config = decrypted_config
 
     # REST API 연결 타입인 경우 실제 헬스체크 수행
     if source.connection_type == "rest_api" and source.connection_config.get("base_url"):

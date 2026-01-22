@@ -1,7 +1,6 @@
 /**
  * 품질 분석 - Example Component
  */
-import React from 'react';
 
 interface QualityAnalyticsCardProps {
   title: string;

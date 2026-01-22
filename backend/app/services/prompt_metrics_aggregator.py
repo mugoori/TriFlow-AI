@@ -49,8 +49,7 @@ class PromptMetricsAggregator:
         if not template:
             raise ValueError(f"Template {template_id} not found")
 
-        # Query LlmCalls by call_type (agent name)
-        # TODO: LlmCall 모델에 prompt_template_id 외래키 추가 필요
+        # Query LlmCalls by prompt_template_id (직접 FK 사용)
         query = (
             self.db.query(
                 func.avg(LlmCall.prompt_tokens + LlmCall.completion_tokens).label(
@@ -59,16 +58,16 @@ class PromptMetricsAggregator:
                 func.avg(LlmCall.latency_ms).label("avg_latency"),
                 func.count(LlmCall.call_id).label("total_calls"),
                 func.sum(
-                    func.cast(LlmCall.is_success == True, Integer)
+                    func.cast(LlmCall.success == True, Integer)
                 ).label("successful_calls"),
                 func.sum(
-                    func.cast(LlmCall.has_validation_error == True, Integer)
+                    func.cast(LlmCall.validation_error == True, Integer)
                 ).label("validation_errors"),
             )
             .filter(
                 and_(
                     LlmCall.tenant_id == template.tenant_id,
-                    LlmCall.call_type == template.name,  # Match by agent name
+                    LlmCall.prompt_template_id == template_id,
                     LlmCall.created_at >= since,
                 )
             )

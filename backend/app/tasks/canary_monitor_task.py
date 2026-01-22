@@ -21,6 +21,10 @@ from app.models import RuleDeployment
 from app.utils.canary_circuit_breaker import CanaryCircuitBreaker, CanaryCircuitState
 from app.services.canary_rollback_service import CanaryRollbackService
 from app.services.deployment_metrics_service import DeploymentMetricsService
+from app.services.notification_service import (
+    send_canary_rollback_alert,
+    send_canary_warning_alert,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +138,12 @@ async def _check_deployment(
             f"Canary warning: deployment={deployment_id}, "
             f"warnings={status.warnings}"
         )
-        # TODO: 경고 알림 발송
+
+        # 경고 알림 발송
+        await _send_warning_notification(
+            deployment=deployment,
+            warnings=status.warnings or [],
+        )
 
 
 async def _send_rollback_notification(
@@ -143,15 +152,70 @@ async def _send_rollback_notification(
     result: dict,
 ):
     """롤백 알림 발송"""
-    # TODO: 실제 알림 시스템 연동 (Slack, Email 등)
-    logger.info(
-        f"[NOTIFICATION] Canary auto-rollback completed:\n"
-        f"  Deployment: {deployment.deployment_id}\n"
-        f"  Ruleset: {deployment.ruleset_id}\n"
-        f"  Reason: {reason}\n"
-        f"  Rolled back to version: {result.get('rollback_to_version')}\n"
-        f"  Compensation: {result.get('compensation_result', {}).get('strategy')}"
-    )
+    try:
+        # 룰셋 정보 조회
+        from app.models import Ruleset, Tenant
+
+        ruleset = deployment.ruleset if hasattr(deployment, 'ruleset') else None
+        tenant = deployment.tenant if hasattr(deployment, 'tenant') else None
+
+        ruleset_name = ruleset.name if ruleset else f"Ruleset {deployment.ruleset_id}"
+        tenant_name = tenant.name if tenant else None
+
+        # 알림 발송
+        results = await send_canary_rollback_alert(
+            deployment_id=str(deployment.deployment_id),
+            ruleset_name=ruleset_name,
+            reason=reason or "Unknown",
+            rollback_version=result.get('rollback_to_version'),
+            tenant_name=tenant_name,
+        )
+
+        logger.info(
+            f"[NOTIFICATION] Canary auto-rollback alert sent:\n"
+            f"  Deployment: {deployment.deployment_id}\n"
+            f"  Ruleset: {ruleset_name}\n"
+            f"  Reason: {reason}\n"
+            f"  Slack: {'✅' if results.get('slack') else '❌'}\n"
+            f"  Email: {'✅' if results.get('email') else '❌'}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to send rollback notification: {e}", exc_info=True)
+
+
+async def _send_warning_notification(
+    deployment: RuleDeployment,
+    warnings: list[str],
+):
+    """경고 알림 발송"""
+    try:
+        # 룰셋 정보 조회
+        from app.models import Ruleset, Tenant
+
+        ruleset = deployment.ruleset if hasattr(deployment, 'ruleset') else None
+        tenant = deployment.tenant if hasattr(deployment, 'tenant') else None
+
+        ruleset_name = ruleset.name if ruleset else f"Ruleset {deployment.ruleset_id}"
+        tenant_name = tenant.name if tenant else None
+
+        # 알림 발송
+        results = await send_canary_warning_alert(
+            deployment_id=str(deployment.deployment_id),
+            ruleset_name=ruleset_name,
+            warnings=warnings,
+            tenant_name=tenant_name,
+        )
+
+        logger.info(
+            f"[NOTIFICATION] Canary warning alert sent:\n"
+            f"  Deployment: {deployment.deployment_id}\n"
+            f"  Ruleset: {ruleset_name}\n"
+            f"  Warnings: {len(warnings)}\n"
+            f"  Slack: {'✅' if results.get('slack') else '❌'}\n"
+            f"  Email: {'✅' if results.get('email') else '❌'}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to send warning notification: {e}", exc_info=True)
 
 
 # ============================================

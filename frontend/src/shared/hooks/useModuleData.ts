@@ -45,7 +45,9 @@ export function useModuleData<T = any>(
     setError(null);
 
     try {
-      const result = await apiClient.get<T>(endpoint, params);
+      const queryString = params ? `?${new URLSearchParams(params as any).toString()}` : '';
+      const fullEndpoint = `${endpoint}${queryString}`;
+      const result = await apiClient.get<T>(fullEndpoint);
       setData(result);
     } catch (err) {
       const errorMessage = err instanceof Error

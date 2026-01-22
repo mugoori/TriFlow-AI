@@ -203,7 +203,7 @@ async def get_audit_logs(
     end_date: Optional[datetime] = None,
     limit: int = 100,
     offset: int = 0,
-) -> List[dict]:
+) -> tuple[List[dict], int]:
     """
     감사 로그 조회
 
@@ -220,7 +220,7 @@ async def get_audit_logs(
         offset: 시작 위치
 
     Returns:
-        감사 로그 목록
+        (감사 로그 목록, 전체 개수) 튜플
     """
     try:
         conditions = ["1=1"]
@@ -256,6 +256,19 @@ async def get_audit_logs(
 
         where_clause = " AND ".join(conditions)
 
+        # Total count 쿼리 (페이지네이션 전)
+        count_query = text(f"""
+            SELECT COUNT(*)
+            FROM audit.audit_logs
+            WHERE {where_clause}
+        """)
+
+        # Count 쿼리는 limit/offset 파라미터 제외
+        count_params = {k: v for k, v in params.items() if k not in ["limit", "offset"]}
+        count_result = db.execute(count_query, count_params)
+        total = count_result.scalar() or 0
+
+        # 실제 데이터 쿼리 (페이지네이션 적용)
         query = text(f"""
             SELECT
                 log_id, user_id, tenant_id, action, resource, resource_id,
@@ -270,7 +283,7 @@ async def get_audit_logs(
         result = db.execute(query, params)
         rows = result.fetchall()
 
-        return [
+        logs = [
             {
                 "log_id": str(row[0]),
                 "user_id": str(row[1]) if row[1] else None,
@@ -291,9 +304,11 @@ async def get_audit_logs(
             for row in rows
         ]
 
+        return logs, total
+
     except Exception as e:
         logger.error(f"Failed to get audit logs: {e}")
-        return []
+        return [], 0
 
 
 async def get_audit_stats(

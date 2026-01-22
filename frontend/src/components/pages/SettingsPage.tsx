@@ -12,6 +12,7 @@ import LearningConfigSection from '../settings/LearningConfigSection';
 import ModuleManagerSection from '../settings/ModuleManagerSection';
 import FeatureFlagManagerSection from '../settings/FeatureFlagManagerSection';
 import SystemDiagnosticsSection from '../settings/SystemDiagnosticsSection';
+import { ErrorBoundary } from '../ui/ErrorBoundary';
 
 type Theme = 'system' | 'light' | 'dark';
 type Language = 'ko' | 'en';
@@ -933,7 +934,9 @@ export default function SettingsPage() {
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">학습 파이프라인</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">자동 학습 및 규칙 추출 설정</p>
           </div>
-          <LearningConfigSection isAdmin={true} />
+          <ErrorBoundary>
+            <LearningConfigSection isAdmin={true} />
+          </ErrorBoundary>
         </div>
 
         {/* Feature Flags */}

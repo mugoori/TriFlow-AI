@@ -44,8 +44,8 @@ class ModuleService {
    * List installed modules
    */
   async listModules(category?: string): Promise<ModuleInfo[]> {
-    const params = category ? { category } : {};
-    return await apiClient.get<ModuleInfo[]>('/api/v1/modules', params);
+    const endpoint = category ? `/api/v1/modules?category=${category}` : '/api/v1/modules';
+    return await apiClient.get<ModuleInfo[]>(endpoint);
   }
 
   /**
@@ -97,7 +97,10 @@ class ModuleService {
    * Uninstall module
    */
   async uninstallModule(moduleCode: string, keepData: boolean = false): Promise<void> {
-    await apiClient.delete(`/api/v1/modules/${moduleCode}`, { keep_data: keepData });
+    const endpoint = keepData
+      ? `/api/v1/modules/${moduleCode}?keep_data=true`
+      : `/api/v1/modules/${moduleCode}`;
+    await apiClient.delete(endpoint);
   }
 
   /**

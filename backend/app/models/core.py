@@ -320,9 +320,56 @@ class WorkflowInstance(Base):
     workflow = relationship("Workflow", back_populates="instances")
     parent_instance = relationship("WorkflowInstance", remote_side="WorkflowInstance.instance_id")
     execution_logs = relationship("WorkflowExecutionLog", back_populates="instance", cascade="all, delete-orphan")
+    checkpoints = relationship("WorkflowCheckpoint", back_populates="instance", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<WorkflowInstance(id={self.instance_id}, status='{self.status}')>"
+
+
+class WorkflowCheckpoint(Base):
+    """워크플로우 체크포인트
+
+    장기 실행 Workflow의 중간 상태를 저장하여 서버 재시작 후 재개 가능
+    """
+
+    __tablename__ = "workflow_checkpoints"
+    __table_args__ = (
+        CheckConstraint(
+            "checkpoint_type IN ('manual', 'auto', 'error')",
+            name="ck_workflow_checkpoints_type"
+        ),
+        {"schema": "core", "extend_existing": True}
+    )
+
+    checkpoint_id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    instance_id = Column(PGUUID(as_uuid=True), ForeignKey("core.workflow_instances.instance_id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("core.tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    workflow_id = Column(PGUUID(as_uuid=True), ForeignKey("core.workflows.workflow_id", ondelete="CASCADE"), nullable=False)
+
+    # Checkpoint 정보
+    node_id = Column(String(255), nullable=False)
+    node_name = Column(String(255), nullable=True)
+    checkpoint_type = Column(String(50), nullable=False, default='auto')
+
+    # 실행 상태
+    state = Column(JSONB, nullable=False)  # 전체 실행 컨텍스트
+    completed_nodes = Column(ARRAY(String), nullable=True)  # 완료된 노드 목록
+    outputs = Column(JSONB, nullable=True)  # 노드별 출력 결과
+
+    # 메타데이터
+    progress_percentage = Column(Integer, nullable=True)
+    estimated_remaining_seconds = Column(Integer, nullable=True)
+    checkpoint_metadata = Column("metadata", JSONB, default={}, nullable=False)
+
+    # 타임스탬프
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=True)  # TTL (7일 후)
+
+    # Relationships
+    instance = relationship("WorkflowInstance", back_populates="checkpoints")
+
+    def __repr__(self):
+        return f"<WorkflowCheckpoint(id={self.checkpoint_id}, instance={self.instance_id}, node={self.node_id})>"
 
 
 class JudgmentExecution(Base):

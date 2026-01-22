@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
@@ -1892,6 +1893,80 @@ async def chat(
 
     except Exception as e:
         logger.error(f"Chat failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    request: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
+    """
+    BI 채팅 스트리밍 엔드포인트 (SSE)
+
+    Server-Sent Events를 사용하여 AI 응답을 실시간으로 스트리밍합니다.
+
+    Event Types:
+        - start: 처리 시작
+        - session: 세션 ID 전달
+        - context: 데이터 수집 중
+        - thinking: LLM 응답 생성 중
+        - content: 응답 텍스트 청크 (스트리밍)
+        - insight: 인사이트 저장 완료
+        - done: 처리 완료
+        - error: 오류 발생
+
+    Request Body:
+        - message: str (필수)
+        - session_id: UUID (선택)
+        - context_type: str (선택)
+        - context_id: UUID (선택)
+
+    Usage (JavaScript):
+        const eventSource = new EventSource('/api/v1/bi/chat/stream', {
+            method: 'POST',
+            body: JSON.stringify({message: '불량률 분석해줘'})
+        });
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'content') {
+                console.log(data.content);  // 실시간 텍스트 청크
+            }
+        };
+    """
+    from app.services.bi_chat_service import get_bi_chat_service, ChatRequest, stream_bi_chat_response
+
+    message = request.get("message")
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    try:
+        chat_request = ChatRequest(
+            message=message,
+            session_id=UUID(request["session_id"]) if request.get("session_id") else None,
+            context_type=request.get("context_type", "general"),
+            context_id=UUID(request["context_id"]) if request.get("context_id") else None,
+        )
+
+        return StreamingResponse(
+            stream_bi_chat_response(
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.user_id,
+                request=chat_request,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Nginx 버퍼링 비활성화
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Credentials": "true",
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Chat stream failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

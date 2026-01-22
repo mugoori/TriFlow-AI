@@ -1413,3 +1413,167 @@ def get_bi_chat_service() -> BIChatService:
     if _bi_chat_service is None:
         _bi_chat_service = BIChatService()
     return _bi_chat_service
+
+
+# =====================================================
+# Streaming Response Generator
+# =====================================================
+
+async def stream_bi_chat_response(
+    tenant_id: UUID,
+    user_id: UUID,
+    request: ChatRequest,
+):
+    """
+    BI Chat 스트리밍 응답 생성기 (SSE)
+
+    Server-Sent Events 형식으로 LLM 응답을 실시간 스트리밍합니다.
+
+    Event Types:
+        - start: 처리 시작
+        - context: 데이터 수집 중
+        - thinking: LLM 응답 생성 중
+        - content: 응답 텍스트 청크 (스트리밍)
+        - insight: 인사이트 저장 완료
+        - done: 처리 완료
+        - error: 오류 발생
+
+    Yields:
+        SSE 형식 문자열 (data: {json}\n\n)
+    """
+    import asyncio
+
+    chat_service = get_bi_chat_service()
+
+    try:
+        # Event: start
+        yield f"data: {json.dumps({'type': 'start', 'message': 'BI 채팅 처리 시작'}, ensure_ascii=False)}\n\n"
+        await asyncio.sleep(0.01)  # 클라이언트가 이벤트 수신할 시간
+
+        # 1. 세션 처리
+        if request.session_id:
+            session = await chat_service._get_session(request.session_id, tenant_id, user_id)
+            if not session:
+                session = await chat_service._create_session(
+                    tenant_id, user_id, request.context_type, request.context_id
+                )
+        else:
+            session = await chat_service._create_session(
+                tenant_id, user_id, request.context_type, request.context_id
+            )
+
+        yield f"data: {json.dumps({'type': 'session', 'session_id': str(session.session_id)}, ensure_ascii=False)}\n\n"
+
+        # 2. 카드 관리 요청 감지
+        card_request = chat_service._detect_card_request(request.message)
+        if card_request:
+            # 카드 관리는 스트리밍하지 않고 바로 처리
+            response = await chat_service._handle_card_request(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                session=session,
+                request=request,
+                card_request=card_request,
+            )
+
+            yield f"data: {json.dumps({'type': 'content', 'content': response.content}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'response_type': response.response_type}, ensure_ascii=False)}\n\n"
+            return
+
+        # 3. 사용자 메시지 저장
+        await chat_service._save_message(
+            session_id=session.session_id,
+            role="user",
+            content=request.message,
+        )
+
+        # Event: context collection
+        yield f"data: {json.dumps({'type': 'context', 'message': '데이터 수집 중...'}, ensure_ascii=False)}\n\n"
+
+        # 4. 대화 히스토리 로드
+        history = await chat_service._get_conversation_history(session.session_id, limit=10)
+
+        # 5. 컨텍스트 데이터 수집
+        context_data = await chat_service._collect_context_data(
+            tenant_id, request.context_type, request.context_id
+        )
+
+        # Event: thinking
+        yield f"data: {json.dumps({'type': 'thinking', 'message': 'AI가 응답을 생성하는 중...'}, ensure_ascii=False)}\n\n"
+
+        # 6. LLM 스트리밍 호출
+        system_message = chat_service._build_system_prompt(context_data)
+        messages = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in history
+            if msg["role"] in ["user", "assistant"]
+        ]
+
+        # Anthropic Streaming API
+        full_response_text = ""
+
+        with chat_service.client.messages.stream(
+            model=chat_service.model,
+            max_tokens=4096,
+            system=system_message,
+            messages=messages,
+        ) as stream:
+            for text in stream.text_stream:
+                full_response_text += text
+                # Event: content chunk
+                yield f"data: {json.dumps({'type': 'content', 'content': text}, ensure_ascii=False)}\n\n"
+                await asyncio.sleep(0.01)  # 작은 지연으로 UI 부드럽게
+
+        # 7. 응답 파싱 및 저장
+        try:
+            # JSON 추출
+            if "```json" in full_response_text:
+                json_start = full_response_text.find("```json") + 7
+                json_end = full_response_text.find("```", json_start)
+                json_str = full_response_text[json_start:json_end].strip()
+            elif full_response_text.strip().startswith("{"):
+                json_str = full_response_text.strip()
+            else:
+                json_str = None
+
+            if json_str:
+                llm_response = json.loads(json_str)
+            else:
+                llm_response = {
+                    "response_type": "text",
+                    "content": full_response_text,
+                }
+        except json.JSONDecodeError:
+            llm_response = {
+                "response_type": "text",
+                "content": full_response_text,
+            }
+
+        # 8. 인사이트 저장
+        response_type = llm_response.get("response_type", "text")
+        linked_insight_id = None
+
+        if response_type == "insight":
+            insight = await chat_service._save_insight_from_response(
+                tenant_id, user_id, llm_response
+            )
+            if insight:
+                linked_insight_id = insight.insight_id
+                yield f"data: {json.dumps({'type': 'insight', 'insight_id': str(insight.insight_id)}, ensure_ascii=False)}\n\n"
+
+        # 9. 응답 메시지 저장
+        message_id = await chat_service._save_message(
+            session_id=session.session_id,
+            role="assistant",
+            content=llm_response.get("content", full_response_text),
+            response_type=response_type,
+            response_data=llm_response,
+            linked_insight_id=linked_insight_id,
+        )
+
+        # Event: done
+        yield f"data: {json.dumps({'type': 'done', 'message_id': str(message_id), 'response_type': response_type}, ensure_ascii=False)}\n\n"
+
+    except Exception as e:
+        logger.error(f"Streaming chat error: {e}", exc_info=True)
+        yield f"data: {json.dumps({'type': 'error', 'message': f'응답 생성 중 오류가 발생했습니다: {str(e)}'}, ensure_ascii=False)}\n\n"

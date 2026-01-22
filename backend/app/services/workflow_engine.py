@@ -5887,10 +5887,131 @@ result = {
         version: int,
         tenant_id: str
     ) -> Dict[str, Any]:
-        """워크플로우 롤백"""
-        # TODO: workflow_versions 테이블 구현 후 실제 롤백 로직
+        """
+        워크플로우 롤백
+
+        Args:
+            workflow_id: Workflow ID
+            version: 롤백할 버전 번호
+            tenant_id: Tenant ID
+
+        Returns:
+            롤백 결과
+        """
+        from sqlalchemy import text
+        from app.database import get_db_context
+
         logger.info(f"워크플로우 롤백: {workflow_id} -> v{version}")
-        return {"success": True, "message": f"워크플로우 v{version}으로 롤백 완료 (mock)"}
+
+        async with get_db_context() as db:
+            # 1. 롤백할 버전 조회
+            version_query = text("""
+                SELECT
+                    version_id,
+                    dsl_definition,
+                    status
+                FROM core.workflow_versions
+                WHERE workflow_id = :workflow_id
+                  AND version = :version
+                  AND tenant_id = :tenant_id
+            """)
+
+            version_result = await db.execute(
+                version_query,
+                {"workflow_id": workflow_id, "version": version, "tenant_id": tenant_id}
+            )
+            version_row = version_result.fetchone()
+
+            if not version_row:
+                logger.error(f"Version {version} not found for workflow {workflow_id}")
+                return {
+                    "success": False,
+                    "message": f"버전 {version}을 찾을 수 없습니다",
+                }
+
+            version_id = version_row[0]
+            target_dsl = version_row[1]
+            version_status = version_row[2]
+
+            # 2. 현재 Workflow 조회
+            workflow_query = text("""
+                SELECT
+                    dsl_definition,
+                    version
+                FROM core.workflows
+                WHERE workflow_id = :workflow_id
+                  AND tenant_id = :tenant_id
+            """)
+
+            workflow_result = await db.execute(
+                workflow_query,
+                {"workflow_id": workflow_id, "tenant_id": tenant_id}
+            )
+            workflow_row = workflow_result.fetchone()
+
+            if not workflow_row:
+                return {
+                    "success": False,
+                    "message": "Workflow를 찾을 수 없습니다",
+                }
+
+            current_version = workflow_row[1]
+
+            # 3. Workflow DSL 업데이트 (롤백)
+            update_query = text("""
+                UPDATE core.workflows
+                SET
+                    dsl_definition = :dsl_definition,
+                    version = :version,
+                    updated_at = NOW()
+                WHERE workflow_id = :workflow_id
+                  AND tenant_id = :tenant_id
+            """)
+
+            await db.execute(
+                update_query,
+                {
+                    "workflow_id": workflow_id,
+                    "tenant_id": tenant_id,
+                    "dsl_definition": target_dsl,
+                    "version": version,
+                }
+            )
+
+            await db.commit()
+
+            logger.info(
+                f"Workflow {workflow_id} rolled back: v{current_version} -> v{version}"
+            )
+
+            # 4. 롤백 이벤트 발행 (실시간 알림)
+            try:
+                from app.services.redis_client import get_redis_client
+                redis = await get_redis_client()
+
+                rollback_event = {
+                    "event_type": "workflow_rollback",
+                    "workflow_id": workflow_id,
+                    "from_version": current_version,
+                    "to_version": version,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+
+                await redis.publish(
+                    f"workflow:{workflow_id}:events",
+                    json.dumps(rollback_event)
+                )
+            except Exception as e:
+                logger.warning(f"Failed to publish rollback event: {e}")
+
+            return {
+                "success": True,
+                "message": f"워크플로우 v{version}으로 롤백 완료",
+                "workflow_id": workflow_id,
+                "from_version": current_version,
+                "to_version": version,
+                "version_id": str(version_id),
+            }
 
     async def _rollback_model(
         self,
@@ -6324,7 +6445,56 @@ class WorkflowStateMachine:
         # 실행 로그에 기록
         execution_log_store.add_log(event)
 
-        # TODO: Redis pub/sub으로 이벤트 발행 (실시간 UI 업데이트용)
+        # Redis Pub/Sub으로 이벤트 발행 (실시간 UI 업데이트)
+        await self._publish_to_redis(instance_id, event)
+
+    async def _publish_to_redis(
+        self,
+        instance_id: str,
+        event: Dict[str, Any]
+    ):
+        """Redis Pub/Sub으로 이벤트 발행"""
+        try:
+            from app.services.redis_client import get_redis_client
+            redis_client = await get_redis_client()
+            channel = f"workflow:{instance_id}:events"
+
+            await redis_client.publish(channel, json.dumps(event))
+
+            logger.debug(f"Published event to {channel}: {event.get('event_type')}")
+        except Exception as e:
+            # Redis 실패 시에도 Workflow는 계속 실행
+            logger.warning(f"Failed to publish event to Redis: {e}")
+
+    async def emit_node_event(
+        self,
+        instance_id: str,
+        event_type: str,
+        node_id: str,
+        node_name: Optional[str] = None,
+        node_type: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        error: Optional[str] = None,
+        output: Optional[Dict[str, Any]] = None,
+    ):
+        """노드 실행 이벤트 발행 (노드 시작/완료/실패)"""
+        event = {
+            "event_type": event_type,  # node_started, node_completed, node_failed
+            "instance_id": instance_id,
+            "node_id": node_id,
+            "node_name": node_name,
+            "node_type": node_type,
+            "duration_ms": duration_ms,
+            "error": error,
+            "output": output,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+        # 실행 로그에 기록
+        execution_log_store.add_log(event)
+
+        # Redis Pub/Sub으로 발행
+        await self._publish_to_redis(instance_id, event)
 
     def get_state(self, instance_id: str) -> Dict[str, Any]:
         """현재 상태 조회"""
@@ -6466,20 +6636,105 @@ class CheckpointManager:
             self._checkpoint_history[instance_id] = \
                 self._checkpoint_history[instance_id][-self.max_checkpoints_per_instance:]
 
-        # TODO: 프로덕션에서는 Redis + DB에 저장
-        # await redis.set(
-        #     f"wf:checkpoint:{instance_id}",
-        #     json.dumps(checkpoint),
-        #     ex=self.checkpoint_ttl_seconds
-        # )
-        # await self._persist_to_db(checkpoint)
+        # Redis + DB 영구 저장
+        try:
+            # 1. Redis 저장 (중간 지속성, TTL 1시간)
+            from app.services.redis_client import get_redis_client
+            redis = await get_redis_client()
+
+            await redis.setex(
+                f"wf:checkpoint:{instance_id}:{checkpoint_id}",
+                self.checkpoint_ttl_seconds,
+                json.dumps(checkpoint)
+            )
+
+            logger.debug(f"Checkpoint saved to Redis: {checkpoint_id}")
+
+            # 2. DB 영구 저장
+            await self._persist_checkpoint_to_db(checkpoint, context)
+
+            logger.debug(f"Checkpoint saved to DB: {checkpoint_id}")
+
+        except Exception as e:
+            # 저장 실패 시에도 메모리에는 있으므로 계속 진행
+            logger.warning(f"Failed to persist checkpoint: {e}")
 
         logger.info(
-            f"Checkpoint saved: instance={instance_id}, node={node_id}, "
-            f"checkpoint_id={checkpoint_id}"
+            f"Checkpoint saved (Memory + Redis + DB): instance={instance_id}, "
+            f"node={node_id}, checkpoint_id={checkpoint_id}"
         )
 
         return checkpoint_id
+
+    async def _persist_checkpoint_to_db(
+        self,
+        checkpoint: Dict[str, Any],
+        context: Dict[str, Any]
+    ):
+        """
+        Checkpoint를 DB에 영구 저장
+
+        Args:
+            checkpoint: 체크포인트 데이터
+            context: Workflow 실행 컨텍스트
+        """
+        from sqlalchemy import text
+        from app.database import get_db_context
+
+        async with get_db_context() as db:
+            # 진행률 계산
+            completed_nodes = context.get("executed_nodes", [])
+            total_nodes = len(context.get("all_nodes", [])) or 1
+            progress_pct = int((len(completed_nodes) / total_nodes) * 100)
+
+            insert_query = text("""
+                INSERT INTO core.workflow_checkpoints (
+                    checkpoint_id,
+                    instance_id,
+                    tenant_id,
+                    workflow_id,
+                    node_id,
+                    checkpoint_type,
+                    state,
+                    completed_nodes,
+                    outputs,
+                    progress_percentage,
+                    checkpoint_metadata,
+                    created_at,
+                    expires_at
+                )
+                VALUES (
+                    :checkpoint_id,
+                    :instance_id,
+                    :tenant_id,
+                    :workflow_id,
+                    :node_id,
+                    :checkpoint_type,
+                    :state,
+                    :completed_nodes,
+                    :outputs,
+                    :progress_percentage,
+                    :checkpoint_metadata,
+                    NOW(),
+                    NOW() + INTERVAL '7 days'
+                )
+            """)
+
+            await db.execute(insert_query, {
+                "checkpoint_id": checkpoint["checkpoint_id"],
+                "instance_id": checkpoint["instance_id"],
+                "tenant_id": context.get("tenant_id") or "00000000-0000-0000-0000-000000000000",
+                "workflow_id": context.get("workflow_id") or "00000000-0000-0000-0000-000000000000",
+                "node_id": checkpoint["node_id"],
+                "checkpoint_type": "auto",
+                "state": json.dumps(checkpoint.get("context", {})),
+                "completed_nodes": completed_nodes,
+                "outputs": json.dumps(context.get("outputs", {})),
+                "progress_percentage": progress_pct,
+                "checkpoint_metadata": json.dumps(checkpoint.get("metadata", {})),
+            })
+
+            await db.commit()
 
     async def restore_checkpoint(
         self,
@@ -6487,7 +6742,7 @@ class CheckpointManager:
         checkpoint_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        체크포인트에서 복구
+        체크포인트에서 복구 (3단계: Memory → Redis → DB)
 
         Args:
             instance_id: 워크플로우 인스턴스 ID
@@ -6496,19 +6751,17 @@ class CheckpointManager:
         Returns:
             복구된 체크포인트 데이터 또는 None
         """
+        # 1단계: 메모리에서 복구 (가장 빠름)
         if checkpoint_id:
-            # 특정 체크포인트 복구
             history = self._checkpoint_history.get(instance_id, [])
             for cp in reversed(history):
                 if cp.get("checkpoint_id") == checkpoint_id:
-                    logger.info(f"Restored checkpoint: {checkpoint_id}")
+                    logger.info(f"Restored checkpoint from MEMORY: {checkpoint_id}")
                     return {
                         "checkpoint": cp,
                         "context": self._deserialize_context(cp.get("context", {})),
                     }
-            return None
         else:
-            # 최신 체크포인트 복구
             checkpoint = self._checkpoints.get(instance_id)
             if checkpoint:
                 # 만료 확인
@@ -6517,12 +6770,84 @@ class CheckpointManager:
                     logger.warning(f"Checkpoint expired: {instance_id}")
                     return None
 
-                logger.info(f"Restored latest checkpoint for instance: {instance_id}")
+                logger.info(f"Restored latest checkpoint from MEMORY: {instance_id}")
                 return {
                     "checkpoint": checkpoint,
                     "context": self._deserialize_context(checkpoint.get("context", {})),
                 }
 
+        # 2단계: Redis에서 복구 (중간 속도)
+        try:
+            from app.services.redis_client import get_redis_client
+            redis = await get_redis_client()
+
+            # 패턴으로 검색
+            pattern = f"wf:checkpoint:{instance_id}:*"
+            keys = []
+
+            # Redis SCAN으로 키 검색
+            async for key in redis.scan_iter(match=pattern):
+                keys.append(key)
+
+            if keys:
+                # 최신 checkpoint 조회
+                latest_key = sorted(keys)[-1]
+                redis_data = await redis.get(latest_key)
+
+                if redis_data:
+                    checkpoint = json.loads(redis_data)
+                    logger.info(f"Restored latest checkpoint from REDIS: {instance_id}")
+                    return {
+                        "checkpoint": checkpoint,
+                        "context": self._deserialize_context(checkpoint.get("context", {})),
+                    }
+
+        except Exception as e:
+            logger.warning(f"Failed to restore from Redis: {e}")
+
+        # 3단계: DB에서 복구 (가장 느리지만 영구 보관)
+        try:
+            from sqlalchemy import text
+            from app.database import get_db_context
+
+            async with get_db_context() as db:
+                query = text("""
+                    SELECT
+                        checkpoint_id,
+                        node_id,
+                        state,
+                        completed_nodes,
+                        outputs,
+                        progress_percentage,
+                        created_at
+                    FROM core.workflow_checkpoints
+                    WHERE instance_id = :instance_id
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+
+                result = await db.execute(query, {"instance_id": instance_id})
+                row = result.fetchone()
+
+                if row:
+                    checkpoint = {
+                        "checkpoint_id": str(row[0]),
+                        "instance_id": instance_id,
+                        "node_id": row[1],
+                        "context": json.loads(row[2]) if row[2] else {},
+                        "created_at": row[6].isoformat() if row[6] else None,
+                    }
+
+                    logger.info(f"Restored latest checkpoint from DB: {instance_id}")
+                    return {
+                        "checkpoint": checkpoint,
+                        "context": checkpoint.get("context", {}),
+                    }
+
+        except Exception as e:
+            logger.warning(f"Failed to restore from DB: {e}")
+
+        logger.warning(f"No checkpoint found for instance: {instance_id}")
         return None
 
     async def delete_checkpoint(self, instance_id: str) -> bool:

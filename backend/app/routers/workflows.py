@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Query, HTTPException, Depends, Path
+from fastapi import APIRouter, Query, HTTPException, Depends, Path, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -2073,3 +2073,82 @@ async def delete_workflow_version(
         "message": f"Version {version} deleted",
         "workflow_id": workflow_id,
     }
+
+
+# ============================================
+# WebSocket - 실시간 이벤트 구독
+# ============================================
+
+@router.websocket("/ws/{instance_id}")
+async def subscribe_workflow_events(
+    websocket: WebSocket,
+    instance_id: str,
+):
+    """
+    Workflow 실행 이벤트 실시간 구독
+
+    WebSocket을 통해 Workflow 실행 중 발생하는 이벤트를 실시간으로 수신합니다.
+
+    Args:
+        instance_id: Workflow 인스턴스 ID
+
+    이벤트 타입:
+        - workflow_state_changed: 상태 변경
+        - node_started: 노드 시작
+        - node_completed: 노드 완료
+        - node_failed: 노드 실패
+        - progress_updated: 진행률 업데이트
+
+    사용 예:
+        const ws = new WebSocket('ws://localhost:8000/api/v1/workflows/ws/instance-123')
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data)
+            console.log('Event:', data.event_type, data)
+        }
+    """
+    await websocket.accept()
+
+    logger.info(f"WebSocket connected: instance={instance_id}")
+
+    try:
+        from app.services.redis_client import get_redis_client
+        import json
+
+        # Redis 연결
+        redis_client = await get_redis_client()
+        pubsub = redis_client.pubsub()
+
+        # 채널 구독
+        channel = f"workflow:{instance_id}:events"
+        await pubsub.subscribe(channel)
+
+        logger.info(f"Subscribed to Redis channel: {channel}")
+
+        # 이벤트 수신 루프
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                # Frontend로 전송
+                await websocket.send_text(message["data"])
+
+                logger.debug(f"Sent event to client: {instance_id}")
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected: instance={instance_id}")
+
+    except Exception as e:
+        logger.error(f"WebSocket error for {instance_id}: {e}", exc_info=True)
+
+    finally:
+        # 정리
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+        except Exception:
+            pass
+
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+        logger.info(f"WebSocket closed: instance={instance_id}")

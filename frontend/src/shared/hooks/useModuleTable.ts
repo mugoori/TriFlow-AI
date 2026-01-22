@@ -23,7 +23,7 @@ import { apiClient } from '../../services/api';
 
 interface PaginatedResponse<T> {
   items: T[];
-  total: int;
+  total: number;
   page: number;
   page_size: number;
   total_pages: number;
@@ -96,7 +96,11 @@ export function useModuleTable<T = any>(
       }
 
       // API call
-      const response = await apiClient.get<PaginatedResponse<T>>(endpoint, params);
+      const queryString = params && Object.keys(params).length > 0
+        ? `?${new URLSearchParams(params as any).toString()}`
+        : '';
+      const fullEndpoint = `${endpoint}${queryString}`;
+      const response = await apiClient.get<PaginatedResponse<T>>(fullEndpoint);
 
       // Update state
       setItems(response.items || []);

@@ -25,7 +25,7 @@ class JudgmentCache:
     캐시 키 구조: {tenant_id}:{ruleset_id}:{input_hash}
     """
 
-    DEFAULT_TTL_SECONDS = 300  # 5분
+    DEFAULT_TTL_SECONDS = 3600  # 1시간 (300초에서 확장)
 
     def __init__(self, use_redis: bool = True):
         self.use_redis = use_redis and settings.redis_url is not None

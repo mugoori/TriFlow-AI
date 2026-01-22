@@ -19,6 +19,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.trust_service import TrustService, TrustLevel
+from app.auth.dependencies import require_admin
+from app.services.audit_service import create_audit_log
+from app.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -199,16 +202,22 @@ async def update_trust_level(
     rule_id: UUID,
     request: TrustLevelUpdate,
     db: Session = Depends(get_db),
-    # TODO: Add auth dependency for admin check
+    current_user: User = Depends(require_admin),
 ):
     """Trust Level 수동 변경
 
     Args:
         rule_id: 룰셋 ID
         request: 변경 요청 (새 레벨, 사유)
+        current_user: 현재 관리자 사용자 (인증 필수)
 
     Returns:
         TrustLevelChangeResponse: 변경 결과
+
+    Raises:
+        HTTPException 403: 관리자 권한 없음
+        HTTPException 404: 룰셋 없음
+        HTTPException 400: 이미 해당 레벨
     """
     trust_service = TrustService(db)
 
@@ -218,7 +227,7 @@ async def update_trust_level(
             new_level=request.new_level,
             reason=request.reason,
             triggered_by="manual",
-            user_id=None,  # TODO: Get from auth
+            user_id=current_user.user_id,
         )
 
         if history is None:
@@ -226,6 +235,25 @@ async def update_trust_level(
                 status_code=400,
                 detail=f"Trust level is already {request.new_level}"
             )
+
+        # Audit Log 기록
+        await create_audit_log(
+            db=db,
+            user_id=current_user.user_id,
+            tenant_id=current_user.tenant_id,
+            action="update_trust_level",
+            resource="trust_ruleset",
+            resource_id=str(rule_id),
+            method="PATCH",
+            path=f"/api/v2/trust/rules/{rule_id}/level",
+            status_code=200,
+            request_body={
+                "new_level": request.new_level,
+                "reason": request.reason,
+            },
+            response_summary=f"Trust level changed: {history.previous_level} -> {history.new_level}",
+        )
+        db.commit()
 
         return TrustLevelChangeResponse(
             ruleset_id=str(rule_id),

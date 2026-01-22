@@ -25,6 +25,7 @@ import type {
   SavedChart,
   ChatRequest,
   ChatResponse,
+  ChatResponseType,
   ChatSessionListResponse,
   ChatMessageListResponse,
   PinInsightResponse,
@@ -226,6 +227,113 @@ export const biService = {
    */
   async chat(request: ChatRequest): Promise<ChatResponse> {
     return await apiClient.post<ChatResponse>(`${BI_API_PREFIX}/chat`, request);
+  },
+
+  /**
+   * 채팅 스트리밍 (Server-Sent Events)
+   *
+   * @param request 채팅 요청
+   * @param onEvent 이벤트 콜백 (type별 처리)
+   * @returns Promise<ChatResponse> (최종 응답)
+   */
+  async chatStream(
+    request: ChatRequest,
+    onEvent?: (event: {
+      type: 'start' | 'session' | 'context' | 'thinking' | 'content' | 'insight' | 'done' | 'error';
+      [key: string]: any;
+    }) => void
+  ): Promise<ChatResponse> {
+    return new Promise((resolve, reject) => {
+      const url = `${BI_API_PREFIX}/chat/stream`;
+      const token = localStorage.getItem('token');
+
+      // Fetch API로 POST 요청 (EventSource는 GET만 지원)
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: JSON.stringify(request),
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const reader = response.body?.getReader();
+          const decoder = new TextDecoder();
+
+          if (!reader) {
+            throw new Error('Response body is null');
+          }
+
+          let buffer = '';
+          let fullContent = '';
+          let sessionId = request.session_id || '';
+          let messageId = '';
+          let responseType = 'text';
+          let insightId: string | null = null;
+
+          while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // SSE 형식 파싱: data: {...}\n\n
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || '';  // 마지막 불완전한 라인은 버퍼에 유지
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const jsonStr = line.substring(6);  // "data: " 제거
+                  const event = JSON.parse(jsonStr);
+
+                  // 이벤트 콜백 호출
+                  if (onEvent) {
+                    onEvent(event);
+                  }
+
+                  // 이벤트 타입별 처리
+                  if (event.type === 'session') {
+                    sessionId = event.session_id;
+                  } else if (event.type === 'content') {
+                    fullContent += event.content;
+                  } else if (event.type === 'insight') {
+                    insightId = event.insight_id;
+                  } else if (event.type === 'done') {
+                    messageId = event.message_id;
+                    responseType = event.response_type || 'text';
+                  } else if (event.type === 'error') {
+                    throw new Error(event.message || '응답 생성 실패');
+                  }
+                } catch (parseError) {
+                  console.error('Failed to parse SSE event:', parseError);
+                }
+              }
+            }
+          }
+
+          // 최종 응답 반환
+          resolve({
+            success: true,
+            session_id: sessionId,
+            message_id: messageId,
+            content: fullContent,
+            response_type: responseType as ChatResponseType,
+            response_data: undefined,
+            linked_insight_id: insightId || undefined,
+            linked_chart_id: undefined,
+          });
+        })
+        .catch((error) => {
+          console.error('Chat stream error:', error);
+          reject(error);
+        });
+    });
   },
 
   /**
