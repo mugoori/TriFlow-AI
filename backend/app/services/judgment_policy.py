@@ -958,15 +958,8 @@ JSON 형식으로 응답하세요."""
                 in_range_ratio * 0.3
             )
 
-        # 3. 히스토리 정확도 (30%) - 향후 DB 조회로 개선
-        # 현재는 룰셋의 메타데이터에서 accuracy_rate 사용 (있으면)
-        historical_accuracy = 0.75  # 기본값 (75%)
-
-        # TODO: DB에서 해당 ruleset의 과거 execution 정확도 조회
-        # SELECT AVG(CASE WHEN feedback_type='positive' THEN 1.0 ELSE 0.0 END)
-        # FROM judgment_executions je
-        # LEFT JOIN feedbacks f ON f.judgment_execution_id = je.execution_id
-        # WHERE je.ruleset_id = :ruleset_id
+        # 3. 히스토리 정확도 (30%) - 실제 DB 조회
+        historical_accuracy = self._get_historical_accuracy_sync(tenant_id, ruleset_id)
 
         # 최종 신뢰도 = 가중 합계
         final_confidence = (
@@ -976,6 +969,96 @@ JSON 형식으로 응답하세요."""
         )
 
         return round(min(final_confidence, 1.0), 3)
+
+    def _get_historical_accuracy_sync(
+        self,
+        tenant_id: UUID,
+        ruleset_id: UUID,
+    ) -> float:
+        """
+        룰셋의 히스토리 정확도 조회 (실제 DB 기반)
+
+        과거 실행 기록의 피드백을 기반으로 정확도 계산
+        - 긍정 피드백: 1.0
+        - 부정 피드백: 0.0
+        - 피드백 없음: 0.5 (중립)
+
+        Returns:
+            0.0 ~ 1.0 (히스토리 정확도)
+        """
+        try:
+            from app.database import get_db_context
+            from sqlalchemy import text
+
+            with get_db_context() as db:
+                # 최근 30일간 피드백 기반 정확도
+                query = text("""
+                    SELECT
+                        COUNT(*) as total_executions,
+                        COUNT(f.feedback_id) as feedback_count,
+                        AVG(CASE
+                            WHEN f.feedback_type = 'positive' THEN 1.0
+                            WHEN f.feedback_type = 'negative' THEN 0.0
+                            ELSE 0.5
+                        END) as accuracy_rate,
+                        SUM(CASE WHEN f.feedback_type = 'positive' THEN 1 ELSE 0 END) as positive_count,
+                        SUM(CASE WHEN f.feedback_type = 'negative' THEN 1 ELSE 0 END) as negative_count
+                    FROM core.judgment_executions je
+                    LEFT JOIN core.feedbacks f ON f.judgment_execution_id = je.execution_id
+                    WHERE je.tenant_id = :tenant_id
+                      AND je.ruleset_id = :ruleset_id
+                      AND je.created_at >= NOW() - INTERVAL '30 days'
+                """)
+
+                result = db.execute(
+                    query,
+                    {
+                        "tenant_id": str(tenant_id),
+                        "ruleset_id": str(ruleset_id),
+                    },
+                ).fetchone()
+
+                if result:
+                    total = result.total_executions or 0
+                    feedback_count = result.feedback_count or 0
+                    accuracy_rate = result.accuracy_rate
+                    positive_count = result.positive_count or 0
+                    negative_count = result.negative_count or 0
+
+                    # 실행 기록이 없으면 기본값
+                    if total == 0:
+                        logger.debug(f"No execution history for ruleset {ruleset_id}, using default 0.75")
+                        return 0.75
+
+                    # 피드백이 충분하면 (10개 이상) 실제 정확도 사용
+                    if feedback_count >= 10 and accuracy_rate is not None:
+                        logger.debug(
+                            f"Historical accuracy for ruleset {ruleset_id}: {accuracy_rate:.3f} "
+                            f"(based on {feedback_count} feedbacks: {positive_count}+ / {negative_count}-)"
+                        )
+                        return float(accuracy_rate)
+
+                    # 피드백이 적으면 (1-9개) 기본값과 혼합
+                    if feedback_count > 0 and accuracy_rate is not None:
+                        # 피드백 비율에 따라 가중 평균
+                        feedback_weight = min(feedback_count / 10, 1.0)
+                        blended_accuracy = float(accuracy_rate) * feedback_weight + 0.75 * (1 - feedback_weight)
+                        logger.debug(
+                            f"Blended accuracy for ruleset {ruleset_id}: {blended_accuracy:.3f} "
+                            f"({feedback_count} feedbacks, weight={feedback_weight:.2f})"
+                        )
+                        return blended_accuracy
+
+                    # 피드백 없으면 기본값
+                    logger.debug(f"No feedback for ruleset {ruleset_id}, using default 0.75")
+                    return 0.75
+
+                # 기본값
+                return 0.75
+
+        except Exception as e:
+            logger.warning(f"Failed to get historical accuracy for ruleset {ruleset_id}, using default: {e}")
+            return 0.75
 
     def _generate_explanation(
         self,
@@ -1120,10 +1203,11 @@ JSON 형식으로 응답하세요."""
                 if check.get("threshold") is not None:
                     evidence["thresholds"][check.get("name", "unknown")] = check["threshold"]
 
-        # 3. 히스토리 평균 (가상 데이터 - 실제로는 DB 조회 필요)
-        if "defect_rate" in evidence["calculated_metrics"]:
-            evidence["historical_avg"]["defect_rate_7d"] = 0.012
-            evidence["similar_cases_count"] = 23
+        # 3. 히스토리 평균 및 유사 케이스 (실제 DB 조회)
+        historical_data = self._get_historical_evidence(input_data, rule_result)
+        if historical_data:
+            evidence["historical_avg"] = historical_data.get("averages", {})
+            evidence["similar_cases_count"] = historical_data.get("similar_count", 0)
 
         # 4. 데이터 참조 (룰셋, 프롬프트 등)
         if rule_result:
@@ -1141,6 +1225,76 @@ JSON 형식으로 응답하세요."""
             })
 
         return evidence
+
+    def _get_historical_evidence(
+        self,
+        input_data: Dict[str, Any],
+        rule_result: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        히스토리 증거 데이터 조회 (실제 DB 기반)
+
+        최근 7일간 평균값 및 유사 케이스 개수 조회
+
+        Returns:
+            {
+                "averages": {"defect_rate_7d": 0.012, "temperature_7d": 68.5},
+                "similar_count": 23
+            }
+        """
+        try:
+            from app.database import get_db_context
+            from sqlalchemy import text
+
+            # 계산된 메트릭에서 defect_rate 찾기
+            if not rule_result or not rule_result.get("success"):
+                return None
+
+            result = rule_result.get("result", {})
+            has_defect_rate = "defect_rate" in result
+
+            if not has_defect_rate:
+                return None
+
+            with get_db_context() as db:
+                # 최근 7일 평균 defect_rate 조회
+                query = text("""
+                    SELECT
+                        AVG((input_data->>'defect_rate')::numeric) as avg_defect_rate,
+                        AVG((input_data->>'temperature')::numeric) as avg_temperature,
+                        COUNT(*) as similar_count
+                    FROM core.judgment_executions
+                    WHERE tenant_id = :tenant_id
+                      AND created_at >= NOW() - INTERVAL '7 days'
+                      AND input_data->>'defect_rate' IS NOT NULL
+                """)
+
+                hist_result = db.execute(
+                    query,
+                    {"tenant_id": str(rule_result.get("tenant_id", ""))},
+                ).fetchone()
+
+                if hist_result:
+                    averages = {}
+
+                    if hist_result.avg_defect_rate is not None:
+                        averages["defect_rate_7d"] = round(float(hist_result.avg_defect_rate), 4)
+
+                    if hist_result.avg_temperature is not None:
+                        averages["temperature_7d"] = round(float(hist_result.avg_temperature), 2)
+
+                    similar_count = hist_result.similar_count or 0
+
+                    return {
+                        "averages": averages,
+                        "similar_count": similar_count,
+                    }
+
+                return None
+
+        except Exception as e:
+            logger.debug(f"Failed to get historical evidence: {e}")
+            return None
 
     def _calculate_feature_importance(
         self,
