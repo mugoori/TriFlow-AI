@@ -42,9 +42,9 @@ class BIPlannerAgent(BaseAgent):
         from app.services.domain_registry import get_domain_registry
         self.domain_registry = get_domain_registry()
 
-    def get_system_prompt(self) -> str:
+    def get_system_prompt(self, context: dict = None) -> str:
         """
-        시스템 프롬프트 로드 + 도메인 스키마 동적 생성
+        시스템 프롬프트 로드 + 도메인 스키마 동적 생성 + 컨텍스트 힌트
         """
         # 기본 프롬프트 로드
         prompt_path = Path(__file__).parent.parent / "prompts" / "bi_planner.md"
@@ -54,6 +54,33 @@ class BIPlannerAgent(BaseAgent):
         except FileNotFoundError:
             logger.warning(f"Prompt file not found: {prompt_path}, using default")
             base_prompt = "You are a BI Planner Agent for TriFlow AI."
+
+        # 컨텍스트 힌트 생성
+        context_hint = ""
+        if context:
+            current_tab = context.get('current_tab')
+            schema_hint = context.get('schema_hint')
+
+            if current_tab == 'korea_biopharm' or schema_hint == 'korea_biopharm':
+                context_hint = """
+## 🎯 CURRENT CONTEXT: 한국바이오팜 (Korea Biopharm)
+
+사용자는 현재 **한국바이오팜 탭**에 있습니다!
+
+**자동 스키마 선택**:
+- 제품, 레시피, 성분, 원료, 배합 관련 질문 → **korea_biopharm 스키마** 우선 사용
+- 주요 테이블:
+  * `recipe_metadata` - 레시피 메타데이터
+  * `historical_recipes` - 배합 상세
+  * `ingredient` - 원료 정보
+
+**중요 규칙**:
+1. 비타민, 제품명, 회사명 등 → korea_biopharm 스키마
+2. 온도, 압력, LINE_A 등 → core 스키마 (센서 데이터)
+3. 의심스러우면 korea_biopharm 우선!
+
+---
+"""
 
         # 도메인 스키마 정보 동적 생성 (에러 발생 시 기본 프롬프트만 사용)
         try:
@@ -73,10 +100,10 @@ class BIPlannerAgent(BaseAgent):
 """
 
             # 최종 프롬프트 조합
-            return f"{trigger_section}\n{base_prompt}\n\n{domain_schemas}"
+            return f"{context_hint}{trigger_section}\n{base_prompt}\n\n{domain_schemas}"
         except Exception as e:
             logger.error(f"Failed to generate dynamic prompt, using base prompt only: {e}")
-            return base_prompt
+            return f"{context_hint}{base_prompt}"
 
     def _generate_keyword_table(self) -> str:
         """도메인 키워드 테이블 생성"""

@@ -157,10 +157,17 @@ class BaseAgent(ABC):
 
             try:
                 # Claude API 호출 파라미터
+                # 컨텍스트 포함하여 시스템 프롬프트 생성 (BIPlannerAgent 등)
+                try:
+                    system_prompt = self.get_system_prompt(context)
+                except TypeError:
+                    # context 파라미터를 받지 않는 Agent는 기본 호출
+                    system_prompt = self.get_system_prompt()
+
                 api_params = {
                     "model": self.model,
                     "max_tokens": self.max_tokens,
-                    "system": self.get_system_prompt(),
+                    "system": system_prompt,
                     "tools": self.get_tools(),
                     "messages": messages,
                 }

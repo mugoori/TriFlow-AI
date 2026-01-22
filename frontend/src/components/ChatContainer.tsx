@@ -13,12 +13,16 @@ import { WorkflowPreviewPanel } from './workflow/WorkflowPreviewPanel';
 import { workflowService } from '../services/workflowService';
 import { WorkflowDSL } from '../types/agent';
 
-export function ChatContainer() {
+interface ChatContainerProps {
+  currentView?: string;
+}
+
+export function ChatContainer({ currentView = 'chat' }: ChatContainerProps) {
   const {
     messages,
     loading,
     streaming,
-    sendMessageStream,
+    sendMessageStream: originalSendMessageStream,
     cancelStream,
     clearMessages,
     pendingWorkflow,
@@ -28,6 +32,11 @@ export function ChatContainer() {
   } = useChat();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // currentView를 포함한 sendMessageStream 래퍼
+  const sendMessageStream = useCallback((message: string) => {
+    originalSendMessageStream(message, currentView);
+  }, [originalSendMessageStream, currentView]);
 
   // pendingWorkflow의 최신 값을 추적하는 ref (클로저 문제 해결)
   const pendingWorkflowRef = useRef(pendingWorkflow);

@@ -154,9 +154,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [messages, getConversationHistory]);
 
   // 스트리밍 채팅 (SSE)
-  const sendMessageStream = useCallback((content: string) => {
+  const sendMessageStream = useCallback((content: string, currentView?: string) => {
     // 현재 대화 이력을 API 전송 전에 저장
     const conversationHistory = getConversationHistory(messages);
+
+    // 컨텍스트 메타데이터 구성
+    const contextMetadata: Record<string, any> = {};
+    if (currentView) {
+      contextMetadata.current_tab = currentView;
+      // 한국바이오팜 탭이면 스키마 힌트 추가
+      if (currentView === 'korea_biopharm') {
+        contextMetadata.schema_hint = 'korea_biopharm';
+        contextMetadata.domain = 'pharmaceutical';
+      }
+    }
 
     // 사용자 메시지 추가
     const userMessage: ChatMessage = {
@@ -308,9 +319,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setStreaming({ isStreaming: false });
     };
 
-    // SSE 스트림 시작 (대화 이력 포함)
+    // SSE 스트림 시작 (대화 이력 및 컨텍스트 포함)
     abortControllerRef.current = agentService.chatStream(
-      { message: content, conversation_history: conversationHistory },
+      {
+        message: content,
+        conversation_history: conversationHistory,
+        context: contextMetadata,  // 현재 탭 정보 포함
+      },
       handleEvent,
       handleError
     );

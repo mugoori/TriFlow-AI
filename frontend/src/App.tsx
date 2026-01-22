@@ -70,7 +70,7 @@ function MainLayout() {
   const renderContent = () => {
     switch (currentView) {
       case 'chat':
-        return <ChatContainer />;
+        return <ChatContainer currentView={currentView} />;
       case 'dashboard':
         return <DashboardPage />;
       case 'workflows':
