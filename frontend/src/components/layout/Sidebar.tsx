@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenantConfig } from '../../contexts/TenantConfigContext';
 
-export type ViewType = 'chat' | 'dashboard' | 'judgment' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings' | 'korea_biopharm';
+export type ViewType = 'chat' | 'dashboard' | 'workflows' | 'rulesets' | 'experiments' | 'learning' | 'data' | 'settings' | 'korea_biopharm';
 
 interface SidebarProps {
   currentView: ViewType;
@@ -35,13 +35,6 @@ const navItems: NavItem[] = [
     moduleCode: 'dashboard',
   },
   {
-    id: 'judgment',
-    label: 'Judgment',
-    icon: Brain,
-    description: '하이브리드 판단',
-    moduleCode: 'judgment',
-  },
-  {
     id: 'workflows',
     label: 'Workflows',
     icon: Workflow,
@@ -50,9 +43,9 @@ const navItems: NavItem[] = [
   },
   {
     id: 'rulesets',
-    label: 'Rulesets',
+    label: 'Rules & Judgment',
     icon: FileCode,
-    description: 'Rhai 규칙 관리',
+    description: '규칙 관리 및 판단',
     moduleCode: 'rulesets',
     adminOnly: true,
   },
