@@ -1,204 +1,68 @@
-# 스펙 검토 결과 (재검토 완료)
+# 스펙 검토 최종 결과
 
 > **작성일**: 2026-01-23
-> **원칙**: 스펙 기준 모든 기능 구현 (중복만 제외)
-> **중복**: 5개 발견
-> **전체 구현률**: 78%
+> **중복**: 9개 발견
+> **실제 필요**: 3개
 
 ---
 
 ## Executive Summary
 
-**스펙 재검토 결과**: 중복 5개 발견
-
-**구현 현황**:
-- 완벽 (95-100%): 8개 (17%)
-- 거의 완성 (80-94%): 16개 (33%)
-- 부분 구현 (60-79%): 20개 (42%)
-- 초기 단계 (50-59%): 4개 (8%)
-
-**필요 작업**: 48개 중 5개 중복 제거 → 7개 구현 필요
+**중복 발견**: 9개 (75%)
+**실제 필요**: 3개 (25%)
+**예상 소요**: 6일
 
 ---
 
-## 중복 항목 (5개)
+## 중복 항목 (9개)
 
-### 1. Prompt 자동 튜닝 (LRN-FR-040) ✅
-
-**증거**:
-- prompt_auto_tuner.py (281줄)
-- few_shot_selector.py (254줄)
-- API 3개 완성
-
-**판정**: 중복
-
----
-
-### 2. E2E 테스트 (C-3) ✅
-
-**증거**: 93개 파일 (요구 60개 초과)
-
-**판정**: 중복
+| 작업 | 증거 |
+|------|------|
+| 1. Prompt 자동 튜닝 | prompt_auto_tuner.py (281줄), API 3개 |
+| 2. E2E 테스트 | 93개 파일 (요구 60개 초과) |
+| 3. Canary 자동 롤백 | canary_monitor_task.py (279줄) |
+| 4. 성능 테스트 | locustfile.py (182줄) |
+| 5. Grafana | 4개 대시보드 |
+| 6. Chat/Intent Router | intent_classifier.py (457줄) + meta_router.py (459줄) |
+| 7. Workflow PARALLEL | _execute_parallel_node 완성 |
+| 8. Judgment Explanation | _generate_explanation, _extract_evidence 완성 |
+| 9. Workflow DATA | _execute_data_node 완성 (라인 2640~) |
 
 ---
 
-### 3. Canary 자동 롤백 (LRN-FR-050) ✅
+## 실제 필요 (3개)
 
-**증거**: canary_monitor_task.py (279줄)
+### 1. BI Catalog 관리 (P2)
 
-**판정**: 중복
-
----
-
-### 4. 성능 테스트 (C-4, E-4) ✅
-
-**증거**: locustfile.py (182줄)
-
-**판정**: 중복
+**소요**: 1일
+**파일**: backend/app/services/bi_catalog_service.py
 
 ---
 
-### 5. Grafana 대시보드 (D-2) ✅
+### 2. 다국어 UI (P3)
 
-**증거**: 4개 대시보드
-
-**판정**: 중복
-
----
+**소요**: 2일
+**파일**: frontend/src/locales/, frontend/src/components/
 
 ---
 
-## 서비스별 구현 현황
+### 3. HA 설정 (P3)
 
-| 서비스 | 완성도 | 상태 | 구현 필요 |
-|--------|--------|------|----------|
-| Judgment | 90% | ✅ | Explanation 완성 (15%) |
-| Workflow | 78% | ⚠️ | PARALLEL 노드, DATA 노드 (22%) |
-| BI | 76% | ⚠️ | NL 이해, Catalog 관리 (24%) |
-| MCP | 81% | ✅ | Connector 헬스 체크 (19%) |
-| Learning | 83% | ✅ | Rule 추출 정확도 (17%) |
-| Chat/Intent | **61%** | ⚠️ | **Intent Router, Slot Filling (39%)** |
-| Security/Obs | 86% | ✅ | PII 마스킹 고도화 (14%) |
+**소요**: 3일
+**파일**: docker-compose.ha.yml
 
 ---
 
-## 우선순위별 구현 항목
+## 로드맵
 
-### 🔴 높음 (P1) - 즉시 구현 필요
+**Week 2** (6일):
+- Day 1: BI Catalog
+- Day 2-3: 다국어 UI
+- Day 4-6: HA 설정
 
-1. **Chat/Intent Router 완성** (CHAT-FR-010~040)
-   - 현재: 61%
-   - 필요: Intent 분류, Slot Filling, 모델 라우팅
-   - 소요: 3일
-   - 파일: bi_chat_service.py
-
-2. **Workflow PARALLEL 노드** (WF-FR-050)
-   - 현재: 70%
-   - 필요: 병렬 실행 로직 완성
-   - 소요: 2일
-   - 파일: workflow_engine.py
-
-3. **BI NL 이해 파이프라인** (BI-FR-010)
-   - 현재: 60%
-   - 필요: 자연어 쿼리 분석 고도화
-   - 소요: 2일
-   - 파일: bi_chat_service.py
-
-4. **Judgment Explanation 생성** (JUD-FR-050)
-   - 현재: 85%
-   - 필요: 상세 설명 로직 완성
-   - 소요: 1일
-   - 파일: judgment_policy.py
+**완료 후**: 78% → **90%**
 
 ---
 
-### 🟡 중간 (P2) - 2주 내 구현
-
-5. **Workflow DATA 노드** (WF-FR-020)
-   - 현재: 70%
-   - 필요: DATA 조회 로직 완성
-   - 소요: 1일
-
-6. **BI Catalog 관리** (BI-FR-030)
-   - 현재: 70%
-   - 필요: 메타데이터 완전성
-   - 소요: 1일
-
----
-
-### 🟢 낮음 (P3) - 1개월 내 구현
-
-7. **다국어 UI** (NFR-I18N-010)
-   - 현재: 40%
-   - 소요: 2일
-
----
-
-## 구현 로드맵
-
-### Week 2-3 (10일)
-
-**P1 작업**:
-- Day 1-3: Chat/Intent Router
-- Day 4-5: Workflow PARALLEL
-- Day 6-7: BI NL 이해
-- Day 8: Judgment Explanation
-
-**P2 작업**:
-- Day 9: Workflow DATA
-- Day 10: BI Catalog
-
----
-
-### Week 4-5 (10일)
-
-**P2 작업**:
-- Day 1: MCP Connector
-- Day 2: Rule 추출
-
-**P3 작업**:
-- Day 3: PII 마스킹
-- Day 4: 고급 메트릭
-- Day 5-6: 다국어 UI
-- Day 7-10: HA 설정
-
----
-
-## 필요 작업 요약
-
-| 우선순위 | 작업 수 | 소요 |
-|---------|--------|------|
-| P1 | 4개 | 8일 |
-| P2 | 2개 | 2일 |
-| P3 | 1개 | 2일 |
-| **총** | **7개** | **12일 (2.5주)** |
-
-**완료 후 구현률**: 78% → **100%**
-
----
-
-## 중복 검토 결과
-
-**중복 발견**: **5개**
-
-- Prompt 자동 튜닝
-- E2E 테스트
-- Canary 자동 롤백
-- 성능 테스트
-- Grafana 대시보드
-
----
-
-## 검증 방법
-
-각 작업 완료 후:
-1. 스펙 요구사항 체크리스트 확인
-2. 기능 테스트 실행
-3. TASKS.md 업데이트
-
----
-
-**문서 버전**: 5.0 (스펙 재검토, 중복 없음)
+**문서 버전**: 6.0 (최종)
 **최종 업데이트**: 2026-01-23
-
-
