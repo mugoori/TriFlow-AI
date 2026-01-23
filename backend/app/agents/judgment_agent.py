@@ -36,9 +36,8 @@ class JudgmentAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="JudgmentAgent",
-            model="claude-sonnet-4-5-20250929",
             max_tokens=4096,
-        )
+        )  # model은 get_model()에서 동적으로 조회
         self.rhai_engine = RhaiEngine()
         self.hybrid_service = get_hybrid_judgment_service()
         self.judgment_cache = get_judgment_cache()

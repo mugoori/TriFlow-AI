@@ -753,8 +753,15 @@ class HybridJudgmentService:
         try:
             from anthropic import Anthropic
             from app.config import settings
+            from app.services.settings_service import settings_service
 
             client = Anthropic(api_key=settings.anthropic_api_key)
+
+            # 동적 모델 조회
+            model_to_use = settings_service.get_setting_with_scope(
+                "default_llm_model",
+                tenant_id=str(tenant_id) if tenant_id else None
+            ) or settings.default_llm_model or "claude-sonnet-4-5-20250929"
 
             # 프롬프트 구성
             system_prompt = """당신은 제조 공정 분석 전문가입니다.
@@ -783,7 +790,7 @@ class HybridJudgmentService:
 JSON 형식으로 응답하세요."""
 
             response = client.messages.create(
-                model="claude-sonnet-4-5-20250929",
+                model=model_to_use,  # 테넌트별 동적 모델 조회
                 max_tokens=500,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
@@ -795,7 +802,7 @@ JSON 형식으로 응답하세요."""
             import re
 
             # V1 Gap 수정: 사용된 모델 정보 기록
-            model_used = "claude-sonnet-4-5-20250929"
+            model_used = model_to_use
 
             # JSON 추출
             json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)

@@ -28,27 +28,105 @@ class BaseAgent(ABC):
     Anthropic Claude API를 사용한 Tool Calling 패턴 구현
     """
 
+    # 에이전트 타입별 설정 키 매핑
+    AGENT_MODEL_SETTINGS = {
+        "MetaRouterAgent": "meta_router_model",
+        "BIPlannerAgent": "bi_planner_model",
+        "WorkflowPlannerAgent": "workflow_planner_model",
+        "JudgmentAgent": "judgment_agent_model",
+        "LearningAgent": "learning_agent_model",
+    }
+
     def __init__(
         self,
         name: str,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = None,  # 기본값을 None으로 변경 (설정에서 동적 로드)
         max_tokens: int = 4096,
         max_retries: int = DEFAULT_MAX_RETRIES,
     ):
         """
         Args:
             name: 에이전트 이름
-            model: 사용할 Claude 모델
+            model: 사용할 Claude 모델 (None이면 설정에서 동적 로드)
             max_tokens: 최대 토큰 수
             max_retries: API 호출 최대 재시도 횟수
         """
         self.name = name
-        self.model = model
+        self._model_override = model  # 명시적 모델 오버라이드 저장
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.client = Anthropic(api_key=settings.anthropic_api_key)
 
-        logger.info(f"Initialized {self.name} with model {self.model}")
+        # 초기화 시 모델 로깅 (context 없이 기본값)
+        initial_model = self.get_model()
+        logger.info(f"Initialized {self.name} with model {initial_model}")
+
+    def get_model(self, context: Optional[Dict[str, Any]] = None) -> str:
+        """
+        테넌트별/기능별 모델 설정 조회
+
+        우선순위:
+        1. 명시적 오버라이드 (_model_override)
+        2. 기능별 테넌트 설정 (예: bi_planner_model for tenant-a)
+        3. 기본 테넌트 설정 (default_llm_model for tenant-a)
+        4. 기능별 글로벌 설정
+        5. 기본 글로벌 설정
+        6. 환경변수 (DEFAULT_LLM_MODEL)
+        7. 코드 기본값 (claude-sonnet-4-5-20250929)
+
+        Args:
+            context: 컨텍스트 (tenant_id 포함 가능)
+
+        Returns:
+            사용할 모델 ID
+        """
+        # 1. 명시적 오버라이드
+        if self._model_override:
+            return self._model_override
+
+        # 2. 설정 서비스에서 조회
+        try:
+            from app.services.settings_service import settings_service
+
+            tenant_id = context.get("tenant_id") if context else None
+
+            # 기능별 설정 키 확인
+            agent_setting_key = self.AGENT_MODEL_SETTINGS.get(self.name)
+
+            # 2-1. 기능별 설정 조회 (에이전트별 모델)
+            if agent_setting_key:
+                agent_model = settings_service.get_setting_with_scope(
+                    agent_setting_key,
+                    tenant_id=tenant_id
+                )
+                if agent_model:  # 빈 문자열이 아니면
+                    logger.debug(f"[{self.name}] Using agent-specific model: {agent_model}")
+                    return agent_model
+
+            # 2-2. 기본 모델 설정 조회
+            default_model = settings_service.get_setting_with_scope(
+                "default_llm_model",
+                tenant_id=tenant_id
+            )
+            if default_model:
+                logger.debug(f"[{self.name}] Using default model: {default_model}")
+                return default_model
+
+        except Exception as e:
+            logger.warning(f"[{self.name}] Failed to get model from settings: {e}")
+
+        # 3. 환경변수 fallback
+        env_model = settings.default_llm_model
+        if env_model:
+            return env_model
+
+        # 4. 코드 기본값
+        return "claude-sonnet-4-5-20250929"
+
+    @property
+    def model(self) -> str:
+        """기본 모델 반환 (context 없이 호출 시)"""
+        return self.get_model()
 
     @abstractmethod
     def get_system_prompt(self) -> str:
@@ -145,8 +223,13 @@ class BaseAgent(ABC):
                     # context 파라미터를 받지 않는 Agent는 기본 호출
                     system_prompt = self.get_system_prompt()
 
+                # 테넌트별 동적 모델 조회
+                selected_model = self.get_model(context)
+                print(f"[{self.name}] API call using model: {selected_model}", flush=True)
+                logger.info(f"[{self.name}] API call using model: {selected_model}")
+
                 api_params = {
-                    "model": self.model,
+                    "model": selected_model,
                     "max_tokens": self.max_tokens,
                     "system": system_prompt,
                     "tools": self.get_tools(),

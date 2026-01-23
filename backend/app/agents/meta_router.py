@@ -38,9 +38,8 @@ class MetaRouterAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="MetaRouterAgent",
-            model="claude-sonnet-4-5-20250929",
             max_tokens=2048,
-        )
+        )  # model은 get_model()에서 동적으로 조회
         # V7 분류기 초기화
         self.v7_intent_classifier = V7IntentClassifier()
         # Legacy 호환 분류기

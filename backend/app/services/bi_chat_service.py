@@ -269,7 +269,15 @@ class BIChatService:
 
     def __init__(self):
         self.client = Anthropic(api_key=settings.anthropic_api_key)
-        self.model = "claude-sonnet-4-5-20250929"
+
+    def get_model(self, tenant_id: UUID = None) -> str:
+        """테넌트별 모델 설정 조회"""
+        from app.services.settings_service import settings_service
+        model = settings_service.get_setting_with_scope(
+            "default_llm_model",
+            tenant_id=str(tenant_id) if tenant_id else None
+        )
+        return model or settings.default_llm_model or "claude-sonnet-4-5-20250929"
 
     async def chat(
         self,
@@ -332,7 +340,7 @@ class BIChatService:
 
         # 6. LLM 호출
         try:
-            llm_response = await self._call_llm(history, context_data)
+            llm_response = await self._call_llm(tenant_id, history, context_data)
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             llm_response = {
@@ -900,6 +908,7 @@ class BIChatService:
 
     async def _call_llm(
         self,
+        tenant_id: UUID,
         history: List[Dict[str, str]],
         context_data: Dict[str, Any],
     ) -> Dict[str, Any]:
@@ -981,7 +990,7 @@ class BIChatService:
         ]
 
         response = self.client.messages.create(
-            model=self.model,
+            model=self.get_model(tenant_id),  # 테넌트별 동적 모델 조회
             max_tokens=4096,  # 더 긴 응답 허용
             system=system_message,
             messages=messages,
@@ -1513,7 +1522,7 @@ async def stream_bi_chat_response(
         full_response_text = ""
 
         with chat_service.client.messages.stream(
-            model=chat_service.model,
+            model=chat_service.get_model(tenant_id),  # 테넌트별 동적 모델 조회
             max_tokens=4096,
             system=system_message,
             messages=messages,

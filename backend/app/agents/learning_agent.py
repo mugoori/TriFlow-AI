@@ -28,9 +28,8 @@ class LearningAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="LearningAgent",
-            model="claude-sonnet-4-5-20250929",
             max_tokens=4096,
-        )
+        )  # model은 get_model()에서 동적으로 조회
 
     def get_system_prompt(self) -> str:
         """

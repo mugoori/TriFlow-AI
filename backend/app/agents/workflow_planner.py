@@ -119,9 +119,8 @@ class WorkflowPlannerAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="WorkflowPlannerAgent",
-            model="claude-sonnet-4-5-20250929",
             max_tokens=4096,
-        )
+        )  # model은 get_model()에서 동적으로 조회
         # Action catalog 로드
         self.action_catalog = self._load_action_catalog()
         # Tool 실행 시 conversation_history 접근을 위한 인스턴스 변수

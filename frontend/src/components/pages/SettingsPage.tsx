@@ -12,6 +12,7 @@ import LearningConfigSection from '../settings/LearningConfigSection';
 import ModuleManagerSection from '../settings/ModuleManagerSection';
 import FeatureFlagManagerSection from '../settings/FeatureFlagManagerSection';
 import SystemDiagnosticsSection from '../settings/SystemDiagnosticsSection';
+import AIModelConfigSection from '../settings/AIModelConfigSection';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 
 type Theme = 'system' | 'light' | 'dark';
@@ -438,156 +439,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Backend 연결 카드 */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-lg">🔌</span>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Backend 연결</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">서버 연결 설정</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* 연결 상태 표시 */}
-              <div className={`p-4 rounded-lg ${
-                connectionStatus.backend === 'connected'
-                  ? 'bg-green-50 dark:bg-green-900/20'
-                  : 'bg-red-50 dark:bg-red-900/20'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${getStatusColor(connectionStatus.backend)}`} />
-                    <div>
-                      <p className={`font-medium ${
-                        connectionStatus.backend === 'connected'
-                          ? 'text-green-800 dark:text-green-300'
-                          : 'text-red-800 dark:text-red-300'
-                      }`}>
-                        {getStatusText(connectionStatus.backend)}
-                      </p>
-                      <p className={`text-sm ${
-                        connectionStatus.backend === 'connected'
-                          ? 'text-green-700 dark:text-green-400'
-                          : 'text-red-700 dark:text-red-400'
-                      }`}>
-                        {settings.backendUrl}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={checkBackendConnection}
-                    disabled={testingConnection}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                      connectionStatus.backend === 'connected'
-                        ? 'bg-green-700 text-white hover:bg-green-800'
-                        : 'bg-red-700 text-white hover:bg-red-800'
-                    } disabled:opacity-50`}
-                  >
-                    {testingConnection ? '테스트 중...' : '테스트'}
-                  </button>
-                </div>
-              </div>
-
-              {/* API URL */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  API URL
-                </label>
-                <input
-                  type="text"
-                  value={settings.backendUrl}
-                  onChange={(e) => handleChange('backendUrl', e.target.value)}
-                  placeholder="http://localhost:8000"
-                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* 자동 재연결 */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  자동 재연결
-                </label>
-                <button
-                  onClick={() => handleChange('autoReconnect', !settings.autoReconnect)}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${
-                    settings.autoReconnect ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
-                  }`}
-                >
-                  <div
-                    className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                      settings.autoReconnect ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* AI 모델 카드 */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-lg">🤖</span>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">AI 모델</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">LLM 설정</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* 모델 선택 */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  모델
-                </label>
-                <select
-                  value={settings.aiModel}
-                  onChange={(e) => handleChange('aiModel', e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {AI_MODELS.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Max Tokens */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Max Tokens
-                </label>
-                <input
-                  type="number"
-                  value={settings.maxTokens}
-                  onChange={(e) => handleChange('maxTokens', parseInt(e.target.value) || 4096)}
-                  min={256}
-                  max={16384}
-                  step={256}
-                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  256 ~ 16,384 범위
-                </p>
-              </div>
-
-              {/* Tenant ID */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Tenant ID
-                </label>
-                <input
-                  type="text"
-                  value={settings.tenantId}
-                  onChange={(e) => handleChange('tenantId', e.target.value)}
-                  placeholder="default-tenant"
-                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
           {/* 앱 정보 카드 */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
             <div className="flex items-center gap-2 mb-4">
@@ -899,6 +750,15 @@ export default function SettingsPage() {
           >
             {notificationSaveStatus === 'saving' ? '저장 중...' : '알림 설정 저장'}
           </button>
+        </div>
+
+        {/* AI Model Settings - Admin Only */}
+        <div className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">AI 모델 설정</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">에이전트별 LLM 모델 구성 (비용 최적화)</p>
+          </div>
+          <AIModelConfigSection />
         </div>
 
         {/* User Management */}

@@ -99,7 +99,15 @@ class StoryService:
 
     def __init__(self):
         self.client = Anthropic(api_key=settings.anthropic_api_key)
-        self.model = "claude-sonnet-4-5-20250929"
+
+    def get_model(self, tenant_id: UUID = None) -> str:
+        """테넌트별 모델 설정 조회"""
+        from app.services.settings_service import settings_service
+        model = settings_service.get_setting_with_scope(
+            "default_llm_model",
+            tenant_id=str(tenant_id) if tenant_id else None
+        )
+        return model or settings.default_llm_model or "claude-sonnet-4-5-20250929"
 
     async def create_story(
         self,
@@ -189,7 +197,7 @@ class StoryService:
         user_message = self._build_story_prompt(data_context, focus_topic)
 
         response = self.client.messages.create(
-            model=self.model,
+            model=self.get_model(tenant_id),  # 테넌트별 동적 모델 조회
             max_tokens=4096,
             system=STORY_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],

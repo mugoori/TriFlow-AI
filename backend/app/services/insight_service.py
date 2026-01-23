@@ -97,7 +97,15 @@ class InsightService:
 
     def __init__(self):
         self.client = Anthropic(api_key=settings.anthropic_api_key)
-        self.model = "claude-sonnet-4-5-20250929"
+
+    def get_model(self, tenant_id: UUID = None) -> str:
+        """테넌트별 모델 설정 조회"""
+        from app.services.settings_service import settings_service
+        model = settings_service.get_setting_with_scope(
+            "default_llm_model",
+            tenant_id=str(tenant_id) if tenant_id else None
+        )
+        return model or settings.default_llm_model or "claude-sonnet-4-5-20250929"
 
     @handle_service_errors(resource="insight", operation="generate")
     async def generate_insight(
@@ -124,7 +132,7 @@ class InsightService:
         data_context = await self._prepare_data_context(tenant_id, request)
 
         # 2. LLM 호출
-        llm_result = self._call_llm_for_insight(data_context, request)
+        llm_result = self._call_llm_for_insight(tenant_id, data_context, request)
 
         # 3. 응답 파싱
         parsed = self._parse_insight_response(llm_result["content"])
@@ -282,6 +290,7 @@ class InsightService:
 
     def _call_llm_for_insight(
         self,
+        tenant_id: UUID,
         data_context: Dict[str, Any],
         request: InsightRequest,
     ) -> Dict[str, Any]:
@@ -290,7 +299,7 @@ class InsightService:
         user_message = self._build_insight_prompt(data_context, request)
 
         response = self.client.messages.create(
-            model=self.model,
+            model=self.get_model(tenant_id),  # 테넌트별 동적 모델 조회
             max_tokens=2048,
             system=INSIGHT_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],

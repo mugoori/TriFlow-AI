@@ -96,6 +96,43 @@ SETTING_DEFINITIONS = {
     "s3_bucket_name": {"category": "storage", "sensitive": False, "label": "S3 버킷명"},
     # AI
     "anthropic_api_key": {"category": "ai", "sensitive": True, "label": "Anthropic API Key"},
+    # AI Model Settings (기본 모델 + 기능별 오버라이드)
+    "default_llm_model": {
+        "category": "ai",
+        "sensitive": False,
+        "label": "기본 LLM 모델",
+        "default": "claude-sonnet-4-5-20250929"
+    },
+    "meta_router_model": {
+        "category": "ai",
+        "sensitive": False,
+        "label": "Meta Router 모델",
+        "default": ""  # 비어있으면 default_llm_model 사용
+    },
+    "bi_planner_model": {
+        "category": "ai",
+        "sensitive": False,
+        "label": "BI Planner 모델",
+        "default": ""
+    },
+    "workflow_planner_model": {
+        "category": "ai",
+        "sensitive": False,
+        "label": "Workflow Planner 모델",
+        "default": ""
+    },
+    "judgment_agent_model": {
+        "category": "ai",
+        "sensitive": False,
+        "label": "Judgment Agent 모델",
+        "default": ""
+    },
+    "learning_agent_model": {
+        "category": "ai",
+        "sensitive": False,
+        "label": "Learning Agent 모델",
+        "default": ""
+    },
     # Learning Pipeline
     "learning_min_quality_score": {"category": "learning", "sensitive": False, "label": "최소 품질 점수"},
     "learning_auto_extract_enabled": {"category": "learning", "sensitive": False, "label": "자동 추출 활성화"},
@@ -504,17 +541,28 @@ class SystemSettingsService:
 
             env_key = key.upper()
             env_value = os.getenv(env_key)
+            default_value = definition.get("default")
 
             is_sensitive = definition.get("sensitive", False)
             display_value = None
+            source = "not_set"
+            is_set = False
+
             if env_value:
                 display_value = encryption_service.mask_value(env_value) if is_sensitive else env_value
+                source = "environment"
+                is_set = True
+            elif default_value:
+                # 정의된 기본값 사용
+                display_value = default_value
+                source = "default"
+                is_set = False  # 기본값은 "설정됨"이 아님
 
             results.append({
                 "key": key,
                 "value": display_value,
-                "is_set": bool(env_value),
-                "source": "environment" if env_value else "not_set",
+                "is_set": is_set,
+                "source": source,
                 "category": definition.get("category", "general"),
                 "label": definition.get("label", key),
                 "sensitive": is_sensitive,

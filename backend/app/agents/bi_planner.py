@@ -35,9 +35,8 @@ class BIPlannerAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="BIPlannerAgent",
-            model="claude-sonnet-4-5-20250929",
             max_tokens=4096,
-        )
+        )  # model은 get_model()에서 동적으로 조회
         # 도메인 레지스트리
         from app.services.domain_registry import get_domain_registry
         self.domain_registry = get_domain_registry()
@@ -1015,7 +1014,7 @@ class BIPlannerAgent(BaseAgent):
 위 지시에 따라 차트 설정을 수정하고 JSON 형식으로 출력해주세요."""
 
             response = client.messages.create(
-                model="claude-sonnet-4-5-20250929",
+                model=self.get_model(),  # 동적 모델 조회
                 max_tokens=2048,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
@@ -1133,7 +1132,7 @@ class BIPlannerAgent(BaseAgent):
                 user_message += f"\n## 차트 정보\n유형: {chart_config.get('type', 'unknown')}\n목적: {chart_config.get('analysis_goal', 'N/A')}\n"
 
             response = client.messages.create(
-                model="claude-sonnet-4-5-20250929",
+                model=self.get_model(),  # 동적 모델 조회
                 max_tokens=2048,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
