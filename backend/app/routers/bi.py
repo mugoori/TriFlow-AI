@@ -1934,7 +1934,7 @@ async def chat_stream(
             }
         };
     """
-    from app.services.bi_chat_service import get_bi_chat_service, ChatRequest, stream_bi_chat_response
+    from app.services.bi_chat_service import ChatRequest, stream_bi_chat_response
 
     message = request.get("message")
     if not message:
@@ -2828,3 +2828,133 @@ async def trigger_mv_refresh(
     except Exception as e:
         logger.error(f"Failed to refresh MVs: {e}")
         raise HTTPException(status_code=500, detail=f"MV 리프레시 실패: {str(e)}")
+
+
+
+# ========== BI Catalog Endpoints ==========
+
+
+@router.get("/catalog/datasets")
+async def list_catalog_datasets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    source_type: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+):
+    """
+    BI 카탈로그 - 데이터셋 목록 조회 (메타데이터 포함)
+
+    LLM 프롬프트 생성용으로 사용
+    """
+    from app.services.catalog_service import get_catalog_repository
+
+    catalog_repo = get_catalog_repository(db)
+    datasets = catalog_repo.get_datasets(
+        tenant_id=current_user.tenant_id,
+        source_type=source_type,
+        search=search
+    )
+
+    return {
+        'success': True,
+        'data': {
+            'datasets': [
+                {
+                    'id': ds.id,
+                    'name': ds.name,
+                    'description': ds.description,
+                    'source_type': ds.source_type,
+                    'source_ref': ds.source_ref,
+                    'columns': catalog_repo._extract_columns(ds.source_ref),
+                    'refresh_schedule': ds.refresh_schedule,
+                    'last_refreshed': ds.last_refresh_at.isoformat() if ds.last_refresh_at else None,
+                    'row_count': ds.row_count
+                }
+                for ds in datasets
+            ]
+        }
+    }
+
+
+@router.get("/catalog/metrics")
+async def list_catalog_metrics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    dataset_id: Optional[UUID] = Query(None),
+    agg_type: Optional[str] = Query(None),
+):
+    """BI 카탈로그 - 지표 목록 조회"""
+    from app.services.catalog_service import get_catalog_repository
+
+    catalog_repo = get_catalog_repository(db)
+    metrics = catalog_repo.get_metrics(
+        tenant_id=current_user.tenant_id,
+        dataset_id=dataset_id,
+        agg_type=agg_type
+    )
+
+    return {
+        'success': True,
+        'data': {
+            'metrics': [
+                {
+                    'id': m.id,
+                    'name': m.name,
+                    'description': m.description,
+                    'dataset_id': m.dataset_id,
+                    'expression_sql': m.expression_sql,
+                    'agg_type': m.agg_type,
+                    'format_type': m.format_type,
+                    'default_chart_type': m.default_chart_type
+                }
+                for m in metrics
+            ]
+        }
+    }
+
+
+@router.post("/catalog/metrics")
+async def create_catalog_metric(
+    dataset_id: UUID,
+    name: str,
+    expression_sql: str,
+    description: Optional[str] = None,
+    agg_type: Optional[str] = None,
+    format_type: Optional[str] = None,
+    default_chart_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """BI 카탈로그 - 새 지표 생성"""
+    from app.services.catalog_service import get_catalog_repository
+    from app.services.rbac_service import Role
+
+    # Approver 이상 권한 필요
+    if current_user.role not in [Role.ADMIN.value, Role.APPROVER.value, "admin", "approver"]:
+        raise HTTPException(status_code=403, detail="Approver 권한이 필요합니다")
+
+    catalog_repo = get_catalog_repository(db)
+    metric = catalog_repo.create_metric(
+        tenant_id=current_user.tenant_id,
+        dataset_id=dataset_id,
+        name=name,
+        expression_sql=expression_sql,
+        description=description,
+        agg_type=agg_type,
+        format_type=format_type,
+        default_chart_type=default_chart_type,
+        created_by=current_user.user_id
+    )
+
+    return {
+        'success': True,
+        'data': {
+            'metric': {
+                'id': metric.id,
+                'name': metric.name,
+                'description': metric.description,
+                'dataset_id': metric.dataset_id,
+                'expression_sql': metric.expression_sql
+            }
+        }
+    }
