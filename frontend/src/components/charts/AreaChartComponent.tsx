@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { AreaChartConfig, CHART_COLORS, DEFAULT_CHART_STYLE } from '@/types/chart';
+import { normalizeChartSeries } from '@/utils/chartUtils';
 
 interface AreaChartComponentProps {
   config: AreaChartConfig;
@@ -18,11 +19,7 @@ export function AreaChartComponent({ config }: AreaChartComponentProps) {
   const { data, xAxis, yAxis, areas } = config;
 
   // areas가 문자열 배열인 경우 객체 배열로 변환 (Backend 호환성)
-  const normalizedAreas = (areas as (string | { dataKey: string; fill?: string; stroke?: string; name?: string })[]).map((area) =>
-    typeof area === 'string'
-      ? { dataKey: area, name: area }
-      : area
-  );
+  const normalizedAreas = normalizeChartSeries(areas as (string | { dataKey: string; fill?: string; stroke?: string; name?: string })[]);
 
   return (
     <div className="w-full h-[400px] min-h-[400px]">

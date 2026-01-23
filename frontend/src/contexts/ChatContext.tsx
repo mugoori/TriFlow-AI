@@ -38,7 +38,7 @@ interface ChatContextType {
   loading: boolean;
   streaming: StreamingState;
   sendMessage: (content: string) => Promise<void>;
-  sendMessageStream: (content: string) => void;
+  sendMessageStream: (content: string, currentView?: string) => void;
   cancelStream: () => void;
   clearMessages: () => void;
   // 워크플로우 프리뷰 관련

@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './api';
+import { appendQueryParams } from '@/utils/apiUtils';
 
 // ============ Types ============
 
@@ -94,16 +95,7 @@ export const sampleService = {
    * 샘플 목록 조회
    */
   async listSamples(params?: SampleListParams): Promise<SampleListResponse> {
-    const searchParams = new URLSearchParams();
-    if (params?.category) searchParams.set('category', params.category);
-    if (params?.status) searchParams.set('status', params.status);
-    if (params?.source_type) searchParams.set('source_type', params.source_type);
-    if (params?.min_quality !== undefined) searchParams.set('min_quality', String(params.min_quality));
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.page_size) searchParams.set('page_size', String(params.page_size));
-
-    const queryString = searchParams.toString();
-    const url = queryString ? `${BASE_PATH}?${queryString}` : BASE_PATH;
+    const url = appendQueryParams(BASE_PATH, params);
     return apiClient.get<SampleListResponse>(url);
   },
 

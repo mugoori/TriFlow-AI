@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './api';
+import { appendQueryParams } from '@/utils/apiUtils';
 
 // ============ Types ============
 
@@ -136,13 +137,7 @@ export const ruleExtractionService = {
    * 규칙 후보 목록 조회
    */
   async listCandidates(params?: CandidateListParams): Promise<CandidateListResponse> {
-    const searchParams = new URLSearchParams();
-    if (params?.status) searchParams.set('status', params.status);
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.page_size) searchParams.set('page_size', String(params.page_size));
-
-    const queryString = searchParams.toString();
-    const url = queryString ? `${BASE_PATH}/candidates?${queryString}` : `${BASE_PATH}/candidates`;
+    const url = appendQueryParams(`${BASE_PATH}/candidates`, params);
     return apiClient.get<CandidateListResponse>(url);
   },
 

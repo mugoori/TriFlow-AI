@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { LineChartConfig, CHART_COLORS, DEFAULT_CHART_STYLE } from '@/types/chart';
+import { normalizeChartSeries } from '@/utils/chartUtils';
 
 interface LineChartComponentProps {
   config: LineChartConfig;
@@ -18,11 +19,7 @@ export function LineChartComponent({ config }: LineChartComponentProps) {
   const { data, xAxis, yAxis, lines } = config;
 
   // lines가 문자열 배열인 경우 객체 배열로 변환 (Backend 호환성)
-  const normalizedLines = (lines as (string | { dataKey: string; stroke?: string; name?: string })[]).map((line) =>
-    typeof line === 'string'
-      ? { dataKey: line, name: line }
-      : line
-  );
+  const normalizedLines = normalizeChartSeries(lines as (string | { dataKey: string; stroke?: string; name?: string })[]);
 
   return (
     <div className="w-full h-[400px] min-h-[400px]">

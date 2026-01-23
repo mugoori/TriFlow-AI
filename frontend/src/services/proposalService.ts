@@ -3,6 +3,7 @@
  * 제안된 규칙 관리 API 클라이언트
  */
 import { apiClient } from './api';
+import { appendQueryParams } from '@/utils/apiUtils';
 
 // ============ Types ============
 
@@ -69,15 +70,7 @@ export async function listProposals(params?: {
   limit?: number;
   offset?: number;
 }): Promise<ProposalListResponse> {
-  const searchParams = new URLSearchParams();
-  if (params?.status) searchParams.set('status', params.status);
-  if (params?.source_type) searchParams.set('source_type', params.source_type);
-  if (params?.limit) searchParams.set('limit', params.limit.toString());
-  if (params?.offset) searchParams.set('offset', params.offset.toString());
-
-  const queryString = searchParams.toString();
-  const url = queryString ? `/api/v1/proposals?${queryString}` : '/api/v1/proposals';
-
+  const url = appendQueryParams('/api/v1/proposals', params);
   return apiClient.get<ProposalListResponse>(url);
 }
 
@@ -120,12 +113,6 @@ export async function runAnalysis(params?: {
   days?: number;
   min_frequency?: number;
 }): Promise<AnalysisResponse> {
-  const searchParams = new URLSearchParams();
-  if (params?.days) searchParams.set('days', params.days.toString());
-  if (params?.min_frequency) searchParams.set('min_frequency', params.min_frequency.toString());
-
-  const queryString = searchParams.toString();
-  const url = queryString ? `/api/v1/proposals/analyze?${queryString}` : '/api/v1/proposals/analyze';
-
+  const url = appendQueryParams('/api/v1/proposals/analyze', params);
   return apiClient.post<AnalysisResponse>(url, {});
 }

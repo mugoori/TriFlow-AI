@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { BarChartConfig, CHART_COLORS, DEFAULT_CHART_STYLE } from '@/types/chart';
+import { normalizeChartSeries } from '@/utils/chartUtils';
 
 interface BarChartComponentProps {
   config: BarChartConfig;
@@ -18,11 +19,7 @@ export function BarChartComponent({ config }: BarChartComponentProps) {
   const { data, xAxis, yAxis, bars } = config;
 
   // bars가 문자열 배열인 경우 객체 배열로 변환 (Backend 호환성)
-  const normalizedBars = (bars as (string | { dataKey: string; fill?: string; name?: string })[]).map((bar) =>
-    typeof bar === 'string'
-      ? { dataKey: bar, name: bar }
-      : bar
-  );
+  const normalizedBars = normalizeChartSeries(bars as (string | { dataKey: string; fill?: string; name?: string })[]);
 
   return (
     <div className="w-full h-[400px] min-h-[400px]">

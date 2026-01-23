@@ -1,4 +1,4 @@
-import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical, GraduationCap, Brain } from 'lucide-react';
+import { MessageSquare, BarChart3, Settings, Database, Workflow, LogOut, User, FileCode, FlaskConical, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenantConfig } from '../../contexts/TenantConfigContext';

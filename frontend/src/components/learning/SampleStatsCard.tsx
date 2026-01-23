@@ -15,6 +15,7 @@ import {
   Download,
 } from 'lucide-react';
 import { sampleService, SampleStats, SampleExtractResponse } from '@/services/sampleService';
+import { StatItem } from '@/components/ui/StatItem';
 
 interface SampleStatsCardProps {
   onRefresh?: () => void;
@@ -78,28 +79,6 @@ export function SampleStatsCard({ onRefresh }: SampleStatsCardProps) {
       setExtracting(false);
     }
   };
-
-  const StatItem = ({
-    label,
-    value,
-    icon: Icon,
-    color,
-  }: {
-    label: string;
-    value: number | string;
-    icon: React.ElementType;
-    color: string;
-  }) => (
-    <div className="flex items-center gap-3">
-      <div className={`p-2 rounded-lg ${color}`}>
-        <Icon className="w-4 h-4 text-white" />
-      </div>
-      <div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-        <p className="text-lg font-semibold text-gray-900 dark:text-white">{value}</p>
-      </div>
-    </div>
-  );
 
   if (loading) {
     return (

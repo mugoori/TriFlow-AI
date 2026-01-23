@@ -15,26 +15,13 @@ import {
   Calendar,
 } from 'lucide-react';
 import { Sample, sampleService } from '@/services/sampleService';
+import { STATUS_LABELS, STATUS_COLORS } from '@/lib/statusConfig';
 
 interface SampleDetailModalProps {
   sample: Sample;
   onClose: () => void;
   onUpdate?: () => void;
 }
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: '대기',
-  approved: '승인',
-  rejected: '거부',
-  archived: '보관',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  archived: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400',
-};
 
 export function SampleDetailModal({ sample, onClose, onUpdate }: SampleDetailModalProps) {
   const [rejecting, setRejecting] = useState(false);

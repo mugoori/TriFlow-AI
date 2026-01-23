@@ -19,32 +19,14 @@ import {
   SampleStatus,
   SampleCategory,
 } from '@/services/sampleService';
+import { STATUS_LABELS, STATUS_COLORS, SAMPLE_CATEGORY_LABELS } from '@/lib/statusConfig';
 
 interface SampleListCardProps {
   onSelectSample?: (sample: Sample) => void;
   onRefresh?: () => void;
 }
 
-const STATUS_LABELS: Record<SampleStatus, string> = {
-  pending: '대기',
-  approved: '승인',
-  rejected: '거부',
-  archived: '보관',
-};
-
-const STATUS_COLORS: Record<SampleStatus, string> = {
-  pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  archived: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400',
-};
-
-const CATEGORY_LABELS: Record<SampleCategory | string, string> = {
-  threshold_adjustment: '임계값 조정',
-  field_correction: '필드 수정',
-  validation_failure: '검증 실패',
-  general: '일반',
-};
+const CATEGORY_LABELS: Record<SampleCategory | string, string> = SAMPLE_CATEGORY_LABELS;
 
 export function SampleListCard({ onSelectSample, onRefresh }: SampleListCardProps) {
   const [samples, setSamples] = useState<Sample[]>([]);

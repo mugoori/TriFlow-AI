@@ -3,6 +3,7 @@
  * A/B 테스트 실험 관리 API 클라이언트
  */
 import { apiClient } from './api';
+import { appendQueryParams } from '@/utils/apiUtils';
 
 // ============ Types ============
 
@@ -134,14 +135,7 @@ export async function listExperiments(params?: {
   limit?: number;
   offset?: number;
 }): Promise<ExperimentListResponse> {
-  const searchParams = new URLSearchParams();
-  if (params?.status) searchParams.set('status', params.status);
-  if (params?.limit) searchParams.set('limit', params.limit.toString());
-  if (params?.offset) searchParams.set('offset', params.offset.toString());
-
-  const queryString = searchParams.toString();
-  const url = queryString ? `/api/v1/experiments?${queryString}` : '/api/v1/experiments';
-
+  const url = appendQueryParams('/api/v1/experiments', params);
   return apiClient.get<ExperimentListResponse>(url);
 }
 
