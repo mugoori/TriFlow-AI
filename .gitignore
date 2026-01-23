@@ -135,3 +135,12 @@ clean_module/
 find_upload_logs.py
 *openapi.json
 temp_log.txt
+
+# Internal documentation (not for public repo)
+docs/
+
+# Claude Code session files
+.claude/
+
+# Session task tracking
+TASKS.md
