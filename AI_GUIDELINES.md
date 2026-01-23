@@ -168,6 +168,77 @@ alembic upgrade head
 
 ---
 
+### Rule 7: 프로젝트 디렉토리 정리
+
+**원칙**: 모든 파일은 용도에 맞는 디렉토리에 배치
+
+#### 디렉토리 구조 및 용도
+
+| 디렉토리 | 용도 | 예시 |
+|---------|------|------|
+| **docs/guides/** | 사용 가이드, 운영 매뉴얼 | `LEARNING_PIPELINE_GUIDE.md`, `CANARY_DEPLOYMENT_GUIDE.md` |
+| **docs/specs/** | 기술 스펙, 요구사항 문서 | `A-2_System_Requirements_Spec.md` |
+| **docs/spec-reviews/** | 스펙 검토 문서 | `00_SUMMARY_REPORT.md` |
+| **docs/project/** | 프로젝트 관리 문서 | `TASKS.md`, `PROJECT_STATUS.md` |
+| **docs/api/** | API 문서, Postman Collection | `api_reference.md` |
+| **backend/app/services/** | 비즈니스 로직 서비스 | `sample_curation_service.py` |
+| **backend/app/routers/** | API 엔드포인트 | `samples.py`, `deployments.py` |
+| **backend/tests/e2e/** | E2E 테스트 | `test_learning_pipeline.py` |
+| **backend/tests/integration/** | 통합 테스트 | `test_api_*.py` |
+| **backend/tests/unit/** | 유닛 테스트 | `test_service_*.py` |
+| **backend/alembic/versions/** | 데이터베이스 마이그레이션 | `008_materialized_views.py` |
+| **scripts/** | 유틸리티 스크립트 | `setup_db.sh`, `deploy.sh` |
+| **scripts/windows/** | Windows 전용 스크립트 | `enable_feature_flags.ps1` |
+| **monitoring/grafana/** | Grafana 대시보드 | `learning-pipeline.json` |
+| **.claude/** | Claude Code 설정 및 세션 가이드 | `NEXT_SESSION.md` |
+
+#### 파일 배치 규칙
+
+**문서 작성 시**:
+```
+✅ 사용 가이드 → docs/guides/
+✅ 기술 스펙 → docs/specs/
+✅ 작업 기록 → docs/project/TASKS.md
+✅ API 문서 → docs/api/
+❌ 루트 디렉토리에 직접 생성 금지
+```
+
+**코드 작성 시**:
+```
+✅ 서비스 로직 → backend/app/services/
+✅ API 라우터 → backend/app/routers/
+✅ 데이터 모델 → backend/app/models/
+✅ 에이전트 → backend/app/agents/
+❌ app/ 루트에 직접 파일 생성 금지
+```
+
+**테스트 작성 시**:
+```
+✅ E2E 테스트 → backend/tests/e2e/
+✅ 통합 테스트 → backend/tests/integration/
+✅ 유닛 테스트 → backend/tests/unit/
+❌ tests/ 루트에 직접 생성 금지
+```
+
+**스크립트 작성 시**:
+```
+✅ 유틸리티 → scripts/
+✅ Windows 전용 → scripts/windows/
+✅ 배포 → scripts/deploy/
+❌ 루트에 .sh, .ps1 파일 직접 생성 금지
+```
+
+#### 준수 체크리스트
+
+파일 생성 전 확인:
+
+- [ ] 올바른 디렉토리인가?
+- [ ] 유사한 파일들과 같은 위치인가?
+- [ ] README나 INDEX 파일이 있으면 업데이트했는가?
+- [ ] 파일명이 명확하고 일관된가?
+
+---
+
 ## 🤖 AI 에이전트 설계
 
 ### 구조

@@ -1939,3 +1939,63 @@ Username: admin / Password: triflow_grafana_password
 - **AI 모델**: Anthropic Claude API (claude-sonnet-4-5-20250929)
 - **룰 엔진**: Rhai (Rust 기반)
 - **워크플로우**: Custom JSON DSL Executor
+
+
+---
+
+### 작업 4: 프로젝트 디렉토리 정리 규칙 추가
+
+**목표**: 파일을 올바른 위치에 배치하여 프로젝트 구조 유지
+
+#### 규칙 추가
+
+**1. AI_GUIDELINES.md Rule 7** ✅
+- 프로젝트 디렉토리 정리 규칙
+- 12개 디렉토리 용도 명시
+- 파일 배치 규칙 (문서, 코드, 테스트, 스크립트)
+
+**2. TASKS.md 디렉토리 가이드** ✅
+- 올바른/잘못된 배치 예시
+
+#### 규칙 요약
+
+| 유형 | 올바른 위치 | 잘못된 위치 |
+|------|------------|------------|
+| **사용 가이드** | `docs/guides/` | 루트, `docs/` |
+| **E2E 테스트** | `backend/tests/e2e/` | `tests/` 루트 |
+| **Windows 스크립트** | `scripts/windows/` | 루트 |
+| **서비스 로직** | `backend/app/services/` | `backend/app/` |
+
+**자세한 규칙**: `AI_GUIDELINES.md` Rule 7 참조
+
+---
+
+## 📌 디렉토리 배치 가이드
+
+### 올바른 예시
+
+**문서**:
+```
+✅ docs/guides/LEARNING_PIPELINE_GUIDE.md
+✅ docs/project/TASKS.md
+❌ GUIDE.md (루트)
+```
+
+**테스트**:
+```
+✅ backend/tests/e2e/test_learning_pipeline.py
+❌ tests/test_e2e.py (루트)
+```
+
+**스크립트**:
+```
+✅ scripts/windows/enable_feature_flags.ps1
+❌ enable_flags.ps1 (루트)
+```
+
+### 체크리스트
+
+파일 생성 전:
+- [ ] 올바른 디렉토리인가?
+- [ ] 유사 파일과 같은 위치인가?
+- [ ] 파일명이 명확한가?
