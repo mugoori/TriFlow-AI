@@ -12,6 +12,7 @@ from anthropic import Anthropic
 from anthropic.types import Message, ToolUseBlock, TextBlock
 
 from app.config import settings
+from app.utils.retry import is_retryable_error
 
 logger = logging.getLogger(__name__)
 
@@ -19,26 +20,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_BASE_DELAY = 1.0
 DEFAULT_MAX_DELAY = 30.0
-
-
-def is_retryable_api_error(exception: Exception) -> bool:
-    """API 호출 재시도 가능 에러 판별"""
-    error_str = str(exception).lower()
-
-    # Rate limit
-    if "rate" in error_str and "limit" in error_str:
-        return True
-    # Overloaded
-    if "overloaded" in error_str:
-        return True
-    # Temporary errors
-    if "temporarily" in error_str or "temporarily_unavailable" in error_str:
-        return True
-    # Connection errors
-    if isinstance(exception, (ConnectionError, TimeoutError)):
-        return True
-
-    return False
 
 
 class BaseAgent(ABC):
@@ -282,7 +263,7 @@ class BaseAgent(ABC):
                 last_exception = e
 
                 # 재시도 가능한 에러가 아니면 즉시 raise
-                if not is_retryable_api_error(e):
+                if not is_retryable_error(e):
                     logger.warning(f"[{self.name}] Non-retryable error: {e}")
                     raise
 

@@ -16,6 +16,9 @@ export default function DataScopeEditor({ user, onClose, onUpdated }: DataScopeE
   const [scope, setScope] = useState<DataScope>({
     factory_codes: [],
     line_codes: [],
+    product_families: [],
+    shift_codes: [],
+    equipment_ids: [],
     all_access: false,
   });
   const [availableFactories, setAvailableFactories] = useState<string[]>([]);
@@ -34,6 +37,9 @@ export default function DataScopeEditor({ user, onClose, onUpdated }: DataScopeE
         setScope({
           factory_codes: currentScope.factory_codes || [],
           line_codes: currentScope.line_codes || [],
+          product_families: currentScope.product_families || [],
+          shift_codes: currentScope.shift_codes || [],
+          equipment_ids: currentScope.equipment_ids || [],
           all_access: currentScope.all_access || false,
         });
 

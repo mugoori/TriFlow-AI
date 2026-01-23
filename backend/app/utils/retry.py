@@ -46,6 +46,10 @@ def is_retryable_error(exception: Exception) -> bool:
     if "timeout" in error_str:
         return True
 
+    # 임시 서비스 불가 (API 오류)
+    if "temporarily" in error_str or "temporarily_unavailable" in error_str:
+        return True
+
     # 기본 재시도 가능 예외
     if isinstance(exception, RETRYABLE_EXCEPTIONS):
         return True

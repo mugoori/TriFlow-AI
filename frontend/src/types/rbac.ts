@@ -31,6 +31,9 @@ export interface RoleListResponse {
 export interface DataScope {
   factory_codes: string[];
   line_codes: string[];
+  product_families: string[];
+  shift_codes: string[];
+  equipment_ids: string[];
   all_access: boolean;
 }
 
@@ -66,6 +69,9 @@ export interface UserRoleUpdateRequest {
 export interface DataScopeUpdateRequest {
   factory_codes: string[];
   line_codes: string[];
+  product_families: string[];
+  shift_codes: string[];
+  equipment_ids: string[];
   all_access: boolean;
 }
 
