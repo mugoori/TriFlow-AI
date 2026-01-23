@@ -268,6 +268,249 @@
 
 - 아직 기록된 항목 없음
 
+#### 🎓 Learning Pipeline
+
+**[2026-01-23] 샘플 추출 안됨 (피드백 부족)**
+- **에러**: `extracted_count: 0, skipped_duplicates: 0`
+- **발생 위치**: `POST /api/v1/samples/extract`
+- **증상**:
+  - 샘플 자동 추출 실행하지만 결과 0개
+  - 스케줄러는 정상 작동
+- **근본 원인 (RCA)**:
+  - `feedback_logs` 테이블에 `rating >= 4` 데이터 부족
+  - 또는 모든 피드백이 이미 샘플로 추출됨 (중복)
+- **최종 해결책**:
+  ```bash
+  # 1. 피드백 확인
+  GET /api/v1/feedback?rating_gte=4
+
+  # 2. 기준 낮추기
+  POST /api/v1/samples/extract
+  {"min_rating": 3, "min_confidence": 0.5}
+
+  # 3. 이미 추출된 샘플 확인
+  GET /api/v1/samples?page=1&page_size=100
+  ```
+- **참고**: `docs/guides/LEARNING_PIPELINE_GUIDE.md` 섹션 5.1
+
+**[2026-01-23] Rule Extraction 샘플 부족 오류**
+- **에러**: `ValueError: 샘플이 부족합니다. 필요: 20, 현재: 8`
+- **발생 위치**: `POST /api/v1/rule-extraction/extract`
+- **근본 원인 (RCA)**:
+  - 승인된 샘플(`status=approved`)이 `min_samples` 미만
+  - 샘플은 있지만 승인 프로세스 누락
+- **최종 해결책**:
+  ```bash
+  # 1. 승인된 샘플 확인
+  GET /api/v1/samples?status=approved
+
+  # 2. Pending 샘플 승인
+  POST /api/v1/samples/{sample_id}/approve
+
+  # 3. min_samples 낮추기 (임시)
+  POST /api/v1/rule-extraction/extract
+  {"min_samples": 10}
+  ```
+- **디버깅 팁**: Decision Tree 학습에는 최소 20개 샘플 권장
+- **참고**: `docs/guides/LEARNING_PIPELINE_GUIDE.md` 섹션 5.2
+
+**[2026-01-23] Decision Tree F1 Score 낮음**
+- **에러**: F1 Score < 0.7 (기준 미달)
+- **발생 위치**: Rule Extraction 결과
+- **근본 원인 (RCA)**:
+  1. `max_depth`가 너무 낮음 (Tree가 단순함)
+  2. 샘플 품질이 낮음
+  3. 특징(feature) 수 부족
+- **최종 해결책**:
+  ```bash
+  # max_depth 증가
+  POST /api/v1/rule-extraction/extract
+  {
+    "max_depth": 10,           # 5 → 10
+    "min_samples_leaf": 3      # 5 → 3
+  }
+
+  # 품질 기준 상향
+  POST /api/v1/rule-extraction/extract
+  {
+    "min_quality_score": 0.9   # 0.7 → 0.9
+  }
+  ```
+- **참고**: `docs/guides/LEARNING_PIPELINE_GUIDE.md` 섹션 5.3
+
+#### 🚢 Canary Deployment
+
+**[2026-01-23] Canary 시작 실패 (이미 active 배포 존재)**
+- **에러**: `400 Bad Request: 이미 active 배포가 있습니다`
+- **발생 위치**: `POST /api/v1/deployments/{id}/start-canary`
+- **근본 원인 (RCA)**:
+  - 동일 Ruleset에 `status=active` 배포가 이미 존재
+  - 하나의 Ruleset에는 1개의 active 배포만 가능
+- **최종 해결책**:
+  ```bash
+  # 1. 기존 배포 확인
+  GET /api/v1/deployments?ruleset_id={ruleset_id}&status=active
+
+  # 2. 기존 배포 deprecate
+  POST /api/v1/deployments/{old_id}/rollback
+
+  # 3. 새 배포 시작
+  POST /api/v1/deployments/{new_id}/start-canary
+  ```
+- **참고**: `docs/guides/CANARY_DEPLOYMENT_GUIDE.md` 트러블슈팅 섹션 1
+
+**[2026-01-23] 트래픽 비율 변경했는데 실제 트래픽 안 바뀜**
+- **증상**: `traffic_percentage: 50%`로 변경했는데 여전히 10% 사용자만 v2 사용
+- **발생 위치**: `PUT /api/v1/deployments/{id}/traffic`
+- **근본 원인 (RCA)**:
+  - **정상 동작입니다!**
+  - Sticky Session 때문에 기존 할당은 유지됨
+  - 새로운 사용자/세션부터 50% 확률로 v2 할당
+- **이해**:
+  ```
+  기존 사용자 (이미 할당됨):
+    - User A (v2) → v2 유지 (Sticky)
+    - User B (v1) → v1 유지 (Sticky)
+
+  신규 사용자:
+    - User C → 50% 확률로 v2 할당
+    - User D → 50% 확률로 v2 할당
+  ```
+- **강제 재할당** (주의!):
+  ```bash
+  # 모든 할당 초기화 (A/B 테스트 무효화됨)
+  POST /api/v1/deployments/{id}/rollback
+  POST /api/v1/deployments/{id}/start-canary
+  {"canary_pct": 50}
+  ```
+- **참고**: `docs/guides/CANARY_DEPLOYMENT_GUIDE.md` 트러블슈팅 섹션 2
+
+**[2026-01-23] 자동 롤백 안됨 (Error Rate 10%)**
+- **에러**: Error Rate 10%인데 자동 롤백이 트리거되지 않음
+- **발생 위치**: Canary 모니터링
+- **근본 원인 (RCA)**:
+  - `canary_monitor_task` 스케줄러 작업 미실행
+  - 또는 Error Rate 임계값이 10%로 설정됨 (기본 5%)
+- **최종 해결책**:
+  ```bash
+  # 1. 스케줄러 상태 확인
+  GET /api/v1/scheduler/jobs
+  # → canary_monitor_task가 active인지 확인
+
+  # 2. 스케줄러 재시작
+  docker-compose restart backend
+
+  # 3. 수동 롤백
+  POST /api/v1/deployments/{id}/rollback
+  {"reason": "Error Rate 10% (수동 롤백)"}
+  ```
+- **참고**: `docs/guides/CANARY_DEPLOYMENT_GUIDE.md` 트러블슈팅 섹션 4
+
+**[2026-01-23] Circuit Breaker 계속 OPEN 상태**
+- **증상**: Circuit Breaker가 계속 OPEN이고 HALF_OPEN으로 전환 안됨
+- **발생 위치**: Canary Deployment
+- **근본 원인 (RCA)**:
+  - v2 규칙에 버그가 있어서 테스트 요청도 계속 실패
+  - HALF_OPEN → 실패 → 다시 OPEN 순환
+- **최종 해결책**:
+  ```bash
+  # 1. 즉시 롤백
+  POST /api/v1/deployments/{id}/rollback
+
+  # 2. v2 규칙 디버그
+  POST /api/v1/rulesets/{ruleset_id}/test
+  {"input": {...}}
+
+  # 3. 규칙 수정 후 재배포
+  ```
+- **참고**: `docs/guides/CANARY_DEPLOYMENT_GUIDE.md` 트러블슈팅 섹션 5
+
+#### 📊 Materialized Views
+
+**[2026-01-23] MV 리프레시 실패 (UNIQUE INDEX 없음)**
+- **에러**: `ERROR: cannot refresh materialized view concurrently without a unique index`
+- **발생 위치**: MV Refresh 스케줄러
+- **근본 원인 (RCA)**:
+  - CONCURRENTLY 옵션은 UNIQUE INDEX 필수
+  - 마이그레이션 미적용 또는 인덱스 삭제됨
+- **최종 해결책**:
+  ```sql
+  -- 인덱스 재생성
+  CREATE UNIQUE INDEX idx_mv_defect_trend_pk
+  ON bi.mv_defect_trend(tenant_id, date, line_code);
+
+  CREATE UNIQUE INDEX idx_mv_oee_daily_pk
+  ON bi.mv_oee_daily(tenant_id, date, line_code);
+
+  CREATE UNIQUE INDEX idx_mv_line_performance_pk
+  ON bi.mv_line_performance(tenant_id, line_code);
+
+  CREATE UNIQUE INDEX idx_mv_quality_summary_pk
+  ON bi.mv_quality_summary(tenant_id, date);
+  ```
+- **참고**: `docs/guides/MV_MANAGEMENT_GUIDE.md` 트러블슈팅 섹션 1
+
+**[2026-01-23] MV 리프레시 느림 (60초 이상)**
+- **증상**: `mv_refresh_duration_seconds > 60`
+- **발생 위치**: MV Refresh
+- **근본 원인 (RCA)**:
+  1. 원본 테이블 통계 오래됨 (VACUUM ANALYZE 필요)
+  2. 원본 테이블 데이터 급증
+  3. CONCURRENTLY 오버헤드
+- **최종 해결책**:
+  ```sql
+  -- 1. VACUUM ANALYZE 실행
+  VACUUM ANALYZE analytics.fact_daily_defect;
+  VACUUM ANALYZE analytics.fact_daily_production;
+
+  -- 2. 원본 테이블 인덱스 확인
+  SELECT * FROM pg_indexes
+  WHERE tablename IN ('fact_daily_defect', 'fact_daily_production');
+
+  -- 3. 데이터 보관 기간 단축 (필요시)
+  -- 마이그레이션 수정: 90일 → 60일
+  ```
+- **참고**: `docs/guides/MV_MANAGEMENT_GUIDE.md` 트러블슈팅 섹션 2
+
+**[2026-01-23] 대시보드에 최신 데이터 안 보임**
+- **증상**: 5분 전에 발생한 불량이 대시보드에 표시 안됨
+- **발생 위치**: Dashboard 페이지
+- **근본 원인 (RCA)**:
+  - **정상 동작입니다!**
+  - MV는 30분마다 리프레시됨
+  - 최신 데이터는 다음 리프레시까지 대기
+- **해결 옵션**:
+  ```bash
+  # 옵션 1: 수동 리프레시 (즉시)
+  REFRESH MATERIALIZED VIEW CONCURRENTLY bi.mv_defect_trend;
+
+  # 옵션 2: 주기 단축 (15분)
+  # scheduler_service.py 수정 필요
+
+  # 옵션 3: 실시간 쿼리 (MV 우회)
+  SELECT * FROM analytics.fact_daily_defect
+  WHERE date = CURRENT_DATE;
+  ```
+- **참고**: `docs/guides/MV_MANAGEMENT_GUIDE.md` 트러블슈팅 섹션 3
+
+---
+
+## 🚫 Known Anti-Patterns (반복 금지)
+
+이 섹션에는 **2회 이상 실패한 해결책**을 기록하여 재시도를 방지합니다.
+
+### Learning Pipeline
+- ❌ **샘플 부족 시 min_samples를 5 미만으로 낮추기** → Decision Tree가 과적합됨
+- ❌ **F1 Score 낮을 때 max_depth를 20 이상으로 늘리기** → 과적합, 일반화 불가
+
+### Canary Deployment
+- ❌ **Circuit Breaker OPEN 상태에서 재시도** → 계속 OPEN 유지
+- ❌ **Sticky Session 무시하고 강제 재할당** → A/B 테스트 무효화
+
+### Materialized Views
+- ❌ **CONCURRENTLY 없이 REFRESH** → 읽기 차단, 사용자 경험 저하
+- ❌ **리프레시 주기를 5분 이하로 단축** → DB CPU 과부하
+
 ---
 
 ## 📝 Notes
@@ -275,3 +518,4 @@
 - 에러 수정 전에 반드시 이 파일을 먼저 확인할 것
 - 동일 에러가 2회 실패 시 즉시 작업 중단 후 사용자에게 보고
 - 성공한 해결책은 "Common Issues & Solutions" 섹션에 정리
+- Learning Pipeline, Canary, MV 관련 상세 가이드는 각 전용 문서 참조
