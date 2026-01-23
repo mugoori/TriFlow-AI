@@ -9,7 +9,8 @@
 ## 목차
 
 1. [개요](#개요)
-2. [빠른 시작](#빠른-시작)
+2. [인증](#인증)
+3. [빠른 시작](#빠른-시작)
 3. [배포 라이프사이클](#배포-라이프사이클)
 4. [Sticky Session](#sticky-session)
 5. [자동 롤백](#자동-롤백)
@@ -30,6 +31,25 @@ Canary Deployment는 **새 규칙 버전을 소수 사용자에게 먼저 배포
 - ✅ **Circuit Breaker**: 장애 전파 방지
 - ✅ **v1 vs v2 메트릭 비교**: 성능 추적
 - ✅ **보상 트랜잭션**: 롤백 시 데이터 정합성
+
+---
+
+## 인증
+
+모든 API 호출 시 **Authorization 헤더** 필요합니다.
+
+### 로그인 및 토큰 발급
+
+```bash
+# 로그인
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"email\": \"admin@triflow.ai\", \"password\": \"admin123\"}"
+
+# 응답에서 access_token 저장
+# 이후 모든 API 호출 시:
+# -H "Authorization: Bearer {access_token}"
+```
 
 ---
 

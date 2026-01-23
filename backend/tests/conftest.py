@@ -702,3 +702,19 @@ def mock_meta_router_bi():
 
     with patch("app.routers.agents.orchestrator", mock_orchestrator):
         yield
+
+
+# ============ E2E Test Fixtures ============
+
+@pytest.fixture
+def test_tenant_id():
+    """테스트용 Tenant ID."""
+    from uuid import uuid4
+    return uuid4()
+
+
+@pytest.fixture
+def test_user_id():
+    """테스트용 User ID."""
+    from uuid import uuid4
+    return uuid4()

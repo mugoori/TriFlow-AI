@@ -9,7 +9,8 @@
 ## 목차
 
 1. [개요](#개요)
-2. [Sample Curation](#1-sample-curation)
+2. [인증](#인증)
+3. [Sample Curation](#1-sample-curation)
 3. [Rule Extraction](#2-rule-extraction)
 4. [Golden Sample Sets](#3-golden-sample-sets)
 5. [전체 워크플로우](#4-전체-워크플로우)
@@ -44,6 +45,37 @@ Trust Model 연동
 - **자동 샘플 추출**: 매시간 자동 실행 (스케줄러)
 - **Golden Sets 업데이트**: 품질 점수 기준 자동 선정
 - **품질 점수 계산**: rating × confidence × recency 자동 계산
+
+---
+
+## 인증
+
+모든 API 호출 시 **Authorization 헤더** 필요합니다.
+
+### 로그인
+
+```bash
+# 1. 로그인
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"email\": \"admin@triflow.ai\", \"password\": \"admin123\"}"
+
+# 응답에서 access_token 저장
+# → "access_token": "eyJhbGci..."
+```
+
+### API 호출 시 토큰 사용
+
+```bash
+# 모든 API 요청에 헤더 추가
+-H "Authorization: Bearer {access_token}"
+```
+
+**예시**:
+```bash
+curl http://localhost:8000/api/v1/samples/stats \
+  -H "Authorization: Bearer eyJhbGci..."
+```
 
 ---
 
