@@ -141,6 +141,3 @@ docs/
 
 # Claude Code session files
 .claude/
-
-# Session task tracking
-TASKS.md

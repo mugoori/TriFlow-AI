@@ -56,6 +56,7 @@ class BaseAgent(ABC):
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.client = Anthropic(api_key=settings.anthropic_api_key)
+        self._current_context = None  # 도구 실행 시 context 접근용
 
         # 초기화 시 모델 로깅 (context 없이 기본값)
         initial_model = self.get_model()
@@ -159,6 +160,48 @@ class BaseAgent(ABC):
         """
         pass
 
+    def _ensure_required_context(
+        self, tool_name: str, tool_input: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        필수 컨텍스트 파라미터 자동 주입
+
+        AI가 도구 호출 시 tenant_id, user_id 등을 생략하더라도
+        백엔드에서 자동으로 주입하여 멀티테넌트 보안을 보장합니다.
+
+        Args:
+            tool_name: 실행할 Tool 이름
+            tool_input: Tool 입력 파라미터 (원본)
+
+        Returns:
+            필수 파라미터가 주입된 tool_input
+        """
+        context = self._current_context or {}
+
+        # 공통 필수 필드 (대부분의 도구에서 필요)
+        common_fields = ["tenant_id"]
+
+        # 도구별 추가 필수 필드
+        extra_fields = {
+            "manage_stat_cards": ["user_id"],
+            "analyze_rank": [],
+            "analyze_predict": [],
+            "analyze_what_if": [],
+        }
+
+        # 주입할 필드 목록 계산
+        required = common_fields + extra_fields.get(tool_name, [])
+
+        for field in required:
+            if field not in tool_input and field in context:
+                tool_input[field] = context[field]
+                logger.info(f"[{self.name}] Auto-injected {field}={context[field]} into {tool_name}")
+            elif field not in tool_input and field == "tenant_id":
+                # tenant_id가 없으면 경고 (보안 중요)
+                logger.warning(f"[{self.name}] Missing {field} for {tool_name} - not in context either")
+
+        return tool_input
+
     def run(
         self,
         user_message: str,
@@ -186,7 +229,21 @@ class BaseAgent(ABC):
             }
         """
         context = context or {}
+        self._current_context = context  # 도구 실행 시 context 접근 가능하도록 저장
 
+        try:
+            return self._run_internal(user_message, context, max_iterations, tool_choice)
+        finally:
+            self._current_context = None  # 정리
+
+    def _run_internal(
+        self,
+        user_message: str,
+        context: Dict[str, Any],
+        max_iterations: int,
+        tool_choice: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """실제 에이전트 실행 로직 (내부 메서드)"""
         # 대화 이력이 있으면 messages에 포함
         messages = []
         conversation_history = context.get("conversation_history", [])
@@ -272,7 +329,11 @@ class BaseAgent(ABC):
                             tool_use_id = block.id
 
                             logger.info(f"[{self.name}] Executing tool: {tool_name}")
-                            logger.debug(f"[{self.name}] Tool input: {tool_input}")
+                            logger.debug(f"[{self.name}] Tool input (before injection): {tool_input}")
+
+                            # 필수 컨텍스트 파라미터 자동 주입
+                            tool_input = self._ensure_required_context(tool_name, tool_input)
+                            logger.debug(f"[{self.name}] Tool input (after injection): {tool_input}")
 
                             try:
                                 result = self.execute_tool(tool_name, tool_input)

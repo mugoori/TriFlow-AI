@@ -11,6 +11,7 @@ export interface ToolCall {
 export interface AgentResponse {
   response: string;
   agent_name: string;
+  model?: string;
   tool_calls: ToolCall[];
   iterations: number;
   routing_info?: Record<string, any>;
@@ -75,6 +76,7 @@ export interface SSEEvent {
   content?: string;
   tool_calls?: Array<{ tool: string; input: Record<string, any> }>;
   agent_name?: string;
+  model?: string;
   iterations?: number;
   // 워크플로우 이벤트 관련 필드
   workflow?: {

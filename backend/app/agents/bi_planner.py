@@ -54,6 +54,23 @@ class BIPlannerAgent(BaseAgent):
             logger.warning(f"Prompt file not found: {prompt_path}, using default")
             base_prompt = "You are a BI Planner Agent for TriFlow AI."
 
+        # 사용자 컨텍스트 정보 주입 (tenant_id, user_id)
+        # 참고: tenant_id/user_id는 백엔드에서 자동 주입됨 (AI가 생략해도 OK)
+        user_context = ""
+        if context:
+            tenant_id = context.get('tenant_id')
+            user_id = context.get('user_id')
+            if tenant_id or user_id:
+                user_context = f"""## 현재 사용자 컨텍스트
+
+- **tenant_id**: `{tenant_id or 'N/A'}`
+- **user_id**: `{user_id or 'N/A'}`
+
+(참고: 도구 호출 시 tenant_id/user_id는 시스템이 자동으로 주입합니다)
+
+---
+"""
+
         # 컨텍스트 힌트 생성
         context_hint = ""
         if context:
@@ -98,11 +115,11 @@ class BIPlannerAgent(BaseAgent):
 ---
 """
 
-            # 최종 프롬프트 조합
-            return f"{context_hint}{trigger_section}\n{base_prompt}\n\n{domain_schemas}"
+            # 최종 프롬프트 조합 (user_context를 맨 앞에 배치)
+            return f"{user_context}{context_hint}{trigger_section}\n{base_prompt}\n\n{domain_schemas}"
         except Exception as e:
             logger.error(f"Failed to generate dynamic prompt, using base prompt only: {e}")
-            return f"{context_hint}{base_prompt}"
+            return f"{user_context}{context_hint}{base_prompt}"
 
     def _generate_keyword_table(self) -> str:
         """도메인 키워드 테이블 생성"""

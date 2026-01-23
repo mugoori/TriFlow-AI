@@ -58,11 +58,16 @@ async def chat_with_agent(
 
         # 사용자 역할 정보 전달 (인증된 경우)
         user_role = None
+        tenant_id = request.tenant_id  # 기본값: 요청에서 전달된 tenant_id
         if current_user:
             user_role = current_user.role
             context["user_id"] = str(current_user.user_id)
             context["user_email"] = current_user.email
-            logger.info(f"Authenticated user: {current_user.email} (role: {user_role})")
+            # 인증된 사용자의 tenant_id 사용 (요청값보다 우선)
+            if current_user.tenant_id:
+                tenant_id = str(current_user.tenant_id)
+                context["tenant_id"] = tenant_id
+            logger.info(f"Authenticated user: {current_user.email} (role: {user_role}, tenant: {tenant_id})")
 
         # DB Session을 context에 추가 (DomainRegistry 필터링용)
         context["db"] = db
@@ -76,7 +81,7 @@ async def chat_with_agent(
                 orchestrator.process,
                 message=request.message,
                 context=context,
-                tenant_id=request.tenant_id,
+                tenant_id=tenant_id,
                 user_role=user_role,
             )
         )
@@ -227,7 +232,7 @@ async def stream_chat_response(
                 user_role=user_role,
             )
         )
-        logger.debug(f"[SSE] Orchestrator returned: agent={result.get('agent_name')}, response_length={len(result.get('response', ''))}")
+        logger.info(f"[SSE] Orchestrator returned: agent={result.get('agent_name')}, model={result.get('model')}, response_length={len(result.get('response', ''))}")
 
         target_agent_name = result.get("agent_name", "MetaRouterAgent")
         routing_info = result.get("routing_info", {})
@@ -340,18 +345,28 @@ async def chat_stream(
     if request.conversation_history:
         history = [msg.model_dump() for msg in request.conversation_history]
 
-    # 사용자 역할 정보
-    user_role = current_user.role if current_user else None
+    # 사용자 역할 및 tenant_id 정보
+    user_role = None
+    tenant_id = request.tenant_id  # 기본값: 요청에서 전달된 tenant_id
+    context = request.context or {}
+
     if current_user:
-        logger.info(f"[SSE Endpoint] Stream authenticated user: {current_user.email} (role: {user_role})")
+        user_role = current_user.role
+        context["user_id"] = str(current_user.user_id)
+        context["user_email"] = current_user.email
+        # 인증된 사용자의 tenant_id 사용 (요청값보다 우선)
+        if current_user.tenant_id:
+            tenant_id = str(current_user.tenant_id)
+            context["tenant_id"] = tenant_id
+        logger.info(f"[SSE Endpoint] Stream authenticated user: {current_user.email} (role: {user_role}, tenant: {tenant_id})")
     else:
         logger.warning("[SSE Endpoint] No authenticated user (anonymous request)")
 
     return StreamingResponse(
         stream_chat_response(
             message=request.message,
-            context=request.context or {},
-            tenant_id=request.tenant_id,
+            context=context,
+            tenant_id=tenant_id,
             conversation_history=history,
             user_role=user_role,
         ),

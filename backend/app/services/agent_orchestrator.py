@@ -264,6 +264,7 @@ class AgentOrchestrator:
         # 4. 일반 응답
         # 사용된 모델 정보 가져오기
         used_model = agent.get_model(merged_context)
+        logger.info(f"[Orchestrator] Agent {agent.name} used model: {used_model}")
         return self._format_response(
             result=result,
             agent_name=agent.name,
@@ -401,14 +402,24 @@ class AgentOrchestrator:
             if any(kw in msg_lower for kw in ruleset_keywords):
                 return {"type": "tool", "name": "create_ruleset"}
 
-        # BI: 분석 요청 시 반드시 Tool 호출 (차트 생성 강제)
+        # BI: 데이터 질의 시 반드시 Tool 호출 강제
         if target_agent == "bi":
-            analysis_keywords = [
-                "분석", "조회", "보여", "차트", "그래프", "추이", "데이터",
-                "센서", "온도", "압력", "생산", "불량", "통계", "트렌드",
+            # 데이터 질의 키워드 (자연어 패턴 포함)
+            data_query_keywords = [
+                # 한국어 동사형 패턴
+                "알려", "보여", "찾아", "검색", "조회",
+                "몇 개", "몇 건", "목록", "리스트",
+                # 분석 관련
+                "분석", "차트", "그래프", "추이", "데이터", "통계", "트렌드",
+                # 센서/생산 데이터
+                "센서", "온도", "압력", "생산", "불량",
+                # 한국바이오팜 도메인
+                "레시피", "제품", "원료", "배합", "비타민", "제형",
+                # 영문
                 "analyze", "show", "chart", "graph", "data", "trend",
             ]
-            if any(kw in msg_lower for kw in analysis_keywords):
+            if any(kw in msg_lower for kw in data_query_keywords):
+                logger.info(f"[Orchestrator] BI data query detected - forcing tool usage")
                 return {"type": "any"}  # 반드시 Tool 호출
 
         return None
@@ -590,6 +601,7 @@ class AgentOrchestrator:
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """응답 포맷팅"""
+        logger.debug(f"[Orchestrator] _format_response called with model={model}")
         # BIPlannerAgent 등에서 구조화된 response_data 추출
         response_data = self._extract_response_data(result, agent_name)
 
