@@ -10,9 +10,8 @@ import {
   CheckCircle,
   XCircle,
   Eye,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
+import { Pagination } from '@/components/ui/Pagination';
 import {
   sampleService,
   Sample,
@@ -120,8 +119,6 @@ export function SampleListCard({ onSelectSample, onRefresh }: SampleListCardProp
       console.error('Failed to reject sample:', err);
     }
   };
-
-  const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -311,32 +308,12 @@ export function SampleListCard({ onSelectSample, onRefresh }: SampleListCardProp
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            {total}개 중 {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <span className="text-sm text-gray-600 dark:text-gray-300">
-              {page} / {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
