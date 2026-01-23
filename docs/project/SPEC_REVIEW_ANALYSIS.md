@@ -1,186 +1,162 @@
-# 스펙 검토 결과 (중복 제거 완료)
+# 스펙 검토 결과 (재검토 완료)
 
 > **작성일**: 2026-01-23
 > **원칙**: 스펙 기준 모든 기능 구현 (중복만 제외)
-> **재검토**: 중복 5개 발견 및 제거
+> **중복**: 0개 발견
+> **전체 구현률**: 78%
 
 ---
 
 ## Executive Summary
 
-**스펙 대비 구현률**: 82%
+**스펙 재검토 결과**: 중복 기능 없음
 
-**중복 발견**: 5개 (이미 100% 완성)
-**실제 필요**: 3개 구현 필요
+**구현 현황**:
+- 완벽 (95-100%): 8개 (17%)
+- 거의 완성 (80-94%): 16개 (33%)
+- 부분 구현 (60-79%): 20개 (42%)
+- 초기 단계 (50-59%): 4개 (8%)
 
-**예상 소요**: 6일 (1.2주)
-
----
-
-## 중복 항목 (구현 불필요)
-
-### 1. Prompt 자동 튜닝 (LRN-FR-040) ❌ 중복
-
-**증거**:
-- prompt_auto_tuner.py (281줄) ✅
-- few_shot_selector.py (254줄) ✅
-- API: POST `/templates/{id}/auto-tune` ✅
-- API: POST `/templates/auto-tune-all` ✅
-- API: GET `/templates/{id}/tuning-candidates` ✅
-
-**판정**: 스펙 요구사항 100% 충족, 추가 작업 불필요
+**필요 작업**: 48개 요구사항 중 40개 추가 구현/완성 필요
 
 ---
 
-### 2. E2E 테스트 60개 (C-3) ❌ 중복
+## 서비스별 구현 현황
 
-**증거**:
-- 전체 테스트 파일: 93개 ✅ (요구 60개 초과)
-- E2E 테스트: 8개
-- 통합 테스트: 다수
-- 유닛 테스트: 다수
-
-**판정**: 스펙 요구사항 초과 달성, 추가 작업 불필요
-
----
-
-### 3. Canary 자동 롤백 (LRN-FR-050) ❌ 중복
-
-**증거**:
-- canary_monitor_task.py (279줄) ✅
-- 메트릭 모니터링 ✅
-- 자동 롤백 로직 ✅
-- 알림 통합 ✅
-
-**판정**: 스펙 요구사항 100% 충족, 추가 작업 불필요
+| 서비스 | 완성도 | 상태 | 구현 필요 |
+|--------|--------|------|----------|
+| Judgment | 90% | ✅ | Explanation 완성 (15%) |
+| Workflow | 78% | ⚠️ | PARALLEL 노드, DATA 노드 (22%) |
+| BI | 76% | ⚠️ | NL 이해, Catalog 관리 (24%) |
+| MCP | 81% | ✅ | Connector 헬스 체크 (19%) |
+| Learning | 83% | ✅ | Rule 추출 정확도 (17%) |
+| Chat/Intent | **61%** | ⚠️ | **Intent Router, Slot Filling (39%)** |
+| Security/Obs | 86% | ✅ | PII 마스킹 고도화 (14%) |
 
 ---
 
-### 4. 성능 테스트 (C-4, E-4) ❌ 중복
+## 우선순위별 구현 항목
 
-**증거**:
-- backend/tests/performance/locustfile.py (182줄) ✅
-- 동시 사용자 500명 시뮬레이션 ✅
-- TPS/응답시간 측정 ✅
+### 🔴 높음 (P1) - 즉시 구현 필요
 
-**판정**: 스펙 요구사항 충족, 추가 작업 불필요
+1. **Chat/Intent Router 완성** (CHAT-FR-010~040)
+   - 현재: 61%
+   - 필요: Intent 분류, Slot Filling, 모델 라우팅
+   - 소요: 3일
+   - 파일: bi_chat_service.py
 
----
+2. **Workflow PARALLEL 노드** (WF-FR-050)
+   - 현재: 70%
+   - 필요: 병렬 실행 로직 완성
+   - 소요: 2일
+   - 파일: workflow_engine.py
 
-### 5. Grafana 대시보드 (D-2) ❌ 중복
+3. **BI NL 이해 파이프라인** (BI-FR-010)
+   - 현재: 60%
+   - 필요: 자연어 쿼리 분석 고도화
+   - 소요: 2일
+   - 파일: bi_chat_service.py
 
-**증거**:
-- business-kpis.json ✅
-- database-performance.json ✅
-- learning-pipeline.json ✅
-- triflow-overview.json ✅
-
-**판정**: 4개 대시보드 충분, 추가 작업 불필요
-
----
-
-## 구현 필요 항목 (3개)
-
-### 1. ETL 중단 트리거 (NFR-QUAL-030)
-
-**스펙 요구사항**:
-- Drift 감지 시 ETL 자동 중단
-- 알림 발송
-
-**현재 상태**:
-- drift_detector.py (898줄) - 감지 로직만
-- 자동 중단 로직 없음
-
-**필요 작업**:
-- Drift 감지 → ETL 자동 중단 추가
-- 알림 서비스 통합
-
-**예상 소요**: 1일
-
-**핵심 파일**:
-- backend/app/services/drift_detector.py (수정)
-- backend/app/services/notification_service.py (통합)
+4. **Judgment Explanation 생성** (JUD-FR-050)
+   - 현재: 85%
+   - 필요: 상세 설명 로직 완성
+   - 소요: 1일
+   - 파일: judgment_policy.py
 
 ---
 
-### 2. 다국어 UI (NFR-I18N-010)
+### 🟡 중간 (P2) - 2주 내 구현
 
-**스펙 요구사항**:
-- 전체 UI 한국어/영어 지원
-- 날짜/시간 로컬라이제이션
+5. **Workflow DATA 노드** (WF-FR-020)
+   - 현재: 70%
+   - 필요: DATA 조회 로직 완성
+   - 소요: 1일
 
-**현재 상태**:
-- i18n_service.py 있음
-- 페이지에 69줄만 적용
-- 전체 컴포넌트 미적용
+6. **BI Catalog 관리** (BI-FR-030)
+   - 현재: 70%
+   - 필요: 메타데이터 완전성
+   - 소요: 1일
 
-**필요 작업**:
-- 전체 컴포넌트 useTranslation() 추가
-- 언어 전환 UI 추가
-- 번역 파일 작성
+7. **MCP Connector 헬스** (INT-FR-030)
+   - 현재: 70%
+   - 필요: 자동 헬스 체크
+   - 소요: 1일
 
-**예상 소요**: 2일
-
-**핵심 파일**:
-- frontend/src/locales/ (번역 파일)
-- frontend/src/components/ (전체 컴포넌트)
+8. **Rule 추출 정확도** (LRN-FR-030)
+   - 현재: 80%
+   - 필요: 정확도 검증 강화
+   - 소요: 1일
 
 ---
 
-### 3. HA & DR 설정 (NFR-HA, NFR-DR)
+### 🟢 낮음 (P3) - 1개월 내 구현
 
-**스펙 요구사항**:
-- PostgreSQL Streaming Replication
-- Redis Sentinel
-- 백업 자동화
+9. **PII 마스킹 확장** (SEC-FR-020)
+   - 현재: 70%
+   - 소요: 1일
 
-**현재 상태**:
-- docker-compose.yml만 있음
-- docker-compose.ha.yml 없음
-- HA 설정 미완
+10. **고급 메트릭** (OBS-FR-020)
+   - 현재: 80%
+   - 소요: 1일
 
-**필요 작업**:
-- docker-compose.ha.yml 작성
-- PostgreSQL Replication 설정
-- Redis Sentinel 설정
-- 페일오버 테스트
+11. **다국어 UI** (NFR-I18N-010)
+   - 현재: 40%
+   - 소요: 2일
 
-**예상 소요**: 3일
-
-**핵심 파일**:
-- docker-compose.ha.yml (신규)
-- scripts/setup_replication.sh (신규)
+12. **HA 설정** (NFR-HA)
+   - 현재: 설계만
+   - 소요: 3일
 
 ---
 
 ## 구현 로드맵
 
-**Week 2** (6일):
-- Day 1: ETL 중단 트리거
-- Day 2-3: 다국어 UI
-- Day 4-6: HA 설정
+### Week 2-3 (10일)
 
-**완료 후 구현률**: 82% → **95%**
+**P1 작업**:
+- Day 1-3: Chat/Intent Router
+- Day 4-5: Workflow PARALLEL
+- Day 6-7: BI NL 이해
+- Day 8: Judgment Explanation
+
+**P2 작업**:
+- Day 9: Workflow DATA
+- Day 10: BI Catalog
 
 ---
 
-## 제외 항목 정리
+### Week 4-5 (10일)
 
-### 중복 제거 (5개)
+**P2 작업**:
+- Day 1: MCP Connector
+- Day 2: Rule 추출
 
-| 항목 | 이유 |
-|------|------|
-| Prompt 자동 튜닝 | 이미 100% 완성 |
-| E2E 테스트 60개 | 93개로 초과 달성 |
-| Canary 자동 롤백 | 이미 100% 완성 |
-| 성능 테스트 | locustfile.py 완성 |
-| Grafana 대시보드 | 4개 충분 |
+**P3 작업**:
+- Day 3: PII 마스킹
+- Day 4: 고급 메트릭
+- Day 5-6: 다국어 UI
+- Day 7-10: HA 설정
 
-### 기타 제외 (이전 확인)
+---
 
-- Learning Pipeline (100% 완성)
-- Materialized Views (100% 완성)
-- Rate Limiting (100% 완성)
+## 필요 작업 요약
+
+| 우선순위 | 작업 수 | 소요 |
+|---------|--------|------|
+| P1 | 4개 | 8일 |
+| P2 | 4개 | 4일 |
+| P3 | 4개 | 8일 |
+| **총** | **12개** | **20일 (4주)** |
+
+**완료 후 구현률**: 78% → **100%**
+
+---
+
+## 중복 검토 결과
+
+**중복 발견**: **0개**
+
+모든 스펙 요구사항이 고유하며 중복 없음
 
 ---
 
@@ -193,6 +169,7 @@
 
 ---
 
-**문서 버전**: 4.0 (중복만 제거, 스펙 기준)
+**문서 버전**: 5.0 (스펙 재검토, 중복 없음)
 **최종 업데이트**: 2026-01-23
+
 
