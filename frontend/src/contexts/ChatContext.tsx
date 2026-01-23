@@ -131,6 +131,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         conversation_history: conversationHistory,
       });
 
+      // 개발자 콘솔에 모델 정보 출력
+      console.log(`[AI Response] Agent: ${response.agent_name}, Model: ${response.model || 'unknown'}`);
+
       const assistantMessage: ChatMessage = {
         role: 'assistant',
         content: response.response,
@@ -252,6 +255,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         case 'done':
           agentName = event.agent_name || agentName;
+          // 개발자 콘솔에 모델 정보 출력
+          console.log(`[AI Response] Agent: ${agentName}, Model: ${event.model || 'unknown'}`);
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMessageId

@@ -112,6 +112,7 @@ class AgentOrchestrator:
                 result={"response": error_msg},
                 agent_name="MetaRouterAgent",
                 routing_info=routing_info,
+                model=self.meta_router.get_model(context),
             )
 
         # Step 3: Sub-Agent 실행
@@ -130,6 +131,7 @@ class AgentOrchestrator:
             result={"response": general_response},
             agent_name="MetaRouterAgent",
             routing_info=routing_info,
+            model=self.meta_router.get_model(context),
         )
 
     def _route_hybrid(
@@ -242,7 +244,8 @@ class AgentOrchestrator:
 
         # 2. 결과가 parameter_request Tool 호출인지 확인
         if self._is_parameter_request(result):
-            return self._handle_parameter_request(session_id, result, agent.name, routing_info)
+            used_model = agent.get_model(merged_context)
+            return self._handle_parameter_request(session_id, result, agent.name, routing_info, model=used_model)
 
         # 3. AI가 Tool 없이 텍스트로 되묻기를 생성한 경우 감지
         # (예: "다음 정보를 알려주세요:\n1. **Slack 채널**: ...")
@@ -259,10 +262,13 @@ class AgentOrchestrator:
                 )
 
         # 4. 일반 응답
+        # 사용된 모델 정보 가져오기
+        used_model = agent.get_model(merged_context)
         return self._format_response(
             result=result,
             agent_name=agent.name,
             routing_info=routing_info,
+            model=used_model,
         )
 
     def _generate_general_response(
@@ -422,6 +428,7 @@ class AgentOrchestrator:
         result: Dict[str, Any],
         agent_name: str,
         routing_info: Dict[str, Any],
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """파라미터 요청 처리 - 세션에 저장하고 되묻기 메시지 반환"""
         for tc in result.get("tool_calls", []):
@@ -447,9 +454,10 @@ class AgentOrchestrator:
                         result={"response": message},
                         agent_name=agent_name,
                         routing_info=routing_info,
+                        model=model,
                     )
 
-        return self._format_response(result, agent_name, routing_info)
+        return self._format_response(result, agent_name, routing_info, model=model)
 
     def _parse_user_parameters(
         self,
@@ -579,6 +587,7 @@ class AgentOrchestrator:
         result: Dict[str, Any],
         agent_name: str,
         routing_info: Optional[Dict[str, Any]] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """응답 포맷팅"""
         # BIPlannerAgent 등에서 구조화된 response_data 추출
@@ -587,6 +596,7 @@ class AgentOrchestrator:
         return {
             "response": result.get("response", ""),
             "agent_name": agent_name,
+            "model": model,
             "tool_calls": [
                 {
                     "tool": tc["tool"],
@@ -705,9 +715,11 @@ class AgentOrchestrator:
             context=context,
         )
 
+        used_model = agent.get_model(context)
         return self._format_response(
             result=result,
             agent_name=agent.name,
+            model=used_model,
         )
 
 

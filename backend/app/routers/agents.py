@@ -84,6 +84,7 @@ async def chat_with_agent(
         return AgentResponse(
             response=result["response"],
             agent_name=result["agent_name"],
+            model=result.get("model"),
             tool_calls=result["tool_calls"],
             iterations=result["iterations"],
             routing_info=result.get("routing_info"),
@@ -143,6 +144,7 @@ async def run_judgment_agent(request: JudgmentRequest):
         return AgentResponse(
             response=result["response"],
             agent_name=result["agent_name"],
+            model=result.get("model"),
             tool_calls=result["tool_calls"],
             iterations=result["iterations"],
         )
@@ -281,8 +283,9 @@ async def stream_chat_response(
             yield f"data: {json.dumps({'type': 'response_data', 'data': response_data})}\n\n"
             logger.info(f"[SSE Debug] response_data event emitted: keys={list(response_data.keys())}")
 
-        # Step 7: 완료 이벤트
-        yield f"data: {json.dumps({'type': 'done', 'agent_name': target_agent_name, 'iterations': result.get('iterations', 1)})}\n\n"
+        # Step 7: 완료 이벤트 (모델 정보 포함)
+        used_model = result.get("model")
+        yield f"data: {json.dumps({'type': 'done', 'agent_name': target_agent_name, 'model': used_model, 'iterations': result.get('iterations', 1)})}\n\n"
 
         # SSE 스트림 명시적 종료 (Tauri WebView 호환성)
         yield "data: [DONE]\n\n"

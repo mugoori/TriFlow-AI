@@ -44,6 +44,7 @@ class AgentResponse(BaseModel):
 
     response: str = Field(..., description="Agent 응답 메시지")
     agent_name: str = Field(..., description="실행된 Agent 이름")
+    model: Optional[str] = Field(default=None, description="사용된 LLM 모델")
     tool_calls: List[ToolCall] = Field(default_factory=list, description="Tool 호출 이력")
     iterations: int = Field(..., description="실행 반복 횟수")
     routing_info: Optional[Dict[str, Any]] = Field(
