@@ -5,7 +5,6 @@
 
 import { useState } from 'react';
 import {
-  X,
   CheckCircle,
   XCircle,
   FlaskConical,
@@ -17,7 +16,8 @@ import {
   Clock,
 } from 'lucide-react';
 import { RuleCandidate, ruleExtractionService, TestSample, TestResponse } from '@/services/ruleExtractionService';
-import { STATUS_LABELS, STATUS_COLORS } from '@/lib/statusConfig';
+import { BaseModal } from '@/components/ui/BaseModal';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface RuleCandidateDetailModalProps {
   candidate: RuleCandidate;
@@ -145,30 +145,85 @@ export function RuleCandidateDetailModal({
     </div>
   );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Code className="w-5 h-5 text-purple-500" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              규칙 후보 상세
-            </h2>
-            <span className={`px-2 py-0.5 text-xs rounded-full ${STATUS_COLORS[candidate.approval_status]}`}>
-              {STATUS_LABELS[candidate.approval_status]}
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  // Actions for pending candidates
+  const renderActions = () => {
+    if (candidate.approval_status !== 'pending') return undefined;
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+    if (rejecting) {
+      return (
+        <>
+          <button
+            onClick={() => {
+              setRejecting(false);
+              setRejectReason('');
+            }}
+            className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleReject}
+            disabled={!rejectReason.trim() || processing}
+            className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-red-300 transition-colors"
+          >
+            <XCircle className="w-4 h-4" />
+            {processing ? '처리 중...' : '거부 확인'}
+          </button>
+        </>
+      );
+    }
+
+    if (approving) {
+      return (
+        <>
+          <button
+            onClick={() => setApproving(false)}
+            className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleApprove}
+            disabled={processing}
+            className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-green-300 transition-colors"
+          >
+            <CheckCircle className="w-4 h-4" />
+            {processing ? '처리 중...' : '승인 확인'}
+          </button>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <button
+          onClick={() => setRejecting(true)}
+          className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+        >
+          <XCircle className="w-4 h-4" />
+          거부
+        </button>
+        <button
+          onClick={() => setApproving(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+        >
+          <CheckCircle className="w-4 h-4" />
+          승인
+        </button>
+      </>
+    );
+  };
+
+  return (
+    <BaseModal
+      onClose={onClose}
+      title="규칙 후보 상세"
+      icon={Code}
+      iconColor="text-purple-500"
+      statusBadge={<StatusBadge status={candidate.approval_status} />}
+      actions={renderActions()}
+      maxWidth="max-w-4xl"
+    >
           {/* Meta Info */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="flex items-center gap-2">
@@ -376,70 +431,7 @@ export function RuleCandidateDetailModal({
               />
             </div>
           )}
-        </div>
-
-        {/* Footer - Actions */}
-        {candidate.approval_status === 'pending' && (
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3">
-            {rejecting ? (
-              <>
-                <button
-                  onClick={() => {
-                    setRejecting(false);
-                    setRejectReason('');
-                  }}
-                  className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={handleReject}
-                  disabled={!rejectReason.trim() || processing}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-red-300 transition-colors"
-                >
-                  <XCircle className="w-4 h-4" />
-                  {processing ? '처리 중...' : '거부 확인'}
-                </button>
-              </>
-            ) : approving ? (
-              <>
-                <button
-                  onClick={() => setApproving(false)}
-                  className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={handleApprove}
-                  disabled={processing}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-green-300 transition-colors"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  {processing ? '처리 중...' : '승인 확인'}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setRejecting(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                >
-                  <XCircle className="w-4 h-4" />
-                  거부
-                </button>
-                <button
-                  onClick={() => setApproving(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  승인
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+    </BaseModal>
   );
 }
 
