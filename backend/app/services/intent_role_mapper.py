@@ -11,7 +11,6 @@ V7 Intent 체계와 5-tier RBAC를 연결합니다.
 """
 
 import logging
-from typing import Optional
 
 from app.services.rbac_service import Role, ROLE_HIERARCHY
 

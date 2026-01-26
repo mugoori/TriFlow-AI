@@ -3,7 +3,7 @@
 Experiment Repository
 실험 데이터 접근 계층
 """
-from typing import Optional, List
+from typing import List
 from uuid import UUID
 from sqlalchemy.orm import Session
 from app.models.core import Experiment

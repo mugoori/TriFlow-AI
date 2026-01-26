@@ -4,13 +4,10 @@ Few-Shot Example Selector
 Golden Sample Set에서 최적의 few-shot examples 선택
 """
 import logging
-import json
 from typing import List, Dict, Any, Set, Optional
 from uuid import UUID
-import random
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
 
 from app.models.sample import Sample, GoldenSampleSet, GoldenSampleSetMember
 

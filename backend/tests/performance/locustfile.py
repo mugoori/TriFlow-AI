@@ -12,7 +12,6 @@ Locust 성능 테스트
     locust -f tests/performance/locustfile.py --host=http://localhost:8000
     브라우저: http://localhost:8089
 """
-import json
 import random
 from uuid import uuid4
 

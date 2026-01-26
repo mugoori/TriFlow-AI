@@ -11,8 +11,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 
-from app.models import PromptTemplate, PromptTemplateBody, User
-from app.database import get_db
+from app.models import PromptTemplate, PromptTemplateBody
 
 logger = logging.getLogger(__name__)
 

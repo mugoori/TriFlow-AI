@@ -8,7 +8,7 @@ Prometheus AlertManager webhook 수신용 엔드포인트
 import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict
 
 from app.services.alert_handler import alert_handler
 

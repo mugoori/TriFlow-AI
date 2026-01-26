@@ -14,9 +14,7 @@ Create Date: 2026-01-22
 3. 실행 전 DB 백업을 권장합니다.
 """
 from alembic import op
-import sqlalchemy as sa
 from sqlalchemy import text
-from sqlalchemy.dialects import postgresql
 import os
 import sys
 import json
@@ -127,7 +125,7 @@ def upgrade():
             skipped_count += 1
             continue
 
-    print(f"\n✅ Migration completed:")
+    print("\n✅ Migration completed:")
     print(f"   - Encrypted: {encrypted_count} sources")
     print(f"   - Skipped: {skipped_count} sources")
 

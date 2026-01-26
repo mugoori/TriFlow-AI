@@ -4,7 +4,6 @@ DB 데이터를 Prometheus 메트릭으로 변환하여 Grafana 대시보드에 
 """
 import random
 import logging
-from datetime import datetime
 from sqlalchemy import text
 from app.database import SessionLocal
 from app.utils.metrics import (

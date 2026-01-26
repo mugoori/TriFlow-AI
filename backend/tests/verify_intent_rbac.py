@@ -9,7 +9,6 @@ Intent-Role 매핑이 올바르게 통합되었는지 빠르게 검증합니다.
 import sys
 from app.services.intent_role_mapper import (
     check_intent_permission,
-    get_required_role,
     get_intents_for_role,
     INTENT_ROLE_MATRIX,
 )

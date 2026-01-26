@@ -7,7 +7,7 @@
 import logging
 from pathlib import Path
 from typing import Optional, List
-from botocore.exceptions import ClientError, BotoCoreError
+from botocore.exceptions import ClientError
 
 try:
     import boto3

@@ -226,7 +226,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 app.add_middleware(MaxBodySizeMiddleware, max_body_size=200 * 1024 * 1024)
-logger.info(f"Max upload size set to 200MB")
+logger.info("Max upload size set to 200MB")
 
 # ========== 미들웨어 설정 (등록 역순으로 실행됨 - 나중에 추가된 것이 먼저 실행) ==========
 

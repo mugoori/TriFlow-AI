@@ -10,7 +10,7 @@ from uuid import UUID
 from datetime import datetime
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy import and_
 
 from app.models import JudgmentExecution, Ruleset
 from app.agents.judgment_agent import JudgmentAgent
@@ -78,7 +78,7 @@ class JudgmentReplayService:
             ruleset = self.db.query(Ruleset).get(original_execution.ruleset_id)
 
         if not ruleset:
-            raise ValueError(f"Ruleset not found")
+            raise ValueError("Ruleset not found")
 
         # 3. Judgment Agent로 재실행
         agent = JudgmentAgent()

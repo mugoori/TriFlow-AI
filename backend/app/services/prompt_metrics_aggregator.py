@@ -4,7 +4,7 @@ Prompt Metrics Aggregator
 LlmCall 로그에서 프롬프트 성능 메트릭 집계
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from uuid import UUID
 from datetime import datetime, timedelta
 

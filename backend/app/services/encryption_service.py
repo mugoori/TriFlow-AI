@@ -4,10 +4,9 @@
 """
 import os
 import base64
-import json
 import logging
 from cryptography.fernet import Fernet
-from typing import Optional, Any
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 

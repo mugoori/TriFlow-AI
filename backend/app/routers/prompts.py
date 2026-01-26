@@ -20,7 +20,6 @@ from app.services.prompt_metrics_aggregator import PromptMetricsAggregator
 from app.services.prompt_auto_tuner import get_prompt_auto_tuner
 from app.schemas.prompt import (
     PromptTemplateCreateRequest,
-    PromptTemplateUpdateRequest,
     PromptTemplateResponse,
     PromptTemplateDetailResponse,
     PromptTemplateBodyResponse,

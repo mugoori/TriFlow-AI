@@ -3,7 +3,7 @@ Prompt Auto-Tuner
 긍정 피드백 샘플을 Few-shot 예시로 자동 추가
 """
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from uuid import UUID
 from datetime import datetime, timedelta
 
@@ -14,7 +14,6 @@ from app.models import (
     PromptTemplate,
     PromptTemplateBody,
     FeedbackLog,
-    LlmCall,
 )
 
 logger = logging.getLogger(__name__)

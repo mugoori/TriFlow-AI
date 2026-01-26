@@ -154,7 +154,6 @@ async def _send_rollback_notification(
     """롤백 알림 발송"""
     try:
         # 룰셋 정보 조회
-        from app.models import Ruleset, Tenant
 
         ruleset = deployment.ruleset if hasattr(deployment, 'ruleset') else None
         tenant = deployment.tenant if hasattr(deployment, 'tenant') else None
@@ -190,7 +189,6 @@ async def _send_warning_notification(
     """경고 알림 발송"""
     try:
         # 룰셋 정보 조회
-        from app.models import Ruleset, Tenant
 
         ruleset = deployment.ruleset if hasattr(deployment, 'ruleset') else None
         tenant = deployment.tenant if hasattr(deployment, 'tenant') else None

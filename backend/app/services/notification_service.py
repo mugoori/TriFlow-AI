@@ -459,7 +459,7 @@ async def send_drift_alert(
         if len(drift_report.changes) > 5:
             message += f"\n_(... and {len(drift_report.changes) - 5} more changes)_"
 
-    message += f"\n\n:point_right: Check connector settings to acknowledge changes."
+    message += "\n\n:point_right: Check connector settings to acknowledge changes."
 
     fields = {
         "Connector": connector_name,

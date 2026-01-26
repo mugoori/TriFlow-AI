@@ -419,7 +419,7 @@ class AgentOrchestrator:
                 "analyze", "show", "chart", "graph", "data", "trend",
             ]
             if any(kw in msg_lower for kw in data_query_keywords):
-                logger.info(f"[Orchestrator] BI data query detected - forcing tool usage")
+                logger.info("[Orchestrator] BI data query detected - forcing tool usage")
                 return {"type": "any"}  # 반드시 Tool 호출
 
         return None
