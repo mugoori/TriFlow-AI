@@ -54,6 +54,49 @@ class BIDataCollector:
         self.tenant_id = tenant_id
 
     # =====================================================
+    # 0. 최신 데이터 날짜 조회
+    # =====================================================
+    async def get_latest_data_date(self) -> Optional[date]:
+        """
+        테넌트의 가장 최근 생산 데이터 날짜를 조회합니다.
+
+        Returns:
+            가장 최근 데이터 날짜 또는 None (데이터 없음)
+        """
+        query = text("""
+            SELECT MAX(date) as latest_date
+            FROM bi.fact_daily_production
+            WHERE tenant_id = :tenant_id
+        """)
+
+        result = await self.db.execute(query, {"tenant_id": str(self.tenant_id)})
+        row = result.fetchone()
+
+        if row and row.latest_date:
+            return row.latest_date
+        return None
+
+    async def get_data_date_range(self) -> tuple[Optional[date], Optional[date]]:
+        """
+        테넌트의 생산 데이터 날짜 범위를 조회합니다.
+
+        Returns:
+            (최초 날짜, 최신 날짜) 튜플 또는 (None, None)
+        """
+        query = text("""
+            SELECT MIN(date) as min_date, MAX(date) as max_date
+            FROM bi.fact_daily_production
+            WHERE tenant_id = :tenant_id
+        """)
+
+        result = await self.db.execute(query, {"tenant_id": str(self.tenant_id)})
+        row = result.fetchone()
+
+        if row:
+            return (row.min_date, row.max_date)
+        return (None, None)
+
+    # =====================================================
     # 1. 라인 메타데이터 조회
     # =====================================================
     async def get_line_metadata(self) -> list[dict]:

@@ -718,3 +718,60 @@ def test_user_id():
     """테스트용 User ID."""
     from uuid import uuid4
     return uuid4()
+
+
+@pytest_asyncio.fixture
+async def e2e_auth_headers() -> dict:
+    """
+    E2E 테스트용 인증 헤더 생성.
+
+    실제 서버(localhost:8000)에 로그인해서 토큰을 받아옵니다.
+    데모 사용자: admin@triflow.ai / admin1234
+    """
+    import httpx
+
+    tenant_id = "00000000-0000-0000-0000-000000000001"
+
+    # 실제 서버에 로그인
+    async with httpx.AsyncClient(base_url="http://localhost:8000") as client:
+        login_resp = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "admin@triflow.ai",
+                "password": "admin1234"
+            }
+        )
+
+        if login_resp.status_code == 200:
+            tokens = login_resp.json().get("tokens", {})
+            token = tokens.get("access_token")
+        else:
+            # 로그인 실패 시 직접 토큰 생성 (테스트용)
+            from app.auth.jwt import create_access_token
+            token = create_access_token(
+                data={
+                    "sub": "00000000-0000-0000-0000-000000000101",
+                    "tenant_id": tenant_id,
+                    "role": "admin",
+                    "email": "admin@triflow.ai"
+                }
+            )
+
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-ID": tenant_id
+    }
+
+
+@pytest.fixture
+def e2e_tenant_id():
+    """E2E 테스트용 고정 Tenant ID."""
+    import uuid
+    return uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+@pytest.fixture
+def e2e_user_id():
+    """E2E 테스트용 고정 User ID."""
+    import uuid
+    return uuid.UUID("00000000-0000-0000-0000-000000000101")

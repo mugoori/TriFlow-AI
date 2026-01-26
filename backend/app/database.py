@@ -185,3 +185,27 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         raise
     finally:
         await session.close()
+
+
+def get_async_engine():
+    """
+    비동기 엔진 접근 함수 (public API)
+
+    Usage:
+        from app.database import get_async_engine
+        engine = get_async_engine()
+    """
+    return _get_async_engine()
+
+
+# async_engine property for backward compatibility
+class _AsyncEngineProxy:
+    """Lazy proxy for async engine to support `from app.database import async_engine`"""
+    def __getattr__(self, name):
+        return getattr(_get_async_engine(), name)
+
+    def __call__(self, *args, **kwargs):
+        return _get_async_engine()(*args, **kwargs)
+
+
+async_engine = _AsyncEngineProxy()

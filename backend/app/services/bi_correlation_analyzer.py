@@ -93,9 +93,10 @@ class CorrelationAnalyzer:
 
         for line in production_data:
             line_code = line.get("line_code", "Unknown")
-            achievement = line.get("achievement_rate", 0)
-            defect_rate = line.get("defect_rate", 0)
-            downtime = line.get("downtime_min", 0)
+            # None 값 처리: DB에서 NULL이 반환될 수 있음
+            achievement = line.get("achievement_rate") or 0
+            defect_rate = line.get("defect_rate") or 0
+            downtime = line.get("downtime_min") or 0
 
             # 1. 달성률 저조
             if achievement < ach_yellow:
@@ -145,7 +146,7 @@ class CorrelationAnalyzer:
         # 4. 전일 대비 급격한 하락 (10% 이상)
         if comparison_data and "by_line" in comparison_data:
             for line_code, comp in comparison_data["by_line"].items():
-                vs_yesterday = comp.get("vs_yesterday_pct", 0)
+                vs_yesterday = comp.get("vs_yesterday_pct") or 0
                 if vs_yesterday < -10:
                     triggers.append(
                         AnalysisTrigger(

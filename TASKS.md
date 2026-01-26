@@ -1,5 +1,51 @@
 # Tasks & Progress
 
+## 2026-01-26: BI Chat 날짜 파싱 및 바이오팜 도메인 키워드 확장
+
+### 완료된 작업
+
+#### 1. BI Chat 날짜 파싱 기능 구현
+- **문제**: 사용자가 "2025년 12월 24일 생산 현황" 질문 시 날짜 인식 안됨
+- **해결**: 자연어 날짜 파싱 후 데이터 조회, 날짜 미지정 시 최신 데이터 날짜 자동 선택
+
+**지원 날짜 형식**:
+- 오늘, 어제, 그제
+- N일 전, N주 전, N개월 전
+- YYYY년 MM월 DD일
+- YYYY-MM-DD, YYYY/MM/DD
+
+**수정 파일**:
+- `backend/app/services/bi_chat_service.py`: `parse_date_from_message()` 함수 추가
+- `backend/app/services/bi_data_collector.py`: `get_latest_data_date()` 메서드 추가
+- `backend/app/services/bi_correlation_analyzer.py`: None 값 비교 오류 수정
+
+#### 2. async_engine 호환성 문제 해결
+- **문제**: `cannot import name 'async_engine' from 'app.database'`
+- **해결**: `_AsyncEngineProxy` 클래스 추가로 역방향 호환성 유지
+- **수정 파일**: `backend/app/database.py`
+
+#### 3. 바이오팜 도메인 키워드 확장
+- **문제**: "마그네슘", "아연" 등 성분 키워드가 MetaRouterAgent로 잘못 라우팅
+- **해결**: `modules/_registry.json`에 추가 키워드 등록
+
+**추가된 키워드**:
+```
+마그네슘, 아연, 칼슘, 철분, 오메가,
+유산균, 프로바이오틱스, 콜라겐, 히알루론산,
+루테인, 밀크씨슬, 레시피, 제품, 건강기능식품
+```
+
+### 테스트 결과
+
+| 쿼리 | Agent | 결과 |
+|------|-------|------|
+| "비타민D3 성분이 들어간 제품 목록" | BIPlannerAgent | 96개 제품 검색 |
+| "마그네슘 포함 레시피 검색" | BIPlannerAgent | 50개 제품 |
+| "아연이 들어간 제품 중 최근 5개" | BIPlannerAgent | 5개 제품 |
+| "2025년 12월 24일 생산 현황" | BI Chat | 날짜 파싱 후 데이터 조회 |
+
+---
+
 ## 2026-01-23: BI 데이터 질의 도구 강제 호출 및 tenant_id 자동 주입
 
 ### 완료된 작업

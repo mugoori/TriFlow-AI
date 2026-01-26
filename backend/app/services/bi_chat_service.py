@@ -12,7 +12,8 @@ AWS QuickSight GenBI 채팅 기능:
 
 import json
 import logging
-from datetime import date, datetime
+import re
+from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict, Any, Literal
 from uuid import UUID, uuid4
 
@@ -68,6 +69,87 @@ KPI_KEYWORD_MAPPING = {
     "생산량": "daily_production",
     "달성률": "achievement_rate",
 }
+
+
+# =====================================================
+# Date Parsing Utility
+# =====================================================
+
+def parse_date_from_message(message: str) -> Optional[date]:
+    """
+    사용자 메시지에서 날짜를 파싱합니다.
+
+    지원 형식:
+    - YYYY년 MM월 DD일 (예: 2025년 12월 24일)
+    - YYYY-MM-DD (예: 2025-12-24)
+    - YYYY/MM/DD (예: 2025/12/24)
+    - MM월 DD일 (예: 12월 24일) - 현재 연도 사용
+    - 오늘, 어제, 그제, 그저께
+    - 이번 주, 지난 주, 저번 주
+    - N일 전 (예: 3일 전)
+
+    Args:
+        message: 사용자 메시지
+
+    Returns:
+        파싱된 날짜 또는 None
+    """
+    today = date.today()
+
+    # 1. 상대적 날짜 표현
+    if "오늘" in message:
+        return today
+    if "어제" in message:
+        return today - timedelta(days=1)
+    if "그제" in message or "그저께" in message:
+        return today - timedelta(days=2)
+
+    # N일 전
+    match = re.search(r"(\d+)\s*일\s*전", message)
+    if match:
+        days_ago = int(match.group(1))
+        return today - timedelta(days=days_ago)
+
+    # 이번 주 / 지난 주 (주의 시작일 반환)
+    if "이번\s*주" in message or "이번주" in message:
+        return today - timedelta(days=today.weekday())
+    if "지난\s*주" in message or "지난주" in message or "저번\s*주" in message or "저번주" in message:
+        return today - timedelta(days=today.weekday() + 7)
+
+    # 2. YYYY년 MM월 DD일
+    match = re.search(r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일", message)
+    if match:
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            pass
+
+    # 3. YYYY-MM-DD 또는 YYYY/MM/DD
+    match = re.search(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", message)
+    if match:
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            pass
+
+    # 4. MM월 DD일 (현재 연도 사용)
+    match = re.search(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", message)
+    if match:
+        try:
+            return date(today.year, int(match.group(1)), int(match.group(2)))
+        except ValueError:
+            pass
+
+    # 5. 지난달, 이번달
+    if "지난\s*달" in message or "지난달" in message:
+        first_of_month = today.replace(day=1)
+        last_month = first_of_month - timedelta(days=1)
+        return last_month.replace(day=1)
+    if "이번\s*달" in message or "이번달" in message:
+        return today.replace(day=1)
+
+    return None
+
 
 # =====================================================
 # Pydantic Models
@@ -333,9 +415,10 @@ class BIChatService:
         # 4. 대화 히스토리 로드
         history = await self._get_conversation_history(session.session_id, limit=10)
 
-        # 5. 컨텍스트 데이터 수집
+        # 5. 컨텍스트 데이터 수집 (사용자 메시지에서 날짜 파싱)
         context_data = await self._collect_context_data(
-            tenant_id, request.context_type, request.context_id
+            tenant_id, request.context_type, request.context_id,
+            user_message=request.message
         )
 
         # 6. LLM 호출
@@ -803,33 +886,55 @@ class BIChatService:
         tenant_id: UUID,
         context_type: str,
         context_id: Optional[UUID],
+        user_message: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         고품질 인사이트를 위한 컨텍스트 데이터 수집
 
         Star Schema 기반으로 생산/품질/설비 데이터를 수집하고
         연관 분석을 수행합니다.
+
+        Args:
+            tenant_id: 테넌트 ID
+            context_type: 컨텍스트 유형
+            context_id: 컨텍스트 ID (선택)
+            user_message: 사용자 메시지 (날짜 파싱용)
         """
+        # 1. 사용자 메시지에서 날짜 파싱 시도
+        target_date = None
+        if user_message:
+            target_date = parse_date_from_message(user_message)
+            if target_date:
+                logger.info(f"[BIChat] Parsed date from message: {target_date}")
+
         context = {
             "context_type": context_type,
             "timestamp": datetime.utcnow().isoformat(),
-            "target_date": date.today().isoformat(),
         }
 
         try:
             # 비동기 DB 세션 생성
-            from app.database import async_engine
-            async_session = sessionmaker(
-                async_engine, class_=AsyncSession, expire_on_commit=False
-            )
+            from app.database import get_async_session
 
-            async with async_session() as db:
+            async with get_async_session() as db:
                 # 1. DataCollector로 Star Schema 데이터 수집
                 collector = BIDataCollector(db, tenant_id)
 
+                # 2. 날짜가 없으면 최신 데이터 날짜 사용
+                if target_date is None:
+                    target_date = await collector.get_latest_data_date()
+                    if target_date:
+                        logger.info(f"[BIChat] Using latest data date: {target_date}")
+                    else:
+                        # 데이터가 없으면 오늘 날짜 사용
+                        target_date = date.today()
+                        logger.info(f"[BIChat] No data found, using today: {target_date}")
+
+                context["target_date"] = target_date.isoformat()
+
                 # 종합 컨텍스트 수집
                 bi_context = await collector.collect_insight_context(
-                    target_date=date.today(),
+                    target_date=target_date,
                     include_trends=True,
                 )
 
@@ -841,14 +946,14 @@ class BIChatService:
                 context["comparison"] = bi_context.get("comparison", {})
                 context["trend_data"] = bi_context.get("trend_data", [])
 
-                # 2. CorrelationAnalyzer로 연관 분석 수행
+                # 3. CorrelationAnalyzer로 연관 분석 수행
                 analyzer = CorrelationAnalyzer(db, tenant_id)
 
                 correlation_result = await analyzer.run_correlation_analysis(
                     production_data=context["production_data"],
                     comparison_data=context["comparison"],
                     thresholds=context["thresholds"],
-                    target_date=date.today(),
+                    target_date=target_date,
                 )
 
                 context["correlation_analysis"] = correlation_result
@@ -1502,9 +1607,10 @@ async def stream_bi_chat_response(
         # 4. 대화 히스토리 로드
         history = await chat_service._get_conversation_history(session.session_id, limit=10)
 
-        # 5. 컨텍스트 데이터 수집
+        # 5. 컨텍스트 데이터 수집 (사용자 메시지에서 날짜 파싱)
         context_data = await chat_service._collect_context_data(
-            tenant_id, request.context_type, request.context_id
+            tenant_id, request.context_type, request.context_id,
+            user_message=request.message
         )
 
         # Event: thinking
