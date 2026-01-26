@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:1420,http://localhost:5173,http://localhost:3000"
     cors_allow_credentials: bool = True
 
+    # Tenant
+    default_tenant_name: str = "Default"
+
+    # Alert
+    alert_email_recipients: str = ""  # 콤마로 구분된 이메일 목록 (예: "admin@company.com,ops@company.com")
+
     # Logging
     log_level: str = "INFO"
     log_format: str = "json"

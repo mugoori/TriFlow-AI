@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models import Tenant, User
 from app.auth.password import get_password_hash
 from app.database import engine
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ USE_ALEMBIC_MIGRATION = os.getenv("USE_ALEMBIC_MIGRATION", "true").lower() == "t
 # 환경변수에서 Admin 계정 정보 로드 (기본값 제공)
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@triflow.ai")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin1234")
-DEFAULT_TENANT_NAME = os.getenv("DEFAULT_TENANT_NAME", "Default")
+DEFAULT_TENANT_NAME = settings.default_tenant_name
 
 
 def init_database(db: Session) -> None:

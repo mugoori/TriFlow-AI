@@ -1,5 +1,79 @@
 # Tasks & Progress
 
+## 2026-01-26: 하드코딩 제거 및 설정값 통일
+
+### 완료된 작업
+
+#### 1. 테넌트 이름 불일치 버그 수정
+- **문제**: `"Default"` vs `"Default Tenant"` 혼용으로 인한 멀티테넌트 버그 가능성
+- **해결**: 모든 테넌트 이름을 `settings.default_tenant_name`으로 통일
+
+**수정 파일 (10곳)**:
+- `backend/app/config.py`: `default_tenant_name: str = "Default"` 설정 추가
+- `backend/app/init_db.py`: 환경변수 → settings 사용
+- `backend/app/routers/auth.py`: 4곳 수정
+- `backend/app/routers/sensors.py`, `rulesets.py`, `feedback.py`, `workflows.py`
+- `backend/app/agents/learning_agent.py`: 2곳 수정
+
+#### 2. LLM 모델명 폴백값 통일
+- **문제**: `or "claude-sonnet-4-5-20250929"` 하드코딩이 여러 곳에 산재
+- **해결**: `settings.default_llm_model` 사용으로 통일
+
+**수정 파일 (6곳)**:
+- `backend/app/agents/base_agent.py`
+- `backend/app/services/bi_chat_service.py`
+- `backend/app/services/insight_service.py`
+- `backend/app/services/judgment_policy.py`
+- `backend/app/services/story_service.py`
+- `backend/app/services/settings_service.py`
+
+#### 3. 알림 이메일 수신자 설정화
+- **문제**: `["admin@example.com"]` 하드코딩
+- **해결**: `settings.alert_email_recipients` 환경변수 사용
+
+**수정 파일**:
+- `backend/app/config.py`: `alert_email_recipients: str = ""` 설정 추가
+- `backend/app/services/alert_handler.py`: 동적 이메일 목록 로드
+
+#### 4. 매직 넘버 상수화
+- **audit_service.py**:
+  - `MAX_LIST_ITEMS = 100`
+  - `MAX_STRING_LENGTH = 1000`
+  - `TRUNCATED_STRING_LENGTH = 500`
+- **judgment_policy.py**: `DEFAULT_CONFIDENCE = 0.75`
+- **bi_chat_service.py**: `DEFAULT_CONFIDENCE = 0.5`
+- **learning_agent.py**: `DEFAULT_CONFIDENCE = 0.75`
+
+#### 5. LLM 가격 정보 주석 개선
+- `backend/app/utils/metrics.py`: 출처 및 업데이트 날짜 추가
+
+### 수정 파일 목록 (총 17개)
+
+| 카테고리 | 파일 |
+|---------|------|
+| 설정 | `config.py` |
+| 에이전트 | `base_agent.py`, `learning_agent.py` |
+| 서비스 | `bi_chat_service.py`, `insight_service.py`, `judgment_policy.py`, `story_service.py`, `settings_service.py`, `alert_handler.py`, `audit_service.py` |
+| 라우터 | `auth.py`, `sensors.py`, `rulesets.py`, `feedback.py`, `workflows.py` |
+| 유틸 | `metrics.py` |
+| 초기화 | `init_db.py` |
+
+### 검증 완료
+- ✅ 17개 모듈 임포트 테스트 통과
+- ✅ 서버 시작 확인 (345개 라우트 등록)
+- ✅ DB 테넌트 확인 (Default 테넌트 정상)
+- ✅ API 테스트 8개 엔드포인트 통과
+  - Auth Login, Auth Me, Workflows, Rulesets
+  - Feedback, Settings, Users, Audit Logs
+
+### 추가된 환경변수
+```env
+DEFAULT_TENANT_NAME=Default        # 기본값: "Default"
+ALERT_EMAIL_RECIPIENTS=            # 콤마 구분, 빈값=이메일 미발송
+```
+
+---
+
 ## 2026-01-26: BI Chat 날짜 파싱 및 바이오팜 도메인 키워드 확장
 
 ### 완료된 작업

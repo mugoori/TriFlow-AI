@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
+from app.config import settings
 from app.database import get_db
 from app.models import FeedbackLog, Tenant
 from app.services.rbac_service import (
@@ -74,7 +75,7 @@ def _get_default_tenant(db: Session) -> Tenant:
     if not tenant:
         tenant = Tenant(
             tenant_id=uuid4(),
-            name="Default Tenant",
+            name=settings.default_tenant_name,
             is_active=True,
         )
         db.add(tenant)

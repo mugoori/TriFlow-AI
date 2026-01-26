@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.config import settings
 from app.database import get_db
 from app.models import Workflow, WorkflowInstance
 from app.services.rbac_service import (
@@ -858,7 +859,7 @@ async def create_workflow(
     if not tenant:
         # Default tenant 생성
         tenant = Tenant(
-            name="Default Tenant",
+            name=settings.default_tenant_name,
             slug="default",
             settings={},
         )
@@ -2182,7 +2183,6 @@ async def subscribe_workflow_events(
 
     try:
         from app.services.redis_client import get_redis_client
-        import json
 
         # Redis 연결
         redis_client = await get_redis_client()

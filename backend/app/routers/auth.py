@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import User, Tenant
 from app.auth.password import verify_password, get_password_hash
@@ -127,11 +128,11 @@ async def register(
     tenant_id = request.tenant_id
     if not tenant_id:
         # 기본 테넌트 조회 또는 생성
-        default_tenant = db.query(Tenant).filter(Tenant.name == "Default").first()
+        default_tenant = db.query(Tenant).filter(Tenant.name == settings.default_tenant_name).first()
         if not default_tenant:
             default_tenant = Tenant(
                 tenant_id=uuid4(),
-                name="Default",
+                name=settings.default_tenant_name,
                 slug="default",
             )
             db.add(default_tenant)
@@ -378,11 +379,11 @@ async def google_callback(
             is_new_user = True
 
             # 기본 테넌트 조회 또는 생성
-            default_tenant = db.query(Tenant).filter(Tenant.name == "Default").first()
+            default_tenant = db.query(Tenant).filter(Tenant.name == settings.default_tenant_name).first()
             if not default_tenant:
                 default_tenant = Tenant(
                     tenant_id=uuid4(),
-                    name="Default",
+                    name=settings.default_tenant_name,
                     slug="default",
                 )
                 db.add(default_tenant)

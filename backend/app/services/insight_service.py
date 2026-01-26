@@ -105,7 +105,7 @@ class InsightService:
             "default_llm_model",
             tenant_id=str(tenant_id) if tenant_id else None
         )
-        return model or settings.default_llm_model or "claude-sonnet-4-5-20250929"
+        return model or settings.default_llm_model
 
     @handle_service_errors(resource="insight", operation="generate")
     async def generate_insight(

@@ -11,10 +11,14 @@ from pathlib import Path
 
 
 from .base_agent import BaseAgent
+from app.config import settings
 from app.database import get_db_context
 from app.models.core import FeedbackLog, ProposedRule, JudgmentExecution, Tenant, Ruleset
 
 logger = logging.getLogger(__name__)
+
+# 기본 신뢰도 값 (새 규칙 제안 시 기본값)
+DEFAULT_CONFIDENCE = 0.75
 
 
 class LearningAgent(BaseAgent):
@@ -498,14 +502,14 @@ class LearningAgent(BaseAgent):
             )
 
             # 신뢰도 계산 (MVP: 기본값)
-            confidence = 0.75
+            confidence = DEFAULT_CONFIDENCE
 
             with get_db_context() as db:
                 # 기본 테넌트 조회 또는 생성
                 tenant = db.query(Tenant).first()
                 if not tenant:
                     tenant = Tenant(
-                        name="Default Tenant",
+                        name=settings.default_tenant_name,
                         slug="default",
                         settings={},
                     )
@@ -994,11 +998,11 @@ result
 
             with get_db_context() as db:
                 # 기본 테넌트 조회
-                default_tenant = db.query(Tenant).filter(Tenant.name == "Default").first()
+                default_tenant = db.query(Tenant).filter(Tenant.name == settings.default_tenant_name).first()
                 if not default_tenant:
                     return {
                         "success": False,
-                        "error": "Default tenant not found",
+                        "error": f"{settings.default_tenant_name} tenant not found",
                     }
 
                 ruleset = Ruleset(

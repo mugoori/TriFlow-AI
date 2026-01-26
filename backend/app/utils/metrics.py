@@ -232,19 +232,21 @@ active_alerts_count = Gauge(
 
 # ========== Helper Functions ==========
 
-# Claude Sonnet 토큰 가격 (USD, 2024년 기준)
+# LLM 토큰 가격 (USD per token)
+# 출처: https://www.anthropic.com/pricing
+# 마지막 업데이트: 2025-01
 LLM_PRICING = {
     "claude-sonnet-4-5-20250929": {
         "input": 0.003 / 1000,   # $3 per 1M tokens
         "output": 0.015 / 1000,  # $15 per 1M tokens
     },
     "claude-3-5-sonnet-20241022": {
-        "input": 0.003 / 1000,
-        "output": 0.015 / 1000,
+        "input": 0.003 / 1000,   # $3 per 1M tokens
+        "output": 0.015 / 1000,  # $15 per 1M tokens
     },
     "claude-3-haiku-20240307": {
-        "input": 0.00025 / 1000,
-        "output": 0.00125 / 1000,
+        "input": 0.00025 / 1000,  # $0.25 per 1M tokens
+        "output": 0.00125 / 1000,  # $1.25 per 1M tokens
     },
 }
 
@@ -276,7 +278,9 @@ def record_llm_usage(
     llm_output_tokens_total.labels(model=model, agent_type=agent_type).inc(output_tokens)
 
     # 비용 계산
-    pricing = LLM_PRICING.get(model, LLM_PRICING["claude-sonnet-4-5-20250929"])
+    # 알 수 없는 모델은 Sonnet 가격 기준 적용
+    default_model = list(LLM_PRICING.keys())[0]
+    pricing = LLM_PRICING.get(model, LLM_PRICING[default_model])
     cost = (input_tokens * pricing["input"]) + (output_tokens * pricing["output"])
     llm_cost_usd_total.labels(model=model).inc(cost)
 

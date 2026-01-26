@@ -19,8 +19,6 @@ from uuid import UUID, uuid4
 
 from anthropic import Anthropic
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.database import get_db_context
@@ -69,6 +67,9 @@ KPI_KEYWORD_MAPPING = {
     "생산량": "daily_production",
     "달성률": "achievement_rate",
 }
+
+# 기본 신뢰도 값 (AI 추론 파싱 실패 시 기본값)
+DEFAULT_CONFIDENCE = 0.5
 
 
 # =====================================================
@@ -359,7 +360,7 @@ class BIChatService:
             "default_llm_model",
             tenant_id=str(tenant_id) if tenant_id else None
         )
-        return model or settings.default_llm_model or "claude-sonnet-4-5-20250929"
+        return model or settings.default_llm_model
 
     async def chat(
         self,
@@ -1159,7 +1160,7 @@ class BIChatService:
             reasoning = InsightReasoning(
                 analysis=r.get("analysis", ""),
                 contributing_factors=r.get("contributing_factors", []),
-                confidence=r.get("confidence", 0.5),
+                confidence=r.get("confidence", DEFAULT_CONFIDENCE),
             )
 
             # Actions 파싱

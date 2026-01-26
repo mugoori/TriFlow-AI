@@ -121,8 +121,8 @@ class BaseAgent(ABC):
         if env_model:
             return env_model
 
-        # 4. 코드 기본값
-        return "claude-sonnet-4-5-20250929"
+        # 4. 코드 기본값 (settings에서 관리)
+        return settings.default_llm_model
 
     @property
     def model(self) -> str:

@@ -18,6 +18,7 @@ from fastapi import APIRouter, Query, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import Ruleset, RulesetVersion, Tenant
 from app.services.rbac_service import (
@@ -125,7 +126,7 @@ def _get_or_create_tenant(db: Session) -> Tenant:
     tenant = db.query(Tenant).first()
     if not tenant:
         tenant = Tenant(
-            name="Default Tenant",
+            name=settings.default_tenant_name,
             slug="default",
             settings={},
         )

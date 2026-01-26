@@ -23,6 +23,9 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
+# 기본 신뢰도 값 (실행 기록이나 피드백이 없을 때 사용)
+DEFAULT_CONFIDENCE = 0.75
+
 
 class JudgmentPolicy(str, Enum):
     """
@@ -761,7 +764,7 @@ class HybridJudgmentService:
             model_to_use = settings_service.get_setting_with_scope(
                 "default_llm_model",
                 tenant_id=str(tenant_id) if tenant_id else None
-            ) or settings.default_llm_model or "claude-sonnet-4-5-20250929"
+            ) or settings.default_llm_model
 
             # 프롬프트 구성
             system_prompt = """당신은 제조 공정 분석 전문가입니다.
@@ -1039,8 +1042,8 @@ JSON 형식으로 응답하세요."""
 
                     # 실행 기록이 없으면 기본값
                     if total == 0:
-                        logger.debug(f"No execution history for ruleset {ruleset_id}, using default 0.75")
-                        return 0.75
+                        logger.debug(f"No execution history for ruleset {ruleset_id}, using default {DEFAULT_CONFIDENCE}")
+                        return DEFAULT_CONFIDENCE
 
                     # 피드백이 충분하면 (10개 이상) 실제 정확도 사용
                     if feedback_count >= 10 and accuracy_rate is not None:
@@ -1054,7 +1057,7 @@ JSON 형식으로 응답하세요."""
                     if feedback_count > 0 and accuracy_rate is not None:
                         # 피드백 비율에 따라 가중 평균
                         feedback_weight = min(feedback_count / 10, 1.0)
-                        blended_accuracy = float(accuracy_rate) * feedback_weight + 0.75 * (1 - feedback_weight)
+                        blended_accuracy = float(accuracy_rate) * feedback_weight + DEFAULT_CONFIDENCE * (1 - feedback_weight)
                         logger.debug(
                             f"Blended accuracy for ruleset {ruleset_id}: {blended_accuracy:.3f} "
                             f"({feedback_count} feedbacks, weight={feedback_weight:.2f})"
@@ -1062,15 +1065,15 @@ JSON 형식으로 응답하세요."""
                         return blended_accuracy
 
                     # 피드백 없으면 기본값
-                    logger.debug(f"No feedback for ruleset {ruleset_id}, using default 0.75")
-                    return 0.75
+                    logger.debug(f"No feedback for ruleset {ruleset_id}, using default {DEFAULT_CONFIDENCE}")
+                    return DEFAULT_CONFIDENCE
 
                 # 기본값
-                return 0.75
+                return DEFAULT_CONFIDENCE
 
         except Exception as e:
             logger.warning(f"Failed to get historical accuracy for ruleset {ruleset_id}, using default: {e}")
-            return 0.75
+            return DEFAULT_CONFIDENCE
 
     def _generate_explanation(
         self,

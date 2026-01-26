@@ -12,6 +12,7 @@ import logging
 
 from app.services.notifications import notification_manager
 from app.utils.decorators import handle_service_errors
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +73,16 @@ class AlertHandler:
         if severity == "critical":
             # Slack + Email 모두
             await notification_manager.send_slack(message, channel="#alerts")
-            await notification_manager.send_email(
-                to=["admin@example.com"],
-                subject=f"🚨 CRITICAL: {alertname}",
-                body=message,
-            )
-            logger.info(f"Sent critical alert to Slack and Email: {alertname}")
+            recipients = [e.strip() for e in settings.alert_email_recipients.split(",") if e.strip()]
+            if recipients:
+                await notification_manager.send_email(
+                    to=recipients,
+                    subject=f"🚨 CRITICAL: {alertname}",
+                    body=message,
+                )
+                logger.info(f"Sent critical alert to Slack and Email: {alertname}")
+            else:
+                logger.info(f"Sent critical alert to Slack only (no email recipients configured): {alertname}")
         elif severity == "warning":
             # Slack만
             await notification_manager.send_slack(message, channel="#alerts")

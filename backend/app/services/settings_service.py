@@ -101,7 +101,7 @@ SETTING_DEFINITIONS = {
         "category": "ai",
         "sensitive": False,
         "label": "기본 LLM 모델",
-        "default": "claude-sonnet-4-5-20250929"
+        "default": ""  # 환경변수 settings.default_llm_model 우선 사용
     },
     "meta_router_model": {
         "category": "ai",

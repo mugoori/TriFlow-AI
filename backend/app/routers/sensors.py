@@ -22,6 +22,7 @@ from sqlalchemy import func, distinct, text
 from sqlalchemy.orm import Session
 from uuid import uuid4
 
+from app.config import settings
 from app.database import get_db
 from app.models import SensorData, Tenant
 from app.services.rbac_service import check_permission
@@ -38,7 +39,7 @@ def _get_or_create_tenant(db: Session) -> Tenant:
     tenant = db.query(Tenant).first()
     if not tenant:
         tenant = Tenant(
-            name="Default Tenant",
+            name=settings.default_tenant_name,
             slug="default",
             settings={},
         )

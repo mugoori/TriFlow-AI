@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+# 데이터 제한 상수
+MAX_LIST_ITEMS = 100  # 마스킹 시 리스트 최대 항목 수
+MAX_STRING_LENGTH = 1000  # 문자열 truncate 기준 길이
+TRUNCATED_STRING_LENGTH = 500  # truncate된 문자열 길이
+
 # 민감 정보 마스킹 패턴
 SENSITIVE_FIELDS = [
     "password", "password_hash", "token", "access_token", "refresh_token",
@@ -45,9 +50,9 @@ def mask_sensitive_data(data: Any, depth: int = 0) -> Any:
                 masked[key] = mask_sensitive_data(value, depth + 1)
         return masked
     elif isinstance(data, list):
-        return [mask_sensitive_data(item, depth + 1) for item in data[:100]]  # 최대 100개
-    elif isinstance(data, str) and len(data) > 1000:
-        return data[:500] + "...[TRUNCATED]..."
+        return [mask_sensitive_data(item, depth + 1) for item in data[:MAX_LIST_ITEMS]]
+    elif isinstance(data, str) and len(data) > MAX_STRING_LENGTH:
+        return data[:TRUNCATED_STRING_LENGTH] + "...[TRUNCATED]..."
     else:
         return data
 
