@@ -1,5 +1,134 @@
 # Tasks & Progress
 
+## 2026-01-27: Auto Execution 시스템 구현 (A-2-5 스펙)
+
+### 개요
+Trust Level × Risk Level → Execution Decision 기반의 자동 실행 시스템 구현.
+AI(Ruleset)의 신뢰도와 작업 위험도를 조합하여 자동 실행 / 승인 필요 / 거부를 결정.
+
+### 완료된 작업
+
+#### 1. DB 마이그레이션 생성
+- `backend/alembic/versions/017_auto_execution.py`
+- 3개 테이블 생성: `decision_matrix`, `action_risk_definitions`, `auto_execution_logs`
+
+#### 2. SQLAlchemy 모델 추가
+- `backend/app/models/auto_execution.py`
+- 모델: `DecisionMatrix`, `ActionRiskDefinition`, `AutoExecutionLog`
+- 상수: `RiskLevel`, `ExecutionDecision`, `ExecutionStatus`
+
+#### 3. DecisionMatrixService 구현
+- `backend/app/services/decision_matrix_service.py`
+- Decision Matrix CRUD 및 평가 로직
+- A-2-5 스펙 기반 기본 매트릭스 정의
+
+**Default Decision Matrix:**
+```
+              LOW      MEDIUM     HIGH      CRITICAL
+Level 0    approval   approval   approval   reject
+Level 1    approval   approval   approval   reject
+Level 2    auto       approval   approval   reject
+Level 3    auto       auto       approval   approval
+```
+
+#### 4. ActionRiskEvaluator 구현
+- `backend/app/services/action_risk_evaluator.py`
+- 액션 타입별 리스크 평가
+- 패턴 매칭 지원 (fnmatch)
+
+**기본 리스크 정의:**
+| 액션 타입 | Risk Level |
+|----------|:----------:|
+| notification_* | LOW |
+| data_query_* | LOW |
+| parameter_adjust | MEDIUM |
+| mes_equipment_control | HIGH |
+| production_line_stop | CRITICAL |
+| emergency_evacuation | CRITICAL |
+
+#### 5. AutoExecutionRouter 구현
+- `backend/app/services/auto_execution_router.py`
+- TrustService + ActionRiskEvaluator + DecisionMatrixService 통합
+- `evaluate()`: 실행 결정 평가만
+- `route()`: 평가 + 실행/승인요청/거부 라우팅
+- `execute_after_approval()`: 승인 후 실행
+- `reject_after_approval()`: 승인 거부 처리
+
+#### 6. Workflow Engine 연동
+- `backend/app/services/workflow_engine.py` 수정
+- `_evaluate_auto_execution()` 헬퍼 메서드 추가
+- `_execute_approval_node()` 시작 시 Auto Execution 평가 먼저 수행
+- `enable_auto_execution: true` 설정 시 활성화
+
+#### 7. API 엔드포인트 구현
+- `backend/app/schemas/auto_execution.py`: Pydantic 스키마
+- `backend/app/routers/auto_execution.py`: API 라우터 (14개 엔드포인트)
+- `backend/app/main.py`: 라우터 등록 (`/api/v2/auto-execution`)
+
+**API 엔드포인트:**
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | /matrix | Decision Matrix 조회 |
+| PUT | /matrix/{trust}/{risk} | 매트릭스 엔트리 수정 |
+| POST | /matrix/reset | 기본값으로 리셋 |
+| GET | /risks | 액션 리스크 정의 목록 |
+| POST | /risks | 새 리스크 정의 생성 |
+| POST | /risks/initialize | 기본 리스크 정의 초기화 |
+| POST | /evaluate | 실행 결정 평가 |
+| GET | /logs | 실행 로그 조회 |
+| GET | /pending | 승인 대기 목록 |
+| POST | /logs/{id}/action | 승인/거부 처리 |
+| GET | /stats | 실행 통계 |
+| GET | /risks/summary | 리스크 요약 |
+
+### 수정된 파일 목록 (8개)
+
+| 카테고리 | 파일 |
+|---------|------|
+| 마이그레이션 | `alembic/versions/017_auto_execution.py` |
+| 모델 | `models/auto_execution.py`, `models/__init__.py` |
+| 서비스 | `services/decision_matrix_service.py`, `services/action_risk_evaluator.py`, `services/auto_execution_router.py`, `services/workflow_engine.py` |
+| 스키마 | `schemas/auto_execution.py` |
+| 라우터 | `routers/auto_execution.py` |
+| 앱 | `main.py` |
+
+### 검증 완료
+- ✅ 모든 모듈 import 테스트 통과
+- ✅ 14개 API 라우트 등록 확인
+- ✅ 마이그레이션 파일 생성 확인
+
+### 사용 예시
+
+```python
+# 1. 실행 결정 평가 (API)
+POST /api/v2/auto-execution/evaluate
+{
+    "action_type": "mes_equipment_control",
+    "ruleset_id": "uuid-here"
+}
+
+# 응답
+{
+    "decision": "require_approval",
+    "reason": "Trust Level 2 + HIGH Risk",
+    "context": {
+        "trust_level": 2,
+        "risk_level": "HIGH"
+    }
+}
+
+# 2. Workflow에서 사용 (approval node)
+{
+    "type": "approval",
+    "config": {
+        "enable_auto_execution": true,
+        "action_type": "parameter_adjust"
+    }
+}
+```
+
+---
+
 ## 2026-01-26: 하드코딩 제거 및 설정값 통일
 
 ### 완료된 작업

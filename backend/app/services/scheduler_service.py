@@ -586,6 +586,78 @@ async def auto_detect_schema_drift():
         logger.error(f"Failed to auto-detect schema drift: {e}")
 
 
+async def auto_monitor_canary_deployments():
+    """
+    Canary 배포 자동 모니터링 (30초 주기)
+
+    활성 Canary 배포를 순회하며 Circuit Breaker 조건 확인,
+    임계값 초과 시 자동 롤백 발동
+
+    LRN-FR-050 스펙 참조
+    """
+    from app.database import SessionLocal
+    from app.models import RuleDeployment
+    from app.services.deployment_metrics_service import DeploymentMetricsService
+    from app.services.canary_rollback_service import CanaryRollbackService
+
+    db = None
+    try:
+        db = SessionLocal()
+
+        # 1. status='canary'인 배포 조회
+        canary_deployments = db.query(RuleDeployment).filter(
+            RuleDeployment.status == "canary"
+        ).all()
+
+        if not canary_deployments:
+            logger.debug("No active canary deployments to monitor")
+            return
+
+        logger.debug(f"Monitoring {len(canary_deployments)} canary deployment(s)")
+
+        metrics_service = DeploymentMetricsService(db)
+        rollback_service = CanaryRollbackService(db)
+
+        rollbacks_triggered = 0
+
+        for deployment in canary_deployments:
+            try:
+                # 2. 메트릭 비교 (should_halt 판단 포함)
+                comparison = metrics_service.compare_metrics(
+                    deployment_id=deployment.deployment_id
+                )
+
+                # 3. Circuit Breaker 발동 조건 확인
+                if comparison.get("should_halt"):
+                    halt_reason = comparison.get("halt_reason", "Unknown")
+                    logger.warning(
+                        f"Auto-rollback triggered for deployment {deployment.deployment_id}: "
+                        f"{halt_reason}"
+                    )
+
+                    # 4. 자동 롤백 실행
+                    rollback_service.execute_rollback(
+                        deployment_id=deployment.deployment_id,
+                        reason=f"자동 롤백: {halt_reason}",
+                        triggered_by="auto",
+                    )
+                    rollbacks_triggered += 1
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to monitor canary deployment {deployment.deployment_id}: {e}"
+                )
+
+        if rollbacks_triggered > 0:
+            logger.info(f"Canary monitoring completed: {rollbacks_triggered} rollback(s) triggered")
+
+    except Exception as e:
+        logger.error(f"Failed to auto-monitor canary deployments: {e}")
+    finally:
+        if db:
+            db.close()
+
+
 # 싱글톤 인스턴스
 scheduler = SchedulerService()
 
@@ -682,5 +754,15 @@ def setup_default_jobs():
         description="외부 데이터 소스 스키마 변경 감지 및 알림 (스펙 INT-FR-040)",
         interval_seconds=21600,  # 6시간
         handler=auto_detect_schema_drift,
+        enabled=True,  # 즉시 활성화
+    )
+
+    # Canary 배포 자동 모니터링 (30초마다)
+    scheduler.register_job(
+        job_id="auto_monitor_canary",
+        name="Canary 자동 모니터링",
+        description="Circuit Breaker 상태 확인 및 자동 롤백 발동 (스펙 LRN-FR-050)",
+        interval_seconds=30,  # 30초
+        handler=auto_monitor_canary_deployments,
         enabled=True,  # 즉시 활성화
     )

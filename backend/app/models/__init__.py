@@ -99,6 +99,16 @@ from app.models.sample import (
     GoldenSampleSetMember,
 )
 
+from app.models.auto_execution import (
+    # Auto Execution
+    DecisionMatrix,
+    ActionRiskDefinition,
+    AutoExecutionLog,
+    RiskLevel,
+    ExecutionDecision,
+    ExecutionStatus,
+)
+
 from app.models.bi import (
     # RAW Layer
     RawMesProduction,
@@ -236,4 +246,11 @@ __all__ = [
     "Sample",
     "GoldenSampleSet",
     "GoldenSampleSetMember",
+    # Auto Execution
+    "DecisionMatrix",
+    "ActionRiskDefinition",
+    "AutoExecutionLog",
+    "RiskLevel",
+    "ExecutionDecision",
+    "ExecutionStatus",
 ]

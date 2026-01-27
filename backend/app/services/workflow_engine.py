@@ -3449,10 +3449,14 @@ class WorkflowEngine:
             "title": "생산 라인 변경 승인",
             "description": "LINE_A 설정 변경에 대한 승인이 필요합니다.",
             "auto_approve_on_timeout": false (타임아웃 시 자동 승인 여부),
-            "wait_for_approval": true (승인 대기 여부, false면 즉시 리턴)
+            "wait_for_approval": true (승인 대기 여부, false면 즉시 리턴),
+            "enable_auto_execution": true (Trust-based 자동 실행 활성화),
+            "action_type": "parameter_adjust" (작업 유형 - 위험도 평가용)
         }
 
         실제 구현:
+        - Trust-based Auto Execution 평가 (A-2-5 스펙)
+        - 자동 실행 가능 시 승인 없이 진행
         - 승인 요청을 core.workflow_approvals 테이블에 저장
         - notification_manager로 실제 알림 전송
         - 승인 상태 폴링 (Redis 우선, DB 폴백)
@@ -3470,11 +3474,77 @@ class WorkflowEngine:
         wait_for_approval = config.get("wait_for_approval", True)
         context_data = config.get("context_data", {})
 
+        # Auto Execution 설정
+        enable_auto_execution = config.get("enable_auto_execution", True)
+        action_type = config.get("action_type", "workflow_approval")
+
         workflow_id = context.get("workflow_id")
         instance_id = context.get("instance_id")
         tenant_id = context.get("tenant_id")
+        ruleset_id = context.get("ruleset_id")
 
         try:
+            # 0. Trust-based Auto Execution 평가 (A-2-5 스펙)
+            if enable_auto_execution and tenant_id:
+                auto_exec_result = await self._evaluate_auto_execution(
+                    tenant_id=tenant_id,
+                    action_type=action_type,
+                    ruleset_id=ruleset_id,
+                    workflow_id=workflow_id,
+                    instance_id=instance_id,
+                    node_id=node_id,
+                    config=config,
+                    context=context,
+                )
+
+                if auto_exec_result:
+                    decision = auto_exec_result.get("decision")
+
+                    if decision == "auto_execute":
+                        # 자동 실행 허용 - 승인 없이 진행
+                        logger.info(
+                            f"Auto execution allowed for node {node_id}: "
+                            f"trust_level={auto_exec_result.get('trust_level')}, "
+                            f"risk_level={auto_exec_result.get('risk_level')}"
+                        )
+                        return {
+                            "node_id": node_id,
+                            "type": "approval",
+                            "approval_type": approval_type,
+                            "success": True,
+                            "message": "Auto-approved by Trust-based execution",
+                            "auto_executed": True,
+                            "data": {
+                                "decision": decision,
+                                "trust_level": auto_exec_result.get("trust_level"),
+                                "risk_level": auto_exec_result.get("risk_level"),
+                                "log_id": auto_exec_result.get("log_id"),
+                            },
+                        }
+
+                    elif decision == "reject":
+                        # 실행 거부
+                        logger.warning(
+                            f"Execution rejected for node {node_id}: "
+                            f"{auto_exec_result.get('reason')}"
+                        )
+                        return {
+                            "node_id": node_id,
+                            "type": "approval",
+                            "approval_type": approval_type,
+                            "success": False,
+                            "message": f"Execution rejected: {auto_exec_result.get('reason')}",
+                            "auto_executed": False,
+                            "data": {
+                                "decision": decision,
+                                "trust_level": auto_exec_result.get("trust_level"),
+                                "risk_level": auto_exec_result.get("risk_level"),
+                                "reason": auto_exec_result.get("reason"),
+                            },
+                        }
+
+                    # decision == "require_approval" 인 경우 아래 승인 로직 진행
+
             # 1. 승인 요청을 DB에 저장
             approval_id = await self._create_approval_request(
                 tenant_id=tenant_id,
@@ -3612,6 +3682,96 @@ class WorkflowEngine:
                 "success": False,
                 "message": f"승인 처리 오류: {str(e)}",
             }
+
+    async def _evaluate_auto_execution(
+        self,
+        tenant_id: str,
+        action_type: str,
+        ruleset_id: Optional[str],
+        workflow_id: Optional[str],
+        instance_id: Optional[str],
+        node_id: str,
+        config: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Trust-based Auto Execution 평가 (A-2-5 스펙)
+
+        Trust Level × Risk Level → Decision Matrix에 따라 실행 결정.
+        - auto_execute: 자동 실행 허용 (승인 불필요)
+        - require_approval: 승인 필요 (기존 흐름 유지)
+        - reject: 실행 거부
+
+        Returns:
+            {
+                "decision": "auto_execute" | "require_approval" | "reject",
+                "trust_level": int,
+                "risk_level": str,
+                "reason": str,
+                "log_id": str,
+            } or None if evaluation fails
+        """
+        try:
+            from uuid import UUID
+            from app.database import SessionLocal
+            from app.services.auto_execution_router import AutoExecutionRouter
+
+            # 동기 세션 생성 (async 컨텍스트에서 호출되므로)
+            db = SessionLocal()
+            try:
+                router = AutoExecutionRouter(db)
+
+                # 결정 평가
+                decision, reason, eval_context = router.evaluate(
+                    tenant_id=UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id,
+                    action_type=action_type,
+                    ruleset_id=UUID(ruleset_id) if ruleset_id and isinstance(ruleset_id, str) else ruleset_id,
+                )
+
+                # 로그 기록
+                from app.models.auto_execution import AutoExecutionLog, ExecutionStatus
+                from uuid import uuid4
+
+                log = AutoExecutionLog(
+                    log_id=uuid4(),
+                    tenant_id=UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id,
+                    workflow_id=UUID(workflow_id) if workflow_id else None,
+                    instance_id=UUID(instance_id) if instance_id else None,
+                    node_id=node_id,
+                    ruleset_id=UUID(ruleset_id) if ruleset_id else None,
+                    action_type=action_type,
+                    action_params=config,
+                    trust_level=eval_context.get("trust_level", 0),
+                    trust_score=eval_context.get("trust_score"),
+                    risk_level=eval_context.get("risk_level", "MEDIUM"),
+                    risk_score=eval_context.get("risk_score"),
+                    decision=decision,
+                    decision_reason=reason,
+                    execution_status=ExecutionStatus.EXECUTED if decision == "auto_execute" else ExecutionStatus.PENDING,
+                    execution_metadata={
+                        "risk_info": eval_context.get("risk_info"),
+                        "trust_level_name": eval_context.get("trust_level_name"),
+                        "node_config": config,
+                    },
+                )
+                db.add(log)
+                db.commit()
+
+                return {
+                    "decision": decision,
+                    "trust_level": eval_context.get("trust_level"),
+                    "trust_level_name": eval_context.get("trust_level_name"),
+                    "risk_level": eval_context.get("risk_level"),
+                    "reason": reason,
+                    "log_id": str(log.log_id),
+                }
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.warning(f"Auto execution evaluation failed: {e}")
+            return None  # 평가 실패 시 기존 승인 흐름 진행
 
     async def _create_approval_request(
         self,
@@ -5655,10 +5815,145 @@ result = {
         environment: str,
         tenant_id: str
     ) -> Dict[str, Any]:
-        """ML 모델 배포 (placeholder)"""
-        # TODO: 실제 ML 모델 배포 로직
-        logger.info(f"ML 모델 배포: {model_id} v{version} -> {environment}")
-        return {"success": True, "message": "모델 배포 완료 (mock)", "version": version}
+        """
+        ML 모델 배포
+
+        ModelTrainingJob에서 학습 완료된 모델을 배포 환경에 등록합니다.
+        - job_id (model_id)로 학습 작업 조회
+        - 학습 완료 여부 및 artifact 존재 확인
+        - 배포 상태를 metrics에 기록
+
+        Args:
+            model_id: ModelTrainingJob의 job_id
+            version: 배포 버전 (없으면 자동 증가)
+            environment: 배포 환경 (staging, production)
+            tenant_id: 테넌트 ID
+
+        Returns:
+            배포 결과 (success, message, version, artifact_url 등)
+        """
+        from sqlalchemy import text
+        from app.database import get_db_context
+
+        logger.info(f"ML 모델 배포 시작: {model_id} v{version} -> {environment}")
+
+        try:
+            async with get_db_context() as db:
+                # 1. ModelTrainingJob 조회
+                job_query = text("""
+                    SELECT
+                        job_id,
+                        job_type,
+                        status,
+                        model_artifact_url,
+                        metrics,
+                        training_config
+                    FROM core.model_training_jobs
+                    WHERE job_id = :job_id
+                      AND tenant_id = :tenant_id
+                """)
+
+                result = await db.execute(
+                    job_query,
+                    {"job_id": model_id, "tenant_id": tenant_id}
+                )
+                job_row = result.fetchone()
+
+                if not job_row:
+                    logger.error(f"Model training job not found: {model_id}")
+                    return {
+                        "success": False,
+                        "message": f"모델 학습 작업을 찾을 수 없습니다: {model_id}",
+                    }
+
+                job_status = job_row[2]
+                artifact_url = job_row[3]
+                current_metrics = job_row[4] or {}
+
+                # 2. 상태 검증
+                if job_status != "completed":
+                    logger.warning(f"Model not ready for deployment: status={job_status}")
+                    return {
+                        "success": False,
+                        "message": f"모델이 배포 준비 상태가 아닙니다. 현재 상태: {job_status}",
+                    }
+
+                if not artifact_url:
+                    logger.warning(f"Model artifact not found for job: {model_id}")
+                    return {
+                        "success": False,
+                        "message": "모델 아티팩트 URL이 없습니다. 학습이 정상 완료되었는지 확인하세요.",
+                    }
+
+                # 3. 배포 버전 결정
+                deploy_version = version or 1
+                if current_metrics.get("deployments"):
+                    existing_versions = [
+                        d.get("version", 0)
+                        for d in current_metrics["deployments"]
+                    ]
+                    if not version:
+                        deploy_version = max(existing_versions) + 1
+
+                # 4. 배포 기록 업데이트
+                deployment_record = {
+                    "version": deploy_version,
+                    "environment": environment,
+                    "deployed_at": datetime.utcnow().isoformat(),
+                    "artifact_url": artifact_url,
+                    "status": "active",
+                }
+
+                # 기존 배포 목록에 추가
+                deployments = current_metrics.get("deployments", [])
+
+                # 같은 환경의 이전 배포는 inactive로 변경
+                for dep in deployments:
+                    if dep.get("environment") == environment:
+                        dep["status"] = "inactive"
+
+                deployments.append(deployment_record)
+                current_metrics["deployments"] = deployments
+                current_metrics["latest_deployment"] = deployment_record
+
+                # 5. DB 업데이트
+                update_query = text("""
+                    UPDATE core.model_training_jobs
+                    SET metrics = :metrics
+                    WHERE job_id = :job_id
+                      AND tenant_id = :tenant_id
+                """)
+
+                await db.execute(
+                    update_query,
+                    {
+                        "metrics": json.dumps(current_metrics),
+                        "job_id": model_id,
+                        "tenant_id": tenant_id,
+                    }
+                )
+                await db.commit()
+
+                logger.info(
+                    f"ML 모델 배포 완료: job_id={model_id}, "
+                    f"version={deploy_version}, environment={environment}"
+                )
+
+                return {
+                    "success": True,
+                    "message": f"모델 배포 완료: v{deploy_version} -> {environment}",
+                    "version": deploy_version,
+                    "artifact_url": artifact_url,
+                    "environment": environment,
+                    "deployed_at": deployment_record["deployed_at"],
+                }
+
+        except Exception as e:
+            logger.error(f"ML 모델 배포 실패: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"모델 배포 중 오류 발생: {str(e)}",
+            }
 
     async def _deploy_workflow(
         self,

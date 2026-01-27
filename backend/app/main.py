@@ -695,6 +695,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to register v2 feature-flags router: {e}")
 
+# V2.0 Auto Execution 라우터 (Trust-based Auto Execution)
+try:
+    from app.routers import auto_execution
+    app.include_router(auto_execution.router, prefix="/api/v2/auto-execution", tags=["v2-auto-execution"])
+    logger.info("V2 Auto Execution router registered")
+except Exception as e:
+    logger.error(f"Failed to register v2 auto-execution router: {e}")
+
 # Deployments 라우터 (Canary Deployment)
 try:
     from app.routers import deployments
