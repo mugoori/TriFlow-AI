@@ -159,13 +159,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Scheduler failed to start: {e}")
 
-    # IoT 수집기 시작 (MQTT/OPC UA)
-    try:
-        from app.services.iot_collector import setup_iot_collectors
-        setup_iot_collectors()
-        logger.info("IoT collectors initialized successfully")
-    except Exception as e:
-        logger.warning(f"IoT collectors initialization failed (non-critical): {e}")
+    # ===================================================================
+    # IoT 수집기 (MQTT/OPC UA) - 비활성화됨
+    # 현재 프로젝트에서 IoT 데이터 수집이 필요하지 않아 비활성화
+    # 활성화 방법: 아래 주석 해제
+    # 설정: app/services/iot_collector.py
+    # ===================================================================
+    # try:
+    #     from app.services.iot_collector import setup_iot_collectors
+    #     setup_iot_collectors()
+    #     logger.info("IoT collectors initialized successfully")
+    # except Exception as e:
+    #     logger.warning(f"IoT collectors initialization failed (non-critical): {e}")
 
     yield
 
@@ -188,14 +193,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Canary monitor task failed to stop: {e}")
 
-    # IoT 수집기 중지
-    try:
-        from app.services.iot_collector import get_iot_manager
-        manager = get_iot_manager()
-        manager.stop_all()
-        logger.info("IoT collectors stopped successfully")
-    except Exception as e:
-        logger.warning(f"IoT collectors failed to stop: {e}")
+    # IoT 수집기 중지 - 비활성화됨 (시작 코드도 비활성화 상태)
+    # try:
+    #     from app.services.iot_collector import get_iot_manager
+    #     manager = get_iot_manager()
+    #     manager.stop_all()
+    #     logger.info("IoT collectors stopped successfully")
+    # except Exception as e:
+    #     logger.warning(f"IoT collectors failed to stop: {e}")
 
 
 # FastAPI 앱 생성

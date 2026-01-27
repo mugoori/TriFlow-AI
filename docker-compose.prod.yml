@@ -173,33 +173,36 @@ services:
           memory: 256M
 
   # ===========================================
-  # Grafana (Dashboards)
+  # Grafana (Dashboards) - 주석 처리됨
+  # AWS RDS 사용 시 CloudWatch로 충분하므로 비활성화
+  # 활성화 방법: 아래 주석 해제 + volumes 섹션의 grafana_data 주석 해제
+  # 대시보드 설정: monitoring/grafana/provisioning/ 참조
   # ===========================================
-  grafana:
-    image: grafana/grafana:10.2.0
-    container_name: triflow-grafana
-    restart: unless-stopped
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "${GRAFANA_PORT:-3000}:3000"
-    depends_on:
-      - prometheus
-    networks:
-      - triflow-internal
-      - triflow-external
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 128M
+  # grafana:
+  #   image: grafana/grafana:10.2.0
+  #   container_name: triflow-grafana
+  #   restart: unless-stopped
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
+  #     - GF_USERS_ALLOW_SIGN_UP=false
+  #     - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
+  #   volumes:
+  #     - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+  #     - grafana_data:/var/lib/grafana
+  #   ports:
+  #     - "${GRAFANA_PORT:-3000}:3000"
+  #   depends_on:
+  #     - prometheus
+  #   networks:
+  #     - triflow-internal
+  #     - triflow-external
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 512M
+  #       reservations:
+  #         memory: 128M
 
   # ===========================================
   # Nginx (Reverse Proxy) - Optional
@@ -236,8 +239,8 @@ volumes:
     driver: local
   prometheus_data:
     driver: local
-  grafana_data:
-    driver: local
+  # grafana_data:  # Grafana 비활성화로 주석 처리
+  #   driver: local
 
 networks:
   triflow-internal:

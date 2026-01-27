@@ -83,52 +83,62 @@ services:
     networks:
       - triflow-network
 
-  # Grafana (Visualization)
-  grafana:
-    image: grafana/grafana:10.2.0
-    container_name: triflow-grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: triflow_grafana_password
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_ROOT_URL: http://localhost:3001
-      GF_INSTALL_PLUGINS: grafana-piechart-panel
-    ports:
-      - "3001:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - triflow-network
-    depends_on:
-      - prometheus
+  # ===================================================================
+  # Grafana (Visualization) - 주석 처리됨
+  # AWS RDS 사용 시 CloudWatch로 충분하므로 비활성화
+  # 활성화 방법: 아래 주석 해제 + volumes 섹션의 grafana_data 주석 해제
+  # 대시보드 설정: monitoring/grafana/provisioning/ 참조
+  # ===================================================================
+  # grafana:
+  #   image: grafana/grafana:10.2.0
+  #   container_name: triflow-grafana
+  #   environment:
+  #     GF_SECURITY_ADMIN_USER: admin
+  #     GF_SECURITY_ADMIN_PASSWORD: triflow_grafana_password
+  #     GF_USERS_ALLOW_SIGN_UP: "false"
+  #     GF_SERVER_ROOT_URL: http://localhost:3001
+  #     GF_INSTALL_PLUGINS: grafana-piechart-panel
+  #   ports:
+  #     - "3001:3000"
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #     - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+  #   healthcheck:
+  #     test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - triflow-network
+  #   depends_on:
+  #     - prometheus
 
-  # AlertManager (Alert 라우팅 및 알림)
-  alertmanager:
-    image: prom/alertmanager:v0.26.0
-    container_name: triflow-alertmanager
-    command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--storage.path=/alertmanager'
-    ports:
-      - "9093:9093"
-    volumes:
-      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      - alertmanager_data:/alertmanager
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/healthy"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - triflow-network
-    depends_on:
-      - prometheus
+  # ===================================================================
+  # AlertManager (Alert 라우팅 및 알림) - 주석 처리됨
+  # AWS CloudWatch Alarms 사용 시 불필요하므로 비활성화
+  # 활성화 방법: 아래 주석 해제 + volumes 섹션의 alertmanager_data 주석 해제
+  # 설정 파일: monitoring/alertmanager.yml
+  # ===================================================================
+  # alertmanager:
+  #   image: prom/alertmanager:v0.26.0
+  #   container_name: triflow-alertmanager
+  #   command:
+  #     - '--config.file=/etc/alertmanager/alertmanager.yml'
+  #     - '--storage.path=/alertmanager'
+  #   ports:
+  #     - "9093:9093"
+  #   volumes:
+  #     - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+  #     - alertmanager_data:/alertmanager
+  #   healthcheck:
+  #     test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/healthy"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - triflow-network
+  #   depends_on:
+  #     - prometheus
 
 volumes:
   postgres_data:
@@ -139,10 +149,10 @@ volumes:
     driver: local
   prometheus_data:
     driver: local
-  grafana_data:
-    driver: local
-  alertmanager_data:
-    driver: local
+  # grafana_data:  # Grafana 비활성화로 주석 처리
+  #   driver: local
+  # alertmanager_data:  # AlertManager 비활성화로 주석 처리
+  #   driver: local
 
 networks:
   triflow-network:

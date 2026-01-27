@@ -1,5 +1,64 @@
 # Tasks & Progress
 
+## 2026-01-27: 과잉 구현 기능 정리 및 비활성화
+
+### 개요
+AWS 배포 대비 불필요하거나 과잉 구현된 기능들을 정리하여 시스템 복잡도 감소 및 리소스 절약.
+
+### 완료된 작업
+
+#### 1. Grafana 비활성화
+- **이유**: AWS RDS 사용 시 CloudWatch + Enhanced Monitoring + Performance Insights로 충분
+- **수정 파일**:
+  - `docker-compose.yml`: grafana 서비스 및 grafana_data 볼륨 주석처리
+  - `docker-compose.prod.yml`: 동일하게 주석처리
+- **재활성화 방법**: 파일 내 주석 참조
+
+#### 2. AlertManager 비활성화
+- **이유**: AWS CloudWatch Alarms로 대체 가능
+- **수정 파일**:
+  - `docker-compose.yml`: alertmanager 서비스 및 alertmanager_data 볼륨 주석처리
+- **참고**: docker-compose.prod.yml에는 AlertManager가 원래 없음
+
+#### 3. IoT Collector 비활성화
+- **이유**: 현재 프로젝트에서 MQTT/OPC UA 데이터 수집 미사용
+- **수정 파일**:
+  - `backend/app/main.py`: startup/shutdown 코드 주석처리 (lines 162-173, 191-198)
+- **재활성화 방법**: 해당 주석 해제
+
+#### 4. 미들웨어 환경변수 플래그 문서화
+- **목적**: 선택적 비활성화 가능하도록 설정 가이드 추가
+- **수정 파일**: `backend/.env.example`
+- **지원 환경변수**:
+
+| 환경변수 | 기본값 | 설명 |
+|---------|:------:|------|
+| `PII_MASKING_ENABLED` | true | 개인정보 자동 마스킹 |
+| `AUDIT_LOG_ENABLED` | true | API 호출 감사 로그 |
+| `RATE_LIMIT_ENABLED` | true | API 호출 제한 (DDoS 방지) |
+| `I18N_ENABLED` | true | 다국어 에러 메시지 |
+| `METRICS_ENABLED` | true | Prometheus 메트릭 수집 |
+| `SECURITY_HEADERS_ENABLED` | true | XSS/Clickjacking 방지 헤더 |
+
+### 유지된 서비스 (비활성화 제외)
+
+| 서비스 | 유지 이유 |
+|--------|----------|
+| **MinIO** | 파일 업로드 기능 사용 시 RuntimeError 발생 가능 |
+| **Prometheus** | 메트릭 수집 필요 (CloudWatch로 전송 가능) |
+| **PostgreSQL/Redis** | 핵심 인프라 |
+
+### 수정된 파일 목록 (4개)
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `docker-compose.yml` | Grafana, AlertManager 주석처리 |
+| `docker-compose.prod.yml` | Grafana 주석처리 |
+| `backend/app/main.py` | IoT Collector 주석처리 |
+| `backend/.env.example` | 미들웨어 환경변수 섹션 추가 |
+
+---
+
 ## 2026-01-27: Auto Execution 시스템 구현 (A-2-5 스펙)
 
 ### 개요
