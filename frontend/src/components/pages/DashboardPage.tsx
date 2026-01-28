@@ -26,6 +26,10 @@ import { biService } from '@/services/biService';
 import type { DataStory, AIInsight, Dashboard, DashboardLayoutComponent, PinnedInsight } from '@/types/bi';
 import type { ChartConfig } from '@/types/chart';
 
+// 센서 임계값 상수 (하드코딩 제거)
+const TEMPERATURE_THRESHOLD = 70;  // 온도 경고 임계값 (°C)
+const PRESSURE_THRESHOLD = 8;      // 압력 경고 임계값 (bar)
+
 interface DashboardStats {
   totalReadings: number;
   avgTemperature: number;
@@ -148,7 +152,7 @@ export default function DashboardPage() {
 
         // 임계값 초과 알림 계산 (온도 > 70 또는 압력 > 8)
         const alertCount = summaryRes.summary.filter(
-          line => (line.avg_temperature && line.avg_temperature > 70) || (line.avg_pressure && line.avg_pressure > 8)
+          line => (line.avg_temperature && line.avg_temperature > TEMPERATURE_THRESHOLD) || (line.avg_pressure && line.avg_pressure > PRESSURE_THRESHOLD)
         ).length;
 
         setStats({
@@ -174,9 +178,7 @@ export default function DashboardPage() {
   // 핀된 인사이트 로드
   const loadPinnedInsights = async () => {
     try {
-      console.log('[DashboardPage] Loading pinned insights...');
       const response = await biService.getPinnedInsights();
-      console.log('[DashboardPage] Pinned insights loaded:', response.pinned_insights.length);
       setPinnedInsights(response.pinned_insights);
       setPinnedInsightIds(response.pinned_insights.map(p => p.insight_id));
     } catch (err) {
@@ -185,24 +187,21 @@ export default function DashboardPage() {
   };
 
   // 인사이트 Pin (API 호출은 BIChatPanel/InsightPanel에서 수행, 여기서는 목록 갱신)
-  const handlePinInsight = (insightId: string) => {
-    console.log('[DashboardPage] handlePinInsight - refreshing pinned insights:', insightId);
+  const handlePinInsight = (_insightId: string) => {
     // 목록 갱신 (API에서 최신 데이터 가져오기)
     loadPinnedInsights();
   };
 
   // 인사이트 Unpin (API 호출은 BIChatPanel/InsightPanel에서 수행, 여기서는 목록 갱신)
   const handleUnpinInsight = (insightId: string) => {
-    console.log('[DashboardPage] handleUnpinInsight - refreshing pinned insights:', insightId);
     // 즉시 UI에서 제거
     setPinnedInsights(prev => prev.filter(p => p.insight_id !== insightId));
     setPinnedInsightIds(prev => prev.filter(id => id !== insightId));
   };
 
   // 채팅에서 인사이트 생성 시 콜백
-  const handleInsightGenerated = (insight: AIInsight) => {
+  const handleInsightGenerated = (_insight: AIInsight) => {
     // 인사이트가 생성되면 인사이트 패널을 열 수 있음
-    console.log('New insight generated:', insight.title);
   };
 
   // 대시보드 목록 로드
@@ -543,7 +542,7 @@ export default function DashboardPage() {
                       <div className="flex justify-between">
                         <span className="text-slate-600 dark:text-slate-400">온도</span>
                         <span className={`font-medium ${
-                          (line.avg_temperature || 0) > 70 ? 'text-red-600' : 'text-slate-900 dark:text-slate-50'
+                          (line.avg_temperature || 0) > TEMPERATURE_THRESHOLD ? 'text-red-600' : 'text-slate-900 dark:text-slate-50'
                         }`}>
                           {line.avg_temperature?.toFixed(1) ?? '-'} °C
                         </span>
@@ -551,7 +550,7 @@ export default function DashboardPage() {
                       <div className="flex justify-between">
                         <span className="text-slate-600 dark:text-slate-400">압력</span>
                         <span className={`font-medium ${
-                          (line.avg_pressure || 0) > 8 ? 'text-red-600' : 'text-slate-900 dark:text-slate-50'
+                          (line.avg_pressure || 0) > PRESSURE_THRESHOLD ? 'text-red-600' : 'text-slate-900 dark:text-slate-50'
                         }`}>
                           {line.avg_pressure?.toFixed(2) ?? '-'} bar
                         </span>

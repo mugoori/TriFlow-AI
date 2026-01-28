@@ -143,16 +143,6 @@ export function BIChatPanel({
         context_id: contextId,
       });
 
-      // 디버그: API 응답 확인
-      console.log('[BIChatPanel] Chat API response:', {
-        session_id: response.session_id,
-        message_id: response.message_id,
-        response_type: response.response_type,
-        linked_insight_id: response.linked_insight_id,
-        linked_chart_id: response.linked_chart_id,
-        response_data_keys: response.response_data ? Object.keys(response.response_data) : null,
-      });
-
       // 새 세션인 경우 세션 ID 설정
       if (!currentSessionId) {
         setCurrentSessionId(response.session_id);
@@ -264,11 +254,8 @@ export function BIChatPanel({
 
   // 인사이트 Pin
   const pinInsight = async (insightId: string) => {
-    console.log('[BIChatPanel] pinInsight called with insightId:', insightId);
     try {
-      console.log('[BIChatPanel] Calling biService.pinInsight...');
-      const result = await biService.pinInsight(insightId);
-      console.log('[BIChatPanel] pinInsight API result:', result);
+      await biService.pinInsight(insightId);
       // 메시지 업데이트 (핀 상태 표시용)
       setMessages(prev =>
         prev.map(m =>
@@ -278,9 +265,7 @@ export function BIChatPanel({
         )
       );
       // 부모 컴포넌트에 알림 (대시보드 갱신용)
-      console.log('[BIChatPanel] Calling onPinInsight callback...');
       onPinInsight?.(insightId);
-      console.log('[BIChatPanel] Pin complete');
     } catch (err) {
       console.error('[BIChatPanel] Failed to pin insight:', err);
     }
@@ -288,11 +273,8 @@ export function BIChatPanel({
 
   // 인사이트 Unpin
   const unpinInsight = async (insightId: string) => {
-    console.log('[BIChatPanel] unpinInsight called with insightId:', insightId);
     try {
-      console.log('[BIChatPanel] Calling biService.unpinInsight...');
       await biService.unpinInsight(insightId);
-      console.log('[BIChatPanel] unpinInsight API success');
       setMessages(prev =>
         prev.map(m =>
           m.linked_insight_id === insightId
@@ -301,9 +283,7 @@ export function BIChatPanel({
         )
       );
       // 부모 컴포넌트에 알림 (대시보드 갱신용)
-      console.log('[BIChatPanel] Calling onUnpinInsight callback...');
       onUnpinInsight?.(insightId);
-      console.log('[BIChatPanel] Unpin complete');
     } catch (err) {
       console.error('[BIChatPanel] Failed to unpin insight:', err);
     }
@@ -311,7 +291,6 @@ export function BIChatPanel({
 
   // 인사이트 생성 후 Pin (linked_insight_id가 없는 경우)
   const createAndPinInsight = async (insightData: Record<string, unknown>): Promise<string | null> => {
-    console.log('[BIChatPanel] createAndPinInsight called with data:', insightData);
     try {
       // 인사이트 생성 API 호출
       const response = await biService.generateInsight({
@@ -327,12 +306,9 @@ export function BIChatPanel({
         }],
       });
 
-      console.log('[BIChatPanel] Insight created:', response);
-
       if (response.insight?.insight_id) {
         // Pin API 호출
         await biService.pinInsight(response.insight.insight_id);
-        console.log('[BIChatPanel] Insight pinned:', response.insight.insight_id);
         onPinInsight?.(response.insight.insight_id);
         return response.insight.insight_id;
       }

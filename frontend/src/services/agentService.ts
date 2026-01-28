@@ -18,14 +18,9 @@ async function isTauriEnvironment(): Promise<boolean> {
 
   // window.__TAURI__ 객체가 있고, invoke 함수가 있어야 실제 Tauri 환경
   _isTauri = typeof window !== 'undefined' &&
-             !!(window as any).__TAURI__ &&
-             typeof (window as any).__TAURI__?.invoke === 'function';
+             !!window.__TAURI__ &&
+             typeof window.__TAURI__?.invoke === 'function';
 
-  if (_isTauri) {
-    console.log('[agentService] Tauri environment detected');
-  } else {
-    console.log('[agentService] Browser environment detected');
-  }
   return _isTauri;
 }
 
@@ -93,7 +88,6 @@ export const agentService = {
           }
 
           const result: AgentResponse = await response.json();
-          console.log('[agentService] Non-streaming response:', result);
 
           onEvent({ type: 'routed', agent: result.agent_name });
           onEvent({ type: 'content', content: result.response });
@@ -111,7 +105,6 @@ export const agentService = {
                 toolResult.success &&
                 toolResult.dsl
               ) {
-                console.log('[agentService] Workflow detected in tool_calls:', toolResult.name);
                 onEvent({
                   type: 'workflow',
                   workflow: {
@@ -126,7 +119,6 @@ export const agentService = {
 
           // Tauri: response_data 이벤트 전송 (BI 인사이트, 차트, 테이블 등)
           if (result.response_data) {
-            console.log('[agentService] response_data detected:', Object.keys(result.response_data));
             onEvent({
               type: 'response_data',
               data: result.response_data,

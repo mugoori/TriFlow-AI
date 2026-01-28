@@ -87,7 +87,7 @@ export function useSensorStream(options: UseSensorStreamOptions = {}): UseSensor
         break;
 
       case 'subscribed':
-        console.log('[useSensorStream] Subscribed with filters:', message.filters);
+        // 필터 구독 완료
         break;
     }
   }, [historySize]);

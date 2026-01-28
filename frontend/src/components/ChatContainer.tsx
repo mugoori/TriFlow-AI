@@ -71,9 +71,6 @@ export function ChatContainer({ currentView = 'chat' }: ChatContainerProps) {
     const currentWorkflow = pendingWorkflowRef.current;
     if (!currentWorkflow?.dsl) return;
 
-    // 디버그: 원본 DSL 확인
-    console.log('[ChatContainer] 원본 currentWorkflow.dsl:', JSON.stringify(currentWorkflow.dsl, null, 2));
-
     try {
       // DSL을 workflowService의 형식에 맞게 변환
       // 깊은 복사로 중첩 노드 구조 보존
@@ -87,17 +84,11 @@ export function ChatContainer({ currentView = 'chat' }: ChatContainerProps) {
         nodes: currentWorkflow.dsl.nodes,
       }));
 
-      // 디버그: API로 전송할 데이터 확인
-      console.log('[ChatContainer] API 전송 dslDefinition:', JSON.stringify(dslDefinition, null, 2));
-
       const newWorkflow = await workflowService.create({
         name: currentWorkflow.workflowName || currentWorkflow.dsl.name || '새 워크플로우',
         description: currentWorkflow.dsl.description || '',
         dsl_definition: dslDefinition,
       });
-
-      // 디버그: 저장 결과 확인
-      console.log('[ChatContainer] 저장된 워크플로우:', JSON.stringify(newWorkflow, null, 2));
 
       // 워크플로우 ID를 pendingWorkflow에 업데이트
       setPendingWorkflow({
@@ -105,9 +96,6 @@ export function ChatContainer({ currentView = 'chat' }: ChatContainerProps) {
         workflowId: newWorkflow.workflow_id,
         workflowName: newWorkflow.name,
       });
-
-      // 저장 성공 메시지를 채팅에 추가할 수도 있음
-      console.log('Workflow saved:', newWorkflow.workflow_id);
     } catch (error) {
       console.error('Failed to save workflow:', error);
     }

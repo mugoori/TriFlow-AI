@@ -351,13 +351,9 @@ export const workflowService = {
    * 워크플로우 DSL 수정 (전체 DSL 업데이트)
    */
   async updateDSL(workflowId: string, dsl: WorkflowDSL): Promise<Workflow> {
-    console.log('[workflowService.updateDSL] workflowId:', workflowId);
-    console.log('[workflowService.updateDSL] dsl:', JSON.stringify(dsl, null, 2));
-    const result = await apiClient.patch<Workflow>(`/api/v1/workflows/${workflowId}`, {
+    return await apiClient.patch<Workflow>(`/api/v1/workflows/${workflowId}`, {
       dsl_definition: dsl,
     });
-    console.log('[workflowService.updateDSL] result:', result);
-    return result;
   },
 
   /**

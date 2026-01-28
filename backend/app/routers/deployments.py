@@ -43,6 +43,7 @@ from app.services.rbac_service import (
     check_permission,
     require_admin,
 )
+from app.utils.errors import require_tenant_access
 from app.schemas.deployment import (
     DeploymentCreate,
     DeploymentUpdate,
@@ -114,9 +115,11 @@ async def get_deployment(
 ):
     """배포 조회 (viewer 이상)"""
     service = CanaryDeploymentService(db)
-    deployment = service.get_deployment(deployment_id)
-    if not deployment or deployment.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=404, detail="배포를 찾을 수 없습니다")
+    deployment = require_tenant_access(
+        service.get_deployment(deployment_id),
+        current_user.tenant_id,
+        "배포",
+    )
     return DeploymentResponse.model_validate(deployment)
 
 
@@ -130,9 +133,11 @@ async def update_deployment(
 ):
     """배포 수정 (draft 상태에서만, approver 이상)"""
     service = CanaryDeploymentService(db)
-    deployment = service.get_deployment(deployment_id)
-    if not deployment or deployment.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=404, detail="배포를 찾을 수 없습니다")
+    require_tenant_access(
+        service.get_deployment(deployment_id),
+        current_user.tenant_id,
+        "배포",
+    )
 
     try:
         updated = service.update_deployment(deployment_id, request)
@@ -150,9 +155,11 @@ async def delete_deployment(
 ):
     """배포 삭제 (admin만)"""
     service = CanaryDeploymentService(db)
-    deployment = service.get_deployment(deployment_id)
-    if not deployment or deployment.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=404, detail="배포를 찾을 수 없습니다")
+    require_tenant_access(
+        service.get_deployment(deployment_id),
+        current_user.tenant_id,
+        "배포",
+    )
 
     try:
         service.delete_deployment(deployment_id)
@@ -392,8 +399,9 @@ async def get_rollback_history(
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "read")),
 ):
-    """롤백 이력 조회"""
+    """롤백 이력 조회 (viewer 이상)"""
     rollback_service = CanaryRollbackService(db)
     deployments, total = rollback_service.get_rollback_history(
         tenant_id=current_user.tenant_id,
@@ -413,7 +421,8 @@ async def get_rollback_history(
 async def get_rollback_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("deployments", "read")),
 ):
-    """롤백 통계"""
+    """롤백 통계 (viewer 이상)"""
     rollback_service = CanaryRollbackService(db)
     return rollback_service.get_rollback_stats(current_user.tenant_id)

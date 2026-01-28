@@ -55,7 +55,6 @@ export function useCanaryVersion(): UseCanaryVersionReturn {
     CANARY_AFFECTED_QUERY_KEYS.forEach((key) => {
       queryClient.invalidateQueries({ queryKey: [key] });
     });
-    console.log('[Canary] Invalidated related query caches');
   }, [queryClient]);
 
   /**

@@ -367,3 +367,67 @@ def require_ownership(
     if resource.owner_id != user_id:
         resource_name = type(resource).__name__
         raise_access_denied(resource_name, action)
+
+
+def require_tenant_access(
+    resource: Any,
+    tenant_id,  # UUID
+    resource_name: str = "Resource",
+) -> Any:
+    """
+    테넌트 접근 권한 확인 (권한 없으면 404 에러)
+
+    Multi-tenant 환경에서 리소스가 현재 테넌트 소속인지 확인.
+    보안상 403 대신 404를 반환하여 리소스 존재 여부 노출 방지.
+
+    Args:
+        resource: 확인할 리소스 (tenant_id 속성 필요)
+        tenant_id: 현재 사용자의 테넌트 ID
+        resource_name: 에러 메시지에 표시할 리소스 이름
+
+    Returns:
+        resource: 접근 권한이 있는 경우 리소스 반환
+
+    Raises:
+        HTTPException: 리소스가 없거나 테넌트가 다른 경우 404
+
+    Usage:
+        deployment = require_tenant_access(
+            deployment_service.get(deployment_id),
+            current_user.tenant_id,
+            "배포"
+        )
+    """
+    from fastapi import HTTPException
+
+    if not resource:
+        raise HTTPException(status_code=404, detail=f"{resource_name}을(를) 찾을 수 없습니다")
+
+    if hasattr(resource, 'tenant_id') and resource.tenant_id != tenant_id:
+        # 보안상 403 대신 404 반환 (리소스 존재 여부 노출 방지)
+        raise HTTPException(status_code=404, detail=f"{resource_name}을(를) 찾을 수 없습니다")
+
+    return resource
+
+
+def handle_service_error(e: Exception, default_message: str = "처리 중 오류가 발생했습니다"):
+    """
+    서비스 레이어 에러를 HTTP 에러로 변환
+
+    ValueError -> 400 Bad Request
+    기타 -> 500 Internal Server Error
+
+    Args:
+        e: 발생한 예외
+        default_message: 기본 에러 메시지
+
+    Raises:
+        HTTPException: 적절한 상태 코드와 메시지
+    """
+    from fastapi import HTTPException
+
+    if isinstance(e, ValueError):
+        raise HTTPException(status_code=400, detail=str(e))
+    else:
+        logger.error(f"Service error: {e}")
+        raise HTTPException(status_code=500, detail=default_message)

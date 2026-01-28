@@ -413,23 +413,16 @@ export default function WorkflowsPage() {
 
   // 워크플로우 저장 (FlowEditor에서 workflow_id 반환 필요)
   const handleSaveWorkflow = async (dsl: WorkflowDSL): Promise<string | void> => {
-    console.log('[WorkflowsPage] handleSaveWorkflow called');
-    console.log('[WorkflowsPage] editingWorkflowId:', editingWorkflowId);
-    console.log('[WorkflowsPage] DSL to save:', JSON.stringify(dsl, null, 2));
-
     try {
       let savedWorkflowId: string;
 
       if (editingWorkflowId) {
         // 편집 모드: DSL 업데이트
-        console.log('[WorkflowsPage] Calling updateDSL...');
-        const result = await workflowService.updateDSL(editingWorkflowId, dsl);
-        console.log('[WorkflowsPage] updateDSL result:', result);
+        await workflowService.updateDSL(editingWorkflowId, dsl);
         savedWorkflowId = editingWorkflowId;
         // FlowEditor 내부 실행 시에는 alert 표시하지 않음
       } else {
         // 생성 모드
-        console.log('[WorkflowsPage] Calling create...');
         const result = await workflowService.create({
           name: dsl.name,
           description: dsl.description,

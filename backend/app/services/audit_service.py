@@ -21,8 +21,22 @@ TRUNCATED_STRING_LENGTH = 500  # truncate된 문자열 길이
 
 # 민감 정보 마스킹 패턴
 SENSITIVE_FIELDS = [
-    "password", "password_hash", "token", "access_token", "refresh_token",
-    "secret", "api_key", "authorization", "credit_card", "ssn",
+    # 인증 관련
+    "password", "password_hash", "passwd", "pwd",
+    "token", "access_token", "refresh_token", "auth_token", "bearer",
+    "secret", "secret_key", "private_key", "api_key", "apikey",
+    "authorization", "auth",
+    # 개인정보
+    "ssn", "social_security", "resident_number", "주민등록번호",
+    "credit_card", "card_number", "cvv", "cvc",
+    "phone", "phone_number", "mobile", "전화번호", "휴대폰",
+    "address", "street", "zip_code", "postal_code", "주소",
+    "email", "이메일",
+    "birth", "birthday", "birth_date", "생년월일",
+    "passport", "여권",
+    # 금융정보
+    "account", "account_number", "bank_account", "계좌",
+    "pin", "pin_code",
 ]
 
 

@@ -62,8 +62,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
-    # Rate Limiting
+    # Feature Flags (main.py에서 통합)
     rate_limit_enabled: bool = True  # 개발 환경에서 False로 설정 가능
+    metrics_enabled: bool = True  # Prometheus 메트릭 수집
+    security_headers_enabled: bool = True  # 보안 헤더 미들웨어
+    pii_masking_enabled: bool = True  # PII 마스킹 미들웨어
+    audit_log_enabled: bool = True  # Audit Log 미들웨어
+    i18n_enabled: bool = True  # 다국어 지원 미들웨어
 
     # Monitoring
     prometheus_port: int = 9090
@@ -72,6 +77,15 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.1
     sentry_profiles_sample_rate: float = 0.1
+
+    # Sample Curation (quality scoring)
+    sample_default_confidence: float = 0.7  # confidence 기본값
+    sample_recency_min_factor: float = 0.5  # recency 최소 factor
+    sample_recency_decay_days: int = 30  # recency decay 기간
+
+    # Rate Limit 기본값
+    rate_limit_default_requests: int = 200  # 기본 최대 요청 수
+    rate_limit_default_window: int = 60  # 기본 윈도우 (초)
 
     # OAuth2 - Google
     google_client_id: str = ""

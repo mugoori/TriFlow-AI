@@ -402,11 +402,55 @@ class ExperimentService:
         return metric
 
     def get_experiment_stats(self, experiment_id: UUID) -> Dict[str, Any]:
-        """실험 통계 조회"""
+        """실험 통계 조회 (배치 쿼리로 N+1 문제 해결)"""
         experiment = self.get_experiment(experiment_id)
         if not experiment:
             return {}
 
+        variant_ids = [v.variant_id for v in experiment.variants]
+
+        # 배치 쿼리 1: 모든 variant의 할당 수를 한 번에 조회
+        assignment_counts = dict(
+            self.db.query(
+                ExperimentAssignment.variant_id,
+                func.count(ExperimentAssignment.assignment_id),
+            )
+            .filter(ExperimentAssignment.variant_id.in_(variant_ids))
+            .group_by(ExperimentAssignment.variant_id)
+            .all()
+        )
+
+        # 배치 쿼리 2: 모든 variant의 메트릭 집계를 한 번에 조회
+        metrics_agg = self.db.query(
+            ExperimentMetric.variant_id,
+            ExperimentMetric.metric_name,
+            func.count(ExperimentMetric.metric_id),
+            func.avg(ExperimentMetric.metric_value),
+            func.stddev(ExperimentMetric.metric_value),
+            func.min(ExperimentMetric.metric_value),
+            func.max(ExperimentMetric.metric_value),
+        ).filter(
+            ExperimentMetric.variant_id.in_(variant_ids)
+        ).group_by(
+            ExperimentMetric.variant_id,
+            ExperimentMetric.metric_name,
+        ).all()
+
+        # 메트릭 데이터를 variant_id로 그룹화
+        metrics_by_variant: Dict[UUID, Dict[str, Dict[str, Any]]] = {}
+        for row in metrics_agg:
+            variant_id, metric_name, count, avg_val, std_val, min_val, max_val = row
+            if variant_id not in metrics_by_variant:
+                metrics_by_variant[variant_id] = {}
+            metrics_by_variant[variant_id][metric_name] = {
+                "count": count or 0,
+                "mean": float(avg_val) if avg_val else 0.0,
+                "stddev": float(std_val) if std_val else 0.0,
+                "min": float(min_val) if min_val else 0.0,
+                "max": float(max_val) if max_val else 0.0,
+            }
+
+        # 결과 조합
         stats = {
             "experiment_id": str(experiment_id),
             "status": experiment.status,
@@ -414,44 +458,13 @@ class ExperimentService:
         }
 
         for variant in experiment.variants:
-            # 할당 수
-            assignment_count = self.db.query(ExperimentAssignment).filter(
-                ExperimentAssignment.variant_id == variant.variant_id
-            ).count()
-
-            # 메트릭 집계
-            metrics_summary = {}
-            metric_names = self.db.query(ExperimentMetric.metric_name).filter(
-                ExperimentMetric.variant_id == variant.variant_id
-            ).distinct().all()
-
-            for (metric_name,) in metric_names:
-                agg = self.db.query(
-                    func.count(ExperimentMetric.metric_id),
-                    func.avg(ExperimentMetric.metric_value),
-                    func.stddev(ExperimentMetric.metric_value),
-                    func.min(ExperimentMetric.metric_value),
-                    func.max(ExperimentMetric.metric_value),
-                ).filter(
-                    ExperimentMetric.variant_id == variant.variant_id,
-                    ExperimentMetric.metric_name == metric_name,
-                ).first()
-
-                metrics_summary[metric_name] = {
-                    "count": agg[0] or 0,
-                    "mean": float(agg[1]) if agg[1] else 0.0,
-                    "stddev": float(agg[2]) if agg[2] else 0.0,
-                    "min": float(agg[3]) if agg[3] else 0.0,
-                    "max": float(agg[4]) if agg[4] else 0.0,
-                }
-
             stats["variants"].append({
                 "variant_id": str(variant.variant_id),
                 "name": variant.name,
                 "is_control": variant.is_control,
                 "traffic_weight": variant.traffic_weight,
-                "assignment_count": assignment_count,
-                "metrics": metrics_summary,
+                "assignment_count": assignment_counts.get(variant.variant_id, 0),
+                "metrics": metrics_by_variant.get(variant.variant_id, {}),
             })
 
         # 총 할당 수

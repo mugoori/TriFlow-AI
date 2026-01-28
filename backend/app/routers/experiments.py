@@ -11,8 +11,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Experiment, ExperimentVariant, Tenant
+from app.models import Experiment, ExperimentVariant, User
 from app.services.experiment_service import ExperimentService
+from app.auth.dependencies import get_current_user
+from app.services.rbac_service import check_permission
 
 import logging
 logger = logging.getLogger(__name__)
@@ -196,20 +198,17 @@ def _experiment_to_response(exp: Experiment) -> ExperimentResponse:
 async def create_experiment(
     data: ExperimentCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("experiments", "create")),
 ):
     """
-    새 실험 생성
+    새 실험 생성 (approver 이상)
     """
-    # 테넌트 조회 (임시: 첫 번째 테넌트 사용)
-    tenant = db.query(Tenant).first()
-    if not tenant:
-        raise HTTPException(status_code=400, detail="테넌트를 찾을 수 없습니다")
-
     service = ExperimentService(db)
 
     try:
         experiment = service.create_experiment(
-            tenant_id=tenant.tenant_id,
+            tenant_id=current_user.tenant_id,
             name=data.name,
             description=data.description,
             hypothesis=data.hypothesis,
@@ -244,15 +243,22 @@ async def list_experiments(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("experiments", "read")),
 ):
     """
-    실험 목록 조회
+    실험 목록 조회 (viewer 이상)
     """
     service = ExperimentService(db)
-    experiments = service.list_experiments(status=status, limit=limit, offset=offset)
+    experiments = service.list_experiments(
+        tenant_id=current_user.tenant_id,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
 
-    # 총 개수 (필터 적용)
-    query = db.query(Experiment)
+    # 총 개수 (테넌트 및 필터 적용)
+    query = db.query(Experiment).filter(Experiment.tenant_id == current_user.tenant_id)
     if status:
         query = query.filter(Experiment.status == status)
     total = query.count()
@@ -267,9 +273,11 @@ async def list_experiments(
 async def get_experiment(
     experiment_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("experiments", "read")),
 ):
     """
-    실험 상세 조회
+    실험 상세 조회 (viewer 이상)
     """
     try:
         exp_uuid = UUID(experiment_id)
@@ -279,7 +287,7 @@ async def get_experiment(
     service = ExperimentService(db)
     experiment = service.get_experiment(exp_uuid)
 
-    if not experiment:
+    if not experiment or experiment.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=404, detail="실험을 찾을 수 없습니다")
 
     return _experiment_to_response(experiment)
@@ -290,9 +298,11 @@ async def update_experiment(
     experiment_id: str,
     data: ExperimentUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("experiments", "create")),
 ):
     """
-    실험 수정 (draft 상태에서만 가능)
+    실험 수정 (draft 상태에서만 가능, approver 이상)
     """
     try:
         exp_uuid = UUID(experiment_id)
@@ -300,6 +310,11 @@ async def update_experiment(
         raise HTTPException(status_code=400, detail="Invalid experiment ID format")
 
     service = ExperimentService(db)
+
+    # 테넌트 검증
+    existing = service.get_experiment(exp_uuid)
+    if not existing or existing.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="실험을 찾을 수 없습니다")
 
     try:
         experiment = service.update_experiment(
@@ -319,9 +334,11 @@ async def update_experiment(
 async def delete_experiment(
     experiment_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(check_permission("experiments", "delete")),
 ):
     """
-    실험 삭제 (draft/cancelled 상태에서만 가능)
+    실험 삭제 (draft/cancelled 상태에서만 가능, admin만)
     """
     try:
         exp_uuid = UUID(experiment_id)
@@ -329,6 +346,11 @@ async def delete_experiment(
         raise HTTPException(status_code=400, detail="Invalid experiment ID format")
 
     service = ExperimentService(db)
+
+    # 테넌트 검증
+    existing = service.get_experiment(exp_uuid)
+    if not existing or existing.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="실험을 찾을 수 없습니다")
 
     try:
         deleted = service.delete_experiment(exp_uuid)

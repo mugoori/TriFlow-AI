@@ -42,7 +42,8 @@ RATE_LIMIT_RULES = {
 }
 
 # 기본 Rate Limit (위 규칙에 없는 경로)
-DEFAULT_RATE_LIMIT = (200, 60)  # 200 req/min
+# settings에서 값을 가져오거나 fallback 사용
+DEFAULT_RATE_LIMIT = (settings.rate_limit_default_requests, settings.rate_limit_default_window)
 
 # Rate Limit 제외 경로
 EXCLUDED_PATHS = {

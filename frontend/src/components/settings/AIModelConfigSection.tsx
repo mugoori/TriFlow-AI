@@ -51,14 +51,12 @@ export default function AIModelConfigSection() {
     const loadSettings = async () => {
       try {
         const response = await settingsService.getSettings('ai');
-        console.log('[AIModelConfig] Loaded from API:', response);
         const settingsMap: Record<string, string> = {};
         response.settings.forEach((s) => {
           if (s.key in settings) {
             settingsMap[s.key] = s.value || '';
           }
         });
-        console.log('[AIModelConfig] Mapped settings:', settingsMap);
         setSettings((prev) => ({ ...prev, ...settingsMap }));
       } catch (error) {
         console.error('[AIModelConfig] Failed to load:', error);
@@ -90,9 +88,7 @@ export default function AIModelConfigSection() {
         }
       });
 
-      console.log('[AIModelConfig] Saving settings:', settingsToSave);
-      const result = await settingsService.updateSettings(settingsToSave);
-      console.log('[AIModelConfig] Save result:', result);
+      await settingsService.updateSettings(settingsToSave);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (error) {

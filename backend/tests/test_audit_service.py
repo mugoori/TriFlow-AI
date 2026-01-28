@@ -21,10 +21,10 @@ class TestMaskSensitiveData:
 
     def test_mask_password_field(self):
         """비밀번호 필드 마스킹"""
-        data = {"email": "test@test.com", "password": "secret123"}
+        data = {"username": "test_user", "password": "secret123"}
         result = mask_sensitive_data(data)
 
-        assert result["email"] == "test@test.com"
+        assert result["username"] == "test_user"
         assert result["password"] == "***MASKED***"
 
     def test_mask_token_field(self):
@@ -47,7 +47,7 @@ class TestMaskSensitiveData:
         """중첩 데이터 마스킹"""
         data = {
             "user": {
-                "email": "test@test.com",
+                "username": "test_user",
                 "password": "secret",
                 "profile": {
                     "token": "abc123"
@@ -56,7 +56,7 @@ class TestMaskSensitiveData:
         }
         result = mask_sensitive_data(data)
 
-        assert result["user"]["email"] == "test@test.com"
+        assert result["user"]["username"] == "test_user"
         assert result["user"]["password"] == "***MASKED***"
         assert result["user"]["profile"]["token"] == "***MASKED***"
 
@@ -686,7 +686,7 @@ class TestGetAuditLogsMock:
         mock_result.fetchall.return_value = [mock_row]
         mock_db.execute.return_value = mock_result
 
-        logs = await get_audit_logs(db=mock_db, limit=10, offset=0)
+        logs, total = await get_audit_logs(db=mock_db, limit=10, offset=0)
 
         assert len(logs) == 1
         assert logs[0]["action"] == "create"
@@ -703,7 +703,7 @@ class TestGetAuditLogsMock:
         user_id = uuid4()
         tenant_id = uuid4()
 
-        logs = await get_audit_logs(
+        logs, total = await get_audit_logs(
             db=mock_db,
             user_id=user_id,
             tenant_id=tenant_id,
@@ -717,7 +717,8 @@ class TestGetAuditLogsMock:
         )
 
         assert logs == []
-        mock_db.execute.assert_called_once()
+        # execute가 2번 호출됨 (count + data)
+        assert mock_db.execute.call_count == 2
 
     @pytest.mark.asyncio
     async def test_get_logs_failure(self):
@@ -725,9 +726,10 @@ class TestGetAuditLogsMock:
         mock_db = MagicMock()
         mock_db.execute.side_effect = Exception("Database error")
 
-        logs = await get_audit_logs(db=mock_db)
+        logs, total = await get_audit_logs(db=mock_db)
 
         assert logs == []
+        assert total == 0
 
     @pytest.mark.asyncio
     async def test_get_logs_with_null_values(self):
@@ -744,7 +746,7 @@ class TestGetAuditLogsMock:
         mock_result.fetchall.return_value = [mock_row]
         mock_db.execute.return_value = mock_result
 
-        logs = await get_audit_logs(db=mock_db)
+        logs, total = await get_audit_logs(db=mock_db)
 
         assert len(logs) == 1
         assert logs[0]["user_id"] is None

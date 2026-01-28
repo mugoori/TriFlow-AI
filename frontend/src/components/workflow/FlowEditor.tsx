@@ -2756,7 +2756,6 @@ function FlowEditorInner({ initialDSL, workflowId: propWorkflowId, onSave, onCan
   // 저장 핸들러
   const handleSave = useCallback(async () => {
     const dslResult = flowToDSL(nodes as FlowNode[], edges, workflowName, workflowDescription, triggerType, globalSettings);
-    console.log('[FlowEditor] Saving DSL:', JSON.stringify(dslResult, null, 2));
     setIsSaving(true);
     try {
       const result = await onSave?.(dslResult);

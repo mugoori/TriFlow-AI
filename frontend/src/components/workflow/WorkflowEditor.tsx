@@ -858,7 +858,6 @@ export function WorkflowEditor({ initialDSL, onSave, onCancel, isOpen }: Workflo
       nodes: nodesWithNext,
     };
 
-    console.log('[WorkflowEditor] Saving DSL:', JSON.stringify(finalDSL, null, 2));
     onSave?.(finalDSL);
   };
 

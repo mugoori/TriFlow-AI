@@ -28,6 +28,7 @@ from app.schemas.sample import (
     SampleExtractRequest,
     SampleStats,
 )
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -108,15 +109,18 @@ class SampleCurationService:
         if execution and execution.confidence:
             confidence = float(execution.confidence)
         else:
-            confidence = 0.7  # 기본값
+            confidence = settings.sample_default_confidence
 
         # 3. Recency factor (최신일수록 높음)
-        # 30일 이상이면 0.5, 최신이면 1.0
+        # decay_days일 이상이면 recency_min_factor, 최신이면 1.0
         if feedback.created_at:
             days_old = (datetime.utcnow() - feedback.created_at).days
         else:
             days_old = 0
-        recency_factor = max(0.5, 1.0 - days_old / 30)
+        recency_factor = max(
+            settings.sample_recency_min_factor,
+            1.0 - days_old / settings.sample_recency_decay_days,
+        )
 
         quality_score = rating_score * confidence * recency_factor
         return round(quality_score, 4)

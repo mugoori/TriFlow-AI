@@ -53,15 +53,12 @@ class SensorStreamService {
    */
   connect(backendUrl?: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('[SensorStream] Already connected');
       return;
     }
 
     // Backend URL에서 WebSocket URL 생성
     const baseUrl = backendUrl || import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const wsUrl = baseUrl.replace(/^http/, 'ws') + '/api/v1/sensors/stream';
-
-    console.log('[SensorStream] Connecting to:', wsUrl);
 
     try {
       this.ws = new WebSocket(wsUrl);

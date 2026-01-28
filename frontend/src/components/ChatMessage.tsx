@@ -3,7 +3,7 @@
  * 채팅 메시지를 렌더링하는 컴포넌트
  */
 
-import { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { ChevronDown, ChevronRight, Pin, Check, FileCode, ExternalLink, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -30,7 +30,7 @@ interface ChatMessageProps {
   message: ChatMessageType;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const [showDetails, setShowDetails] = useState(false);
   const [feedbackState, setFeedbackState] = useState<'none' | 'positive' | 'negative'>('none');
@@ -38,17 +38,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const { addChart, hasChart } = useDashboard();
 
-  // Check if this message contains chart data from BI Agent
-  const chartConfig = extractChartConfig(message);
+  // Memoize expensive extractions to avoid recalculation on every render
+  const chartConfig = useMemo(() => extractChartConfig(message), [message]);
+  const reasoningSummary = useMemo(() => extractReasoningSummary(message), [message]);
+  const rulesetResult = useMemo(() => extractRulesetCreationResult(message), [message]);
 
   // 차트가 이미 대시보드에 고정되어 있는지 확인
   const isChartPinned = chartConfig ? hasChart(chartConfig) : false;
-
-  // Extract reasoning summary from tool calls
-  const reasoningSummary = extractReasoningSummary(message);
-
-  // Check if this message contains ruleset creation result
-  const rulesetResult = extractRulesetCreationResult(message);
 
   // 대시보드에 차트 고정
   const handlePinChart = () => {
@@ -332,7 +328,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
     </div>
   );
-}
+});
 
 /**
  * Extract a brief reasoning summary from tool calls
@@ -383,7 +379,6 @@ function extractChartConfig(message: ChatMessageType): ChartConfig | null {
   if (message.response_data?.charts && Array.isArray(message.response_data.charts) && message.response_data.charts.length > 0) {
     const chartConfig = message.response_data.charts[0];
     if (chartConfig && typeof chartConfig === 'object' && 'type' in chartConfig && 'data' in chartConfig) {
-      console.log('[extractChartConfig] Found chart in response_data.charts');
       return chartConfig as ChartConfig;
     }
   }
@@ -426,7 +421,6 @@ function extractChartConfig(message: ChatMessageType): ChartConfig | null {
       'type' in config &&
       'data' in config
     ) {
-      console.log('[extractChartConfig] Found chart in tool_calls.result');
       return config as ChartConfig;
     }
 

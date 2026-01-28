@@ -1,7 +1,6 @@
 """
 TriFlow AI Backend - FastAPI Main Application
 """
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -236,8 +235,7 @@ logger.info("Max upload size set to 200MB")
 # ========== 미들웨어 설정 (등록 역순으로 실행됨 - 나중에 추가된 것이 먼저 실행) ==========
 
 # 0. Metrics 미들웨어 (가장 나중에 실행 - 모든 요청 측정)
-METRICS_ENABLED = os.getenv("METRICS_ENABLED", "true").lower() == "true"
-if METRICS_ENABLED:
+if settings.metrics_enabled:
     try:
         from app.middleware.metrics import MetricsMiddleware
 
@@ -247,8 +245,7 @@ if METRICS_ENABLED:
         logger.warning(f"Failed to enable Metrics middleware: {e}")
 
 # 2. Security Headers 미들웨어
-SECURITY_HEADERS_ENABLED = os.getenv("SECURITY_HEADERS_ENABLED", "true").lower() == "true"
-if SECURITY_HEADERS_ENABLED:
+if settings.security_headers_enabled:
     try:
         from app.middleware.security_headers import SecurityHeadersMiddleware
 
@@ -258,8 +255,7 @@ if SECURITY_HEADERS_ENABLED:
         logger.warning(f"Failed to enable Security Headers middleware: {e}")
 
 # 3. Rate Limiting 미들웨어
-RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
-if RATE_LIMIT_ENABLED:
+if settings.rate_limit_enabled:
     try:
         from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -269,8 +265,7 @@ if RATE_LIMIT_ENABLED:
         logger.warning(f"Failed to enable Rate Limiting middleware: {e}")
 
 # 4. PII 마스킹 미들웨어
-PII_MASKING_ENABLED = os.getenv("PII_MASKING_ENABLED", "true").lower() == "true"
-if PII_MASKING_ENABLED:
+if settings.pii_masking_enabled:
     try:
         from app.middleware.pii_masking import PIIMaskingMiddleware
 
@@ -289,8 +284,7 @@ else:
     logger.info("PII Masking middleware disabled")
 
 # 5. Audit Log 미들웨어
-AUDIT_LOG_ENABLED = os.getenv("AUDIT_LOG_ENABLED", "true").lower() == "true"
-if AUDIT_LOG_ENABLED:
+if settings.audit_log_enabled:
     try:
         from app.middleware.audit import AuditMiddleware
 
@@ -302,8 +296,7 @@ else:
     logger.info("Audit Log middleware disabled")
 
 # 5.5. I18N 미들웨어 (국제화)
-I18N_ENABLED = os.getenv("I18N_ENABLED", "true").lower() == "true"
-if I18N_ENABLED:
+if settings.i18n_enabled:
     try:
         from app.middleware.i18n import I18nMiddleware
 

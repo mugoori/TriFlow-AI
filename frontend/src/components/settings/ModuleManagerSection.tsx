@@ -36,9 +36,7 @@ export default function ModuleManagerSection() {
     setUploadSuccess(null);
 
     try {
-      console.log('[MODULE UPLOAD] Starting upload...', { fileName: file.name, fileSize: file.size });
       const response = await moduleService.uploadModule(file, false);
-      console.log('[MODULE UPLOAD] Success:', response);
       setUploadSuccess(`모듈 '${response.module_code}' v${response.version} 업로드 완료!`);
 
       // Reload modules after 2 seconds

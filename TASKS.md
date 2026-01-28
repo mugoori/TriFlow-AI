@@ -1,5 +1,176 @@
 # Tasks & Progress
 
+## 2026-01-28: 코드베이스 리팩토링 (P1-P4 완료)
+
+### 개요
+Backend 180+파일, Frontend 50+파일 전체 코드 리뷰 후 보안, 성능, 아키텍처 개선 작업 완료.
+
+### P1: Critical (보안 취약점 수정)
+
+#### 1. SQL Injection 방지
+- **파일**: `backend/app/services/audit_service.py`
+- **문제**: 동적 WHERE절 직접 삽입
+- **해결**: 파라미터 바인딩으로 변경
+
+#### 2. 권한 검증 추가
+- **파일**: `backend/app/routers/deployments.py`
+- **문제**: `/rollback-history`, `/rollback-stats` 권한 검증 없음
+- **해결**: `@Depends(get_current_user)`, `@Depends(check_permission)` 추가
+
+- **파일**: `backend/app/routers/experiments.py`
+- **문제**: 테넌트 필터링 없음
+- **해결**: `list_experiments`에서 `tenant_id` 필터 적용
+
+#### 3. N+1 쿼리 제거
+- **파일**: `backend/app/services/experiment_service.py`
+- **문제**: variant별 반복 쿼리 (416-454줄)
+- **해결**: 배치 쿼리로 통합
+
+#### 4. 민감정보 마스킹 강화
+- **파일**: `backend/app/services/audit_service.py`
+- **확장된 SENSITIVE_FIELDS**:
+```python
+# 기존: password, token, secret, api_key
+# 추가:
+"ssn", "social_security", "resident_number", "주민등록번호",
+"credit_card", "card_number", "cvv", "cvc",
+"phone", "phone_number", "mobile", "전화번호", "휴대폰",
+"address", "street", "zip_code", "postal_code", "주소",
+"email", "이메일", "birth", "birthday", "생년월일",
+"passport", "여권", "account", "account_number", "계좌", "pin"
+```
+
+### P2: High (환경변수 통합, 공통 유틸리티)
+
+#### 1. Feature Flag 중앙화
+- **파일**: `backend/app/config.py`
+- **추가된 설정**:
+```python
+# Feature Flags (main.py에서 통합)
+rate_limit_enabled: bool = True
+metrics_enabled: bool = True
+security_headers_enabled: bool = True
+pii_masking_enabled: bool = True
+audit_log_enabled: bool = True
+i18n_enabled: bool = True
+
+# Sample Curation
+sample_default_confidence: float = 0.7
+sample_recency_min_factor: float = 0.5
+sample_recency_decay_days: int = 30
+
+# Rate Limit 기본값
+rate_limit_default_requests: int = 200
+rate_limit_default_window: int = 60
+```
+
+- **파일**: `backend/app/main.py`
+- **변경**: `os.getenv()` 직접 호출 제거 → `settings.xxx_enabled` 사용
+
+#### 2. 공통 에러 처리 유틸리티
+- **파일**: `backend/app/utils/errors.py`
+- **추가 함수**:
+```python
+def require_tenant_access(resource, tenant_id, resource_name) -> Any:
+    """테넌트 접근 권한 확인 (없으면 404)"""
+
+def handle_service_error(e, default_message) -> None:
+    """서비스 레이어 에러 → HTTP 에러 변환"""
+```
+
+- **적용 파일**: `deployments.py`에서 반복되던 테넌트 검증 코드 통합
+
+### P3: Medium (React 성능, 타입 안정성, 하드코딩 제거)
+
+#### 1. React 성능 최적화
+- **파일**: `frontend/src/components/ChatMessage.tsx`
+- **변경**: `React.memo`, `useMemo` 적용
+```typescript
+export const ChatMessage = memo(function ChatMessage({ message }) {
+  const chartConfig = useMemo(() => extractChartConfig(message), [message]);
+  const reasoningSummary = useMemo(() => extractReasoningSummary(message), [message]);
+  // ...
+});
+```
+
+- **파일**: `frontend/src/components/pages/DashboardPage.tsx`
+- **변경**: 임계값 상수화
+```typescript
+const TEMPERATURE_THRESHOLD = 70;  // °C
+const PRESSURE_THRESHOLD = 8;      // bar
+```
+
+#### 2. Tauri 타입 선언
+- **파일**: `frontend/src/types/tauri.d.ts` (신규)
+```typescript
+declare global {
+  interface Window {
+    __TAURI__?: {
+      invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+      path?: { ... };
+      event?: { ... };
+      shell?: { ... };
+      os?: { ... };
+    };
+  }
+}
+```
+
+- **파일**: `frontend/src/services/agentService.ts`
+- **변경**: `(window as any).__TAURI__` → 타입 안전한 `window.__TAURI__`
+
+### P4: Low (console.log 정리)
+
+#### 제거된 디버그 로그 (46개)
+
+| 파일 | 제거 개수 |
+|------|----------|
+| `BIChatPanel.tsx` | 13개 |
+| `agentService.ts` | 3개 |
+| `workflowService.ts` | 3개 |
+| `api.ts` | 1개 |
+| `sensorStreamService.ts` | 2개 |
+| `ChatContext.tsx` | 3개 |
+| `DashboardPage.tsx` | 5개 |
+| `WorkflowsPage.tsx` | 6개 |
+| `WorkflowEditor.tsx` | 1개 |
+| `FlowEditor.tsx` | 1개 |
+| `AIModelConfigSection.tsx` | 4개 |
+| `ModuleManagerSection.tsx` | 2개 |
+| `useSensorStream.ts` | 1개 |
+| `useCanaryVersion.ts` | 1개 |
+
+#### 유지된 로그 (디버깅 필수)
+- WebSocket 연결 상태 (Connected/Disconnected/Reconnecting)
+- Tauri/Browser 환경 감지
+- SSE 스트림 완료/종료 시그널
+- `console.error`는 에러 추적용으로 모두 유지
+
+### 수정된 파일 목록 (28개)
+
+| 카테고리 | 파일 |
+|---------|------|
+| **Backend** | |
+| 설정 | `config.py`, `main.py` |
+| 유틸 | `utils/errors.py` |
+| 서비스 | `audit_service.py`, `experiment_service.py`, `sample_curation_service.py` |
+| 라우터 | `deployments.py`, `experiments.py` |
+| **Frontend** | |
+| 컴포넌트 | `ChatMessage.tsx`, `ChatContainer.tsx`, `DashboardPage.tsx`, `WorkflowsPage.tsx`, `WorkflowEditor.tsx`, `FlowEditor.tsx` |
+| BI | `BIChatPanel.tsx` |
+| 설정 | `AIModelConfigSection.tsx`, `ModuleManagerSection.tsx` |
+| 서비스 | `agentService.ts`, `workflowService.ts`, `api.ts`, `sensorStreamService.ts` |
+| 컨텍스트 | `ChatContext.tsx` |
+| Hooks | `useSensorStream.ts`, `useCanaryVersion.ts` |
+| 타입 | `tauri.d.ts` (신규) |
+
+### 검증 완료
+- ✅ Backend 테스트 93개 통과 (experiment_service 50 + audit_service 43)
+- ✅ TypeScript 타입 체크 통과 (`npx tsc --noEmit`)
+- ✅ 기존 기능 정상 동작 확인
+
+---
+
 ## 2026-01-28: Korea Biopharm AI 레시피 저장 기능 완성
 
 ### 개요

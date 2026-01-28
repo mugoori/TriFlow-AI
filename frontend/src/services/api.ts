@@ -66,9 +66,6 @@ export class ApiClient {
 
       // 버전이 변경되었고, 이전 버전이 있었다면 콜백 호출
       if (previousVersion !== null && this.onCanaryVersionChange) {
-        console.log(
-          `[Canary] Version changed: ${previousVersion} -> ${newVersion}`
-        );
         this.onCanaryVersionChange(newVersion);
       }
     }
