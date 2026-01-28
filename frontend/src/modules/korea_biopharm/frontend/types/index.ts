@@ -116,12 +116,31 @@ export interface SearchResult {
   searched_at: string;
 }
 
-// 기존 레시피 상세
-export interface HistoricalRecipe {
-  id: number;
-  filename: string;
-  data: Record<string, unknown>;
+// 기존 레시피 상세 (DB에서 조회)
+export interface HistoricalRecipeIngredient {
+  ingredient_name: string;
+  ratio: number;
+  amount?: number;
+  purpose?: string;
 }
+
+export interface HistoricalRecipe {
+  metadata: RecipeMetadata;
+  details: HistoricalRecipeIngredient[];
+}
+
+// RecipesPage 상세 보기용 통합 타입
+export interface HistoricalRecipeDetail {
+  type: 'historical';
+  metadata: RecipeMetadata;
+  details: HistoricalRecipeIngredient[];
+}
+
+export interface AIRecipeDetail extends AIGeneratedRecipe {
+  type: 'ai_generated';
+}
+
+export type SelectedRecipeDetail = HistoricalRecipeDetail | AIRecipeDetail | null;
 
 // 피드백
 export interface Feedback {
@@ -129,6 +148,90 @@ export interface Feedback {
   rating: number;
   comment?: string;
   created_at: string;
+}
+
+// ===================================
+// AI 생성 레시피 관련 타입
+// ===================================
+
+// AI 생성 레시피 저장 요청
+export interface AIGeneratedRecipeCreate {
+  product_name: string;
+  formulation_type?: string;
+  option_type: string;  // 'cost_optimized', 'premium', 'balanced', 'custom'
+  title?: string;
+  ingredients: RecipeIngredient[];
+  total_ratio?: number;
+  estimated_cost?: string;
+  notes?: string;
+  quality?: string;
+  summary?: string;
+  source_type?: string;
+  source_reference?: string;
+  external_id?: string;
+}
+
+// AI 생성 레시피 응답
+export interface AIGeneratedRecipe {
+  recipe_id: string;
+  tenant_id: string;
+  product_name: string;
+  formulation_type?: string;
+  option_type: string;
+  title?: string;
+  ingredients: RecipeIngredient[];
+  total_ratio?: number;
+  estimated_cost?: string;
+  notes?: string;
+  quality?: string;
+  summary?: string;
+  source_type: string;
+  source_reference?: string;
+  external_id?: string;
+  status: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// 레시피 피드백 요청
+export interface RecipeFeedbackCreate {
+  rating: number;
+  comment?: string;
+  feedback_type?: string;
+}
+
+// 레시피 피드백 응답
+export interface RecipeFeedback {
+  feedback_id: string;
+  recipe_id: string;
+  rating: number;
+  comment?: string;
+  feedback_type?: string;
+  created_at: string;
+}
+
+// 통합 레시피 (기존 DB + AI 생성)
+export interface UnifiedRecipe {
+  recipe_id: string;
+  tenant_id: string;
+  product_name: string;
+  formulation_type?: string;
+  option_type: string;
+  ingredient_count: number;
+  source_type: string;  // 'db_existing', 'ai_generated', 'mes_imported', 'erp_imported'
+  source_reference?: string;
+  status: string;
+  created_at?: string;
+  created_by?: string;
+}
+
+// 통합 레시피 목록 응답
+export interface UnifiedRecipeListResponse {
+  recipes: UnifiedRecipe[];
+  total_count: number;
+  page: number;
+  page_size: number;
 }
 
 // API 응답 래퍼

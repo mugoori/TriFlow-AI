@@ -79,3 +79,98 @@ class SearchResult(BaseModel):
     total_count: int
     page: int
     page_size: int
+
+
+# ===================================
+# AI 생성 레시피 관련 스키마
+# ===================================
+
+class AIRecipeIngredient(BaseModel):
+    """AI 생성 레시피의 원료 항목"""
+    no: int
+    name: str
+    ratio: float
+    role: Optional[str] = ""
+
+
+class AIGeneratedRecipeCreate(BaseModel):
+    """AI 레시피 저장 요청"""
+    product_name: str
+    formulation_type: Optional[str] = None
+    option_type: str  # 'cost_optimized', 'premium', 'balanced', 'custom'
+    title: Optional[str] = None
+    ingredients: List[AIRecipeIngredient]
+    total_ratio: Optional[float] = None
+    estimated_cost: Optional[str] = None
+    notes: Optional[str] = None
+    quality: Optional[str] = None
+    summary: Optional[str] = None
+    source_type: str = "ai_generated"
+    source_reference: Optional[str] = None
+    external_id: Optional[str] = None
+
+
+class AIGeneratedRecipeResponse(BaseModel):
+    """AI 생성 레시피 응답"""
+    recipe_id: str
+    tenant_id: str
+    product_name: str
+    formulation_type: Optional[str]
+    option_type: str
+    title: Optional[str]
+    ingredients: List[AIRecipeIngredient]
+    total_ratio: Optional[float]
+    estimated_cost: Optional[str]
+    notes: Optional[str]
+    quality: Optional[str]
+    summary: Optional[str]
+    source_type: str
+    source_reference: Optional[str]
+    external_id: Optional[str]
+    status: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RecipeFeedbackCreate(BaseModel):
+    """레시피 피드백 생성 요청"""
+    rating: int  # 1-5
+    comment: Optional[str] = None
+    feedback_type: Optional[str] = None  # 'quality', 'cost', 'ingredient', 'general'
+
+
+class RecipeFeedbackResponse(BaseModel):
+    """레시피 피드백 응답"""
+    feedback_id: str
+    recipe_id: str
+    rating: int
+    comment: Optional[str]
+    feedback_type: Optional[str]
+    created_at: datetime
+
+
+class UnifiedRecipe(BaseModel):
+    """통합 레시피 (기존 DB + AI 생성)"""
+    recipe_id: str
+    tenant_id: str
+    product_name: str
+    formulation_type: Optional[str]
+    option_type: str
+    ingredient_count: int
+    source_type: str  # 'db_existing', 'ai_generated', 'mes_imported', 'erp_imported'
+    source_reference: Optional[str]
+    status: str
+    created_at: Optional[datetime]
+    created_by: Optional[str]
+
+
+class UnifiedRecipeListResponse(BaseModel):
+    """통합 레시피 목록 응답"""
+    recipes: List[UnifiedRecipe]
+    total_count: int
+    page: int
+    page_size: int

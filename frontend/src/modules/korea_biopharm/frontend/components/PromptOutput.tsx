@@ -63,11 +63,13 @@ export default function PromptOutput() {
     <div className="space-y-6">
       {/* 프롬프트 카드 (접기/펼치기) */}
       <div className="card">
-        <button
-          onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+        <div
           className="w-full flex items-center justify-between mb-4 cursor-pointer hover:opacity-80 transition-opacity"
         >
-          <h2 className="card-header mb-0 flex items-center gap-2">
+          <h2
+            onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+            className="card-header mb-0 flex items-center gap-2 cursor-pointer"
+          >
             <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
@@ -75,10 +77,7 @@ export default function PromptOutput() {
           </h2>
           <div className="flex items-center gap-2">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCopy();
-              }}
+              onClick={handleCopy}
               className={`
                 flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200
                 ${copied
@@ -103,16 +102,21 @@ export default function PromptOutput() {
                 </>
               )}
             </button>
-            <svg
-              className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${isPromptExpanded ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            <button
+              onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+              <svg
+                className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${isPromptExpanded ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
           </div>
-        </button>
+        </div>
 
         {/* 프롬프트 내용 (펼쳐진 경우만 표시) */}
         {isPromptExpanded && (

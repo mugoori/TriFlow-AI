@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Query, Depends, HTTPException
 from typing import Optional
 from sqlalchemy.orm import Session
+import logging
 
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.core import User
 from ..services.search_service import SearchService
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -27,6 +29,7 @@ async def search_products(
         service = SearchService(db, current_user.tenant_id)
         return await service.search_products(query, search_internal, search_api, limit)
     except Exception as e:
+        logger.exception(f"[Search] Error: {e}")
         raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
 
 

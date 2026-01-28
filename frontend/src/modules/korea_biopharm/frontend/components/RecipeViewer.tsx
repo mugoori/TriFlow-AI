@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../store/appStore';
-import { saveFeedback } from '../services/api';
-import type { RecipeOption } from '../types';
+import { saveAIRecipe, saveAIRecipeFeedback } from '../services/api';
+import type { RecipeOption, AIGeneratedRecipeCreate } from '../types';
 
 export default function RecipeViewer() {
   const { productInfo, recipeResult, setCurrentStep, reset, setError } = useAppStore();
@@ -41,11 +41,30 @@ export default function RecipeViewer() {
     }
 
     try {
-      await saveFeedback({
-        recipe_id: 0, // TODO: 실제 레시피 ID
+      // 1. AI 레시피 저장
+      const recipeData: AIGeneratedRecipeCreate = {
+        product_name: productInfo?.name || '미지정 제품',
+        formulation_type: productInfo?.formulation_type,
+        option_type: selectedOption.option_type,
+        title: selectedOption.title,
+        ingredients: selectedOption.ingredients,
+        total_ratio: selectedOption.total_ratio,
+        estimated_cost: selectedOption.estimated_cost,
+        notes: selectedOption.notes,
+        quality: selectedOption.quality,
+        summary: selectedOption.summary,
+        source_type: 'ai_generated',
+      };
+
+      const savedRecipe = await saveAIRecipe(recipeData);
+
+      // 2. 피드백 저장
+      await saveAIRecipeFeedback(savedRecipe.recipe_id, {
         rating,
         comment: comment || undefined,
+        feedback_type: 'quality',
       });
+
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.');

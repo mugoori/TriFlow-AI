@@ -15,12 +15,16 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   // TriFlow 인증 토큰 가져오기
   const token = localStorage.getItem('triflow_access_token');
 
+  // 헤더 병합 (options.headers가 있어도 Authorization 유지)
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(options?.headers || {}),
+  };
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    },
     ...options,
+    headers,
   });
 
   if (!response.ok) {
@@ -160,7 +164,14 @@ export async function generateAndExecuteRecipe(
 }
 
 // AI 배합비 자동 생성 (타입 안전)
-import type { RecipeGenerationResponse } from '../types';
+import type {
+  RecipeGenerationResponse,
+  AIGeneratedRecipeCreate,
+  AIGeneratedRecipe,
+  RecipeFeedbackCreate,
+  RecipeFeedback,
+  UnifiedRecipeListResponse
+} from '../types';
 
 export async function generateRecipe(
   data: PromptRequest
@@ -169,4 +180,103 @@ export async function generateRecipe(
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+// =====================
+// AI 생성 레시피 API
+// =====================
+
+// AI 레시피 저장
+export async function saveAIRecipe(
+  recipe: AIGeneratedRecipeCreate
+): Promise<AIGeneratedRecipe> {
+  return fetchAPI<AIGeneratedRecipe>('/recipes/ai-generated', {
+    method: 'POST',
+    body: JSON.stringify(recipe),
+  });
+}
+
+// AI 레시피 목록 조회
+export async function getAIRecipes(
+  page = 1,
+  pageSize = 20,
+  status?: string,
+  sourceType?: string
+): Promise<{ recipes: AIGeneratedRecipe[]; total_count: number; page: number; page_size: number }> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    page_size: pageSize.toString(),
+  });
+  if (status) params.append('status', status);
+  if (sourceType) params.append('source_type', sourceType);
+  return fetchAPI(`/recipes/ai-generated?${params}`);
+}
+
+// AI 레시피 상세 조회
+export async function getAIRecipe(recipeId: string): Promise<AIGeneratedRecipe> {
+  return fetchAPI<AIGeneratedRecipe>(`/recipes/ai-generated/${recipeId}`);
+}
+
+// AI 레시피 삭제
+export async function deleteAIRecipe(recipeId: string): Promise<{ message: string; recipe_id: string }> {
+  return fetchAPI(`/recipes/ai-generated/${recipeId}`, {
+    method: 'DELETE',
+  });
+}
+
+// AI 레시피 상태 변경
+export async function updateAIRecipeStatus(
+  recipeId: string,
+  status: string
+): Promise<AIGeneratedRecipe> {
+  return fetchAPI<AIGeneratedRecipe>(`/recipes/ai-generated/${recipeId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+// =====================
+// 레시피 피드백 API
+// =====================
+
+// 피드백 저장 (AI 레시피용)
+export async function saveAIRecipeFeedback(
+  recipeId: string,
+  feedback: RecipeFeedbackCreate
+): Promise<RecipeFeedback> {
+  return fetchAPI<RecipeFeedback>(`/recipes/ai-generated/${recipeId}/feedback`, {
+    method: 'POST',
+    body: JSON.stringify(feedback),
+  });
+}
+
+// 피드백 조회 (AI 레시피용)
+export async function getAIRecipeFeedback(recipeId: string): Promise<RecipeFeedback[]> {
+  return fetchAPI<RecipeFeedback[]>(`/recipes/ai-generated/${recipeId}/feedback`);
+}
+
+// =====================
+// 통합 레시피 API
+// =====================
+
+// 통합 레시피 목록 조회
+export async function getUnifiedRecipes(
+  page = 1,
+  pageSize = 20,
+  options?: {
+    sourceType?: string;
+    status?: string;
+    formulationType?: string;
+    query?: string;
+  }
+): Promise<UnifiedRecipeListResponse> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    page_size: pageSize.toString(),
+  });
+  if (options?.sourceType) params.append('source_type', options.sourceType);
+  if (options?.status) params.append('status', options.status);
+  if (options?.formulationType) params.append('formulation_type', options.formulationType);
+  if (options?.query) params.append('q', options.query);
+  return fetchAPI<UnifiedRecipeListResponse>(`/recipes/unified?${params}`);
 }

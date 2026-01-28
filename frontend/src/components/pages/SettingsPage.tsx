@@ -51,11 +51,12 @@ interface NotificationSettings {
   smtp_use_tls: string;
 }
 
-const AI_MODELS = [
-  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5 (Latest)' },
-  { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
-  { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku (Fast)' },
-];
+// TODO: AI_MODELS will be used for AI model selection UI
+// const AI_MODELS = [
+//   { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5 (Latest)' },
+//   { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
+//   { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku (Fast)' },
+// ];
 
 const APP_INFO = {
   version: '0.1.0',
@@ -100,13 +101,13 @@ export default function SettingsPage() {
   // 초기 상태를 localStorage에서 동기적으로 로드 (깜빡임 방지)
   const [settings, setSettings] = useState<Settings>(getInitialSettings);
 
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
+  const [_connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     backend: 'checking',
     database: 'unknown',
   });
 
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [testingConnection, setTestingConnection] = useState(false);
+  const [_testingConnection, setTestingConnection] = useState(false);
 
   // 알림 설정 상태
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
@@ -244,23 +245,24 @@ export default function SettingsPage() {
     setSaveStatus('idle');
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'connected': return 'bg-green-500';
-      case 'disconnected': return 'bg-red-500';
-      case 'checking': return 'bg-yellow-500 animate-pulse';
-      default: return 'bg-slate-400';
-    }
-  };
+  // TODO: These functions will be used for connection status display UI
+  // const getStatusColor = (status: string) => {
+  //   switch (status) {
+  //     case 'connected': return 'bg-green-500';
+  //     case 'disconnected': return 'bg-red-500';
+  //     case 'checking': return 'bg-yellow-500 animate-pulse';
+  //     default: return 'bg-slate-400';
+  //   }
+  // };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'connected': return '연결됨';
-      case 'disconnected': return '연결 안됨';
-      case 'checking': return '확인 중...';
-      default: return '알 수 없음';
-    }
-  };
+  // const getStatusText = (status: string) => {
+  //   switch (status) {
+  //     case 'connected': return '연결됨';
+  //     case 'disconnected': return '연결 안됨';
+  //     case 'checking': return '확인 중...';
+  //     default: return '알 수 없음';
+  //   }
+  // };
 
   // 알림 설정 변경 핸들러
   const handleNotificationChange = (key: keyof NotificationSettings, value: string) => {

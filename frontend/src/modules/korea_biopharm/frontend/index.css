@@ -1,5 +1,28 @@
 /* Korea Biopharm Module Styles - Tailwind v4 Compatible */
 
+/* Custom biopharm-green color for Tailwind v4 */
+@theme {
+  --color-biopharm-green: #059669;
+}
+
+/* Fallback for older Tailwind or browsers */
+.text-biopharm-green {
+  color: #059669 !important;
+}
+
+.border-biopharm-green {
+  border-color: #059669 !important;
+}
+
+.bg-biopharm-green {
+  background-color: #059669 !important;
+}
+
+/* Ensure content has dark text in light mode */
+.bg-gray-50 {
+  color: rgb(17 24 39); /* gray-900 */
+}
+
 .btn-primary {
   background-color: rgb(37 99 235); /* blue-600 */
   color: white;

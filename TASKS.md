@@ -1,5 +1,91 @@
 # Tasks & Progress
 
+## 2026-01-28: Korea Biopharm AI 레시피 저장 기능 완성
+
+### 개요
+AI 생성 레시피 저장 시 500 에러 수정 및 UX 개선 (삭제 확인 토스트).
+
+### 완료된 작업
+
+#### 1. AI 레시피 저장 500 에러 수정
+- **문제**: POST `/api/v1/korea-biopharm/recipes/ai-generated` → 500 Internal Server Error
+- **원인**: `db_service.py`에 로깅 코드 추가 시 `import logging` 누락으로 `NameError: name 'logger' is not defined` 발생
+- **해결**: logger import 추가
+
+**수정 파일**:
+- `modules/korea_biopharm/backend/services/db_service.py`: logger import 추가 (L1-11)
+
+```python
+import logging
+from typing import List, Optional, Dict, Any
+...
+logger = logging.getLogger(__name__)
+```
+
+#### 2. 삭제 확인 UI 개선 (브라우저 confirm → 토스트)
+- **문제**: 브라우저 기본 `confirm()` 다이얼로그 사용 (UX 불량)
+- **해결**: 커스텀 토스트 확인 UI 구현
+
+**수정 파일**:
+- `frontend/src/modules/korea_biopharm/frontend/components/RecipesPage.tsx`
+
+**구현 내용**:
+- `deleteConfirm` 상태 추가 (show, recipeId)
+- `confirmDelete()`, `cancelDelete()` 함수 분리
+- 화면 하단 중앙 토스트 UI (애니메이션 포함)
+- 삭제 중 로딩 스피너 표시
+
+### 이전 세션 작업 (레시피 관리 시스템 구현)
+
+#### 3. DB 스키마 생성
+- **파일**: `backend/db/init/10_create_korea_biopharm_tables.sql`
+- **테이블**: `ai_generated_recipes`, `recipe_feedback`
+- **뷰**: `unified_recipes` (기존 DB + AI 생성 통합)
+
+#### 4. 백엔드 API 구현
+- **파일**: `modules/korea_biopharm/backend/routers/recipes.py`
+- **엔드포인트**:
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/unified` | 통합 레시피 목록 |
+| POST | `/ai-generated` | AI 레시피 저장 |
+| GET | `/ai-generated/{id}` | AI 레시피 상세 |
+| DELETE | `/ai-generated/{id}` | AI 레시피 삭제 |
+| PATCH | `/ai-generated/{id}/status` | 상태 변경 |
+| POST | `/ai-generated/{id}/feedback` | 피드백 저장 |
+| GET | `/ai-generated/{id}/feedback` | 피드백 조회 |
+
+#### 5. 프론트엔드 구현
+- **RecipesPage.tsx**: 통합 레시피 관리 UI (신규)
+- **RecipeViewer.tsx**: 저장 기능 연결
+- **api.ts**: AI 레시피 API 함수 추가
+- **types/index.ts**: 타입 정의 추가
+
+### 수정된 파일 목록 (17개)
+
+| 카테고리 | 파일 |
+|---------|------|
+| **Backend** | |
+| DB | `backend/db/init/10_create_korea_biopharm_tables.sql` (신규) |
+| 서비스 | `services/db_service.py`, `services/recipe_service.py`, `services/search_service.py` |
+| 라우터 | `routers/recipes.py`, `routers/search.py` |
+| 스키마 | `models/schemas.py` |
+| **Frontend** | |
+| 컴포넌트 | `components/RecipesPage.tsx` (신규), `components/PromptOutput.tsx`, `components/RecipeViewer.tsx`, `components/ProductDetailModal.tsx` |
+| 서비스 | `services/api.ts` |
+| 타입 | `types/index.ts` |
+| 페이지 | `KoreaBiopharmPage.tsx` |
+| 스타일 | `index.css` |
+
+### 검증 완료
+- ✅ Python 문법 검사 통과
+- ✅ TypeScript 타입 검사 통과
+- ✅ 백엔드 서버 정상 실행
+- ✅ AI 레시피 저장 테스트 성공 (`recipe_id = 25a591a1-...`)
+
+---
+
 ## 2026-01-27: 과잉 구현 기능 정리 및 비활성화
 
 ### 개요

@@ -38,7 +38,7 @@ class SearchService:
         # 내부 DB 검색
         if search_internal:
             result["internal_results"] = db_service.search_by_ingredients(
-                ingredient_list, None, limit
+                self.db, self.tenant_id, ingredient_list, None, limit
             )
 
         # 공공 API 검색
@@ -57,6 +57,8 @@ class SearchService:
     ) -> List[Dict[str, Any]]:
         """내부 DB 검색"""
         return db_service.search_by_ingredients(
+            self.db,
+            self.tenant_id,
             ingredients,
             formulation_type,
             limit
@@ -84,7 +86,7 @@ class SearchService:
     ) -> Dict[str, Any]:
         """통합 검색 (내부 + 외부)"""
         internal = db_service.search_by_ingredients(
-            ingredients, formulation_type, internal_limit
+            self.db, self.tenant_id, ingredients, formulation_type, internal_limit
         )
         external = await foodsafety_api.search_by_ingredients(
             ingredients, formulation_type, external_limit
